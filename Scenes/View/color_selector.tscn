@@ -1,0 +1,77 @@
+[gd_scene load_steps=14 format=3 uid="uid://ckshnidv1ms8k"]
+
+[ext_resource type="Script" uid="uid://38ku5vwccj8r" path="res://Scripts/View/color_selector.gd" id="1_pvybe"]
+[ext_resource type="Texture2D" uid="uid://helk54et270c" path="res://Assets/colors/red.png" id="2_2si5e"]
+[ext_resource type="Texture2D" uid="uid://3jgobrggs1mg" path="res://Assets/colors/red_clicked.png" id="3_5gkbn"]
+[ext_resource type="Texture2D" uid="uid://dxywsp85jih77" path="res://Assets/colors/red_hover.png" id="4_tbhy0"]
+[ext_resource type="Texture2D" uid="uid://pguv1hvpu8r8" path="res://Assets/colors/yellow.png" id="5_25b0o"]
+[ext_resource type="Texture2D" uid="uid://dlroj8so7u3i2" path="res://Assets/colors/yellow_clicked.png" id="6_e2ktl"]
+[ext_resource type="Texture2D" uid="uid://dm11qpx5k3s87" path="res://Assets/colors/yellow_hover.png" id="7_7hhn3"]
+[ext_resource type="Texture2D" uid="uid://c04lwir2kvnru" path="res://Assets/colors/green.png" id="8_nsoao"]
+[ext_resource type="Texture2D" uid="uid://5cy3r0erxyn" path="res://Assets/colors/green_clicked.png" id="9_y5bor"]
+[ext_resource type="Texture2D" uid="uid://do1qkrhdx4tin" path="res://Assets/colors/green_hover.png" id="10_ecik7"]
+[ext_resource type="Texture2D" uid="uid://b5hqfqg8khdw2" path="res://Assets/colors/blue.png" id="11_kuj8j"]
+[ext_resource type="Texture2D" uid="uid://ba0dmychc4s1j" path="res://Assets/colors/blue_clicked.png" id="12_0756a"]
+[ext_resource type="Texture2D" uid="uid://r1y5ixqjq53g" path="res://Assets/colors/blue_hover.png" id="13_qiqir"]
+
+[node name="Color Selector" type="HBoxContainer"]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -237.5
+offset_top = -70.0
+offset_right = 237.5
+offset_bottom = 70.0
+grow_horizontal = 2
+grow_vertical = 2
+size_flags_horizontal = 4
+theme_override_constants/separation = 25
+alignment = 1
+script = ExtResource("1_pvybe")
+
+[node name="red" type="TextureButton" parent="."]
+custom_minimum_size = Vector2(100, 140)
+layout_mode = 2
+size_flags_vertical = 4
+texture_normal = ExtResource("2_2si5e")
+texture_pressed = ExtResource("3_5gkbn")
+texture_hover = ExtResource("4_tbhy0")
+ignore_texture_size = true
+stretch_mode = 5
+
+[node name="yellow" type="TextureButton" parent="."]
+custom_minimum_size = Vector2(100, 140)
+layout_mode = 2
+size_flags_vertical = 4
+texture_normal = ExtResource("5_25b0o")
+texture_pressed = ExtResource("6_e2ktl")
+texture_hover = ExtResource("7_7hhn3")
+ignore_texture_size = true
+stretch_mode = 5
+
+[node name="green" type="TextureButton" parent="."]
+custom_minimum_size = Vector2(100, 140)
+layout_mode = 2
+size_flags_vertical = 4
+texture_normal = ExtResource("8_nsoao")
+texture_pressed = ExtResource("9_y5bor")
+texture_hover = ExtResource("10_ecik7")
+ignore_texture_size = true
+stretch_mode = 5
+
+[node name="blue" type="TextureButton" parent="."]
+custom_minimum_size = Vector2(100, 140)
+layout_mode = 2
+size_flags_vertical = 4
+texture_normal = ExtResource("11_kuj8j")
+texture_pressed = ExtResource("12_0756a")
+texture_hover = ExtResource("13_qiqir")
+ignore_texture_size = true
+stretch_mode = 5
+
+[connection signal="pressed" from="red" to="." method="_on_red_pressed"]
+[connection signal="pressed" from="yellow" to="." method="_on_yellow_pressed"]
+[connection signal="pressed" from="green" to="." method="_on_green_pressed"]
+[connection signal="pressed" from="blue" to="." method="_on_blue_pressed"]

@@ -1,0 +1,55 @@
+[gd_scene load_steps=6 format=3 uid="uid://b3cbm8norl5h7"]
+
+[ext_resource type="Script" uid="uid://dr0t8llnaw7ml" path="res://Classes/CardManager.gd" id="1_4bhoy"]
+[ext_resource type="PackedScene" uid="uid://deat7hguf61ur" path="res://Scenes/View/card_view.tscn" id="2_6eb2d"]
+[ext_resource type="PackedScene" uid="uid://p4ppil0si11i" path="res://Scenes/View/draw_deck.tscn" id="2_jamtu"]
+[ext_resource type="PackedScene" uid="uid://bpglgdslmw461" path="res://Scenes/View/hand_card_holder.tscn" id="2_vixjt"]
+[ext_resource type="PackedScene" uid="uid://ckshnidv1ms8k" path="res://Scenes/View/color_selector.tscn" id="4_2uwj3"]
+
+[node name="CardManager" type="Node" node_paths=PackedStringArray("top_card_view", "hand_card_holder")]
+script = ExtResource("1_4bhoy")
+top_card_view = NodePath("MarginContainer/TopCard")
+hand_card_holder = NodePath("MarginContainer/Ui/HandCardHolder")
+
+[node name="MarginContainer" type="MarginContainer" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 25
+theme_override_constants/margin_top = 25
+theme_override_constants/margin_right = 25
+theme_override_constants/margin_bottom = 25
+
+[node name="DrawDeck" parent="MarginContainer" instance=ExtResource("2_jamtu")]
+layout_mode = 2
+size_flags_horizontal = 0
+size_flags_vertical = 0
+
+[node name="TopCard" parent="MarginContainer" instance=ExtResource("2_6eb2d")]
+layout_mode = 2
+size_flags_vertical = 2
+is_top_card = true
+
+[node name="Ui" type="Control" parent="MarginContainer"]
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 8
+
+[node name="HandCardHolder" parent="MarginContainer/Ui" node_paths=PackedStringArray("card_manager") instance=ExtResource("2_vixjt")]
+layout_mode = 1
+theme_override_constants/separation = -165
+smooth_speed = 20.0
+card_manager = NodePath("../../..")
+
+[node name="Color Selector" parent="MarginContainer" instance=ExtResource("4_2uwj3")]
+visible = false
+layout_mode = 2
+
+[node name="Timer" type="Timer" parent="."]
+wait_time = 0.1
+autostart = true
+
+[connection signal="pressed" from="MarginContainer/DrawDeck" to="." method="_on_draw_deck_pressed"]
+[connection signal="timeout" from="Timer" to="." method="_on_timer_timeout"]

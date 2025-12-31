@@ -1,0 +1,11 @@
+[gd_scene load_steps=2 format=3 uid="uid://p4ppil0si11i"]
+
+[ext_resource type="Texture2D" uid="uid://db8vqriaoo1oj" path="res://Assets/card-theme/default/background.png" id="1_nk48n"]
+
+[node name="DrawDeck" type="TextureButton"]
+custom_minimum_size = Vector2(225, 315)
+offset_right = 40.0
+offset_bottom = 40.0
+texture_normal = ExtResource("1_nk48n")
+ignore_texture_size = true
+stretch_mode = 5

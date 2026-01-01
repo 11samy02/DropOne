@@ -2,11 +2,16 @@
 extends Control
 class_name CardView
 
+static var current_top_card : CardView
+
+## External holder reference
 var hand_card_holder: HandCardHolder
 
+## Card UI config
 @export var is_top_card := false
 @export_enum("Small", "Medium", "Large") var card_size := "Medium"
 
+## Show front/back
 var _show_front := true
 @export var show_front := true:
 	get:
@@ -16,6 +21,7 @@ var _show_front := true
 		if is_inside_tree():
 			load_card()
 
+## Card resource
 var _card_res: CardResource = null
 @export var card_res: CardResource:
 	get:
@@ -25,6 +31,7 @@ var _card_res: CardResource = null
 		if is_inside_tree():
 			load_card()
 
+## Override color
 var _override_color_enabled := false
 @export var override_color_enabled := false:
 	get:
@@ -43,19 +50,20 @@ var _override_color: CardResource.CardColor = CardResource.CardColor.RED
 		if is_inside_tree():
 			load_card()
 
+## Nodes
 @onready var background: TextureRect = %background
 @onready var center_num: Label = %center_num
-@onready var left_num: Label = %left_num
-@onready var right_num: Label = %right_num
+@onready var corner_num: Label = %corner_num
 @onready var symbol: TextureRect = %symbol
-@onready var left_symbol: TextureRect = %left_symbol
-@onready var right_symbol: TextureRect = %right_symbol
 @onready var shadow_symbol: TextureRect = %shadow_symbol
+@onready var corner_symbol: TextureRect = %corner_symbol2
 @onready var left_shadow_symbol: TextureRect = %left_shadow_symbol
+@onready var corner_color_blind_symbol: TextureRect = %corner_color_blind_symbol
 @onready var right_shadow_symbol: TextureRect = %right_shadow_symbol
 @onready var animation_player: AnimationPlayer = $AnimationPlayer
 @onready var button: Button = %button
 
+## Color constants
 const COLOR_BLUE := Color("#0027da")
 const COLOR_YELLOW := Color("#c39f00")
 const COLOR_RED := Color("#ad0000")
@@ -68,6 +76,8 @@ func _ready() -> void:
 	button.mouse_filter = Control.MOUSE_FILTER_STOP
 	load_card()
 	rezise_card()
+	if is_top_card:
+		current_top_card = self
 
 
 func _process(delta: float) -> void:
@@ -86,50 +96,43 @@ func load_card() -> void:
 		_hide_front()
 		update_playable_visuals()
 		return
-	
+
 	var display_color := _card_res.color
 	if _override_color_enabled:
 		display_color = _override_color
-	
+
 	background.texture = _card_res.get_background_texture_for_color(display_color)
-	
+
 	var sym := _card_res.get_symbol_texture()
 	var text := _card_res.get_display_text()
 	var c := get_card_color(display_color)
-	
-	left_num.modulate = Color.WHITE
-	right_num.modulate = Color.WHITE
+
 	center_num.modulate = Color.WHITE
-	
+	corner_num.modulate = Color.WHITE
+
+	_apply_colorblind_symbol(display_color, c)
+
 	if sym != null:
 		symbol.show()
-		left_symbol.show()
-		right_symbol.show()
-	
+		corner_symbol.show()
+
 		symbol.texture = sym
-		left_symbol.texture = sym
-		right_symbol.texture = sym
+		corner_symbol.texture = sym
 		shadow_symbol.texture = sym
 		left_shadow_symbol.texture = sym
 		right_shadow_symbol.texture = sym
-	
+
 		center_num.hide()
-	
+
 		if text != "":
-			left_num.show()
-			right_num.show()
-	
-			left_symbol.hide()
-			right_symbol.hide()
+			corner_num.show()
+			corner_num.text = text
+			corner_symbol.hide()
 			shadow_symbol.hide()
-	
-			left_num.text = text
-			right_num.text = text
 		else:
-			left_num.hide()
-			right_num.hide()
+			corner_num.hide()
 			shadow_symbol.show()
-	
+
 		if _card_res.type != CardResource.CardType.WILD and _card_res.type != CardResource.CardType.WILD_DRAW:
 			symbol.modulate = c
 			shadow_symbol.show()
@@ -137,39 +140,44 @@ func load_card() -> void:
 			symbol.modulate = Color.WHITE
 			shadow_symbol.hide()
 
-	
 	else:
 		symbol.hide()
-		left_symbol.hide()
-		right_symbol.hide()
+		corner_symbol.hide()
 		shadow_symbol.hide()
 		left_shadow_symbol.hide()
 		right_shadow_symbol.hide()
-	
+
 		center_num.show()
-		left_num.show()
-		right_num.show()
-	
+		corner_num.show()
+
 		center_num.text = text
-		left_num.text = text
-		right_num.text = text
-	
+		corner_num.text = text
 		center_num.modulate = c
-	
+
 	update_playable_visuals()
 
 
 ## Hides front elements when showing back
 func _hide_front() -> void:
 	center_num.hide()
-	left_num.hide()
-	right_num.hide()
+	corner_num.hide()
 	symbol.hide()
-	left_symbol.hide()
-	right_symbol.hide()
+	corner_symbol.hide()
 	shadow_symbol.hide()
 	left_shadow_symbol.hide()
 	right_shadow_symbol.hide()
+	corner_color_blind_symbol.hide()
+
+
+## Applies colorblind symbol based on card color mapping + modulates with card color
+func _apply_colorblind_symbol(display_color: CardResource.CardColor, c: Color) -> void:
+	if display_color == CardResource.CardColor.BLACK:
+		corner_color_blind_symbol.hide()
+		return
+
+	corner_color_blind_symbol.show()
+	corner_color_blind_symbol.texture = _card_res.get_color_blind_symbol_texture_for_color(display_color)
+	corner_color_blind_symbol.modulate = Color.WHITE
 
 
 ## Converts enum color to display color
@@ -202,7 +210,6 @@ func _mouse_exit() -> void:
 func set_clickable(active: bool, stop_hover: bool = false) -> void:
 	button.disabled = !active
 	button.mouse_filter = Control.MOUSE_FILTER_STOP
-	
 	if stop_hover:
 		button.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
@@ -217,23 +224,49 @@ func update_playable_visuals() -> void:
 	if hand_card_holder == null:
 		set_clickable(false)
 		return
-	
 	if is_top_card or !_show_front:
 		set_clickable(false)
 		return
-	
 	if !hand_card_holder.turn_active:
 		set_clickable(false)
 		return
-	
 	var playable := hand_card_holder.can_play_card(_card_res)
 	set_clickable(playable)
 
 
+## Card scaling
 func rezise_card() -> void:
 	if card_size == "Small":
-		scale = Vector2(0.5,0.5)
+		scale = Vector2(0.5, 0.5)
 	elif card_size == "Medium":
-		scale = Vector2(0.75,0.75)
+		scale = Vector2(0.75, 0.75)
 	else:
-		scale = Vector2(1,1)
+		scale = Vector2(1, 1)
+
+
+func smooth_move_button_to_top_card(duration: float = 0.35, overshoot: float = 14.0) -> void:
+	if current_top_card == null:
+		return
+	if current_top_card == self:
+		return
+	if button == null or !is_instance_valid(button):
+		return
+		
+	var parent_control := button.get_parent() as Control
+	if parent_control == null:
+		return
+		
+	var target_global_pos: Vector2 = current_top_card.button.global_position
+	var target_local_pos: Vector2 = parent_control.get_global_transform().affine_inverse() * target_global_pos
+	var dir := (target_local_pos - button.position).normalized()
+	var overshoot_pos := target_local_pos + dir * overshoot
+	
+	var tween := create_tween()
+	
+	tween.tween_property(button, "position", overshoot_pos, duration * 0.75)\
+		.set_trans(Tween.TRANS_QUAD)\
+		.set_ease(Tween.EASE_OUT)
+		
+	tween.tween_property(button, "position", target_local_pos, duration * 0.25)\
+		.set_trans(Tween.TRANS_QUAD)\
+		.set_ease(Tween.EASE_IN)

@@ -96,8 +96,9 @@ func set_card(card_view: CardView) -> void:
 	_queued = null
 	
 	card_view.set_clickable(false, true)
-	card_view.animation_player.play("set")
-	await card_view.animation_player.animation_finished
+	var animation_duration := 0.3
+	card_view.smooth_move_button_to_top_card(animation_duration)
+	await get_tree().create_timer(animation_duration).timeout
 	
 	var played_card_res := card_view.card_res
 	

@@ -2,16 +2,13 @@
 extends Control
 class_name CardView
 
-static var current_top_card : CardView
+static var current_top_card: CardView
 
-## External holder reference
 var hand_card_holder: HandCardHolder
 
-## Card UI config
 @export var is_top_card := false
 @export_enum("Small", "Medium", "Large") var card_size := "Medium"
 
-## Show front/back
 var _show_front := true
 @export var show_front := true:
 	get:
@@ -21,7 +18,6 @@ var _show_front := true
 		if is_inside_tree():
 			load_card()
 
-## Card resource
 var _card_res: CardResource = null
 @export var card_res: CardResource:
 	get:
@@ -31,7 +27,6 @@ var _card_res: CardResource = null
 		if is_inside_tree():
 			load_card()
 
-## Override color
 var _override_color_enabled := false
 @export var override_color_enabled := false:
 	get:
@@ -50,7 +45,6 @@ var _override_color: CardResource.CardColor = CardResource.CardColor.RED
 		if is_inside_tree():
 			load_card()
 
-## Nodes
 @onready var background: TextureRect = %background
 @onready var center_num: Label = %center_num
 @onready var corner_num: Label = %corner_num
@@ -63,13 +57,11 @@ var _override_color: CardResource.CardColor = CardResource.CardColor.RED
 @onready var animation_player: AnimationPlayer = $AnimationPlayer
 @onready var button: Button = %button
 
-## Color constants
 const COLOR_BLUE := Color("#0027da")
 const COLOR_YELLOW := Color("#c39f00")
 const COLOR_RED := Color("#ad0000")
 const COLOR_GREEN := Color("#0ca500")
 const COLOR_BLACK_TEXT := Color.WHITE
-
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -79,14 +71,12 @@ func _ready() -> void:
 	if is_top_card:
 		current_top_card = self
 
-
-func _process(delta: float) -> void:
+func _process(_delta: float) -> void:
 	if Engine.is_editor_hint():
 		load_card()
 	rezise_card()
 
-
-## Loads all card visuals
+## Load and apply all visuals based on current card state
 func load_card() -> void:
 	if _card_res == null:
 		return
@@ -139,7 +129,6 @@ func load_card() -> void:
 		else:
 			symbol.modulate = Color.WHITE
 			shadow_symbol.hide()
-
 	else:
 		symbol.hide()
 		corner_symbol.hide()
@@ -156,8 +145,7 @@ func load_card() -> void:
 
 	update_playable_visuals()
 
-
-## Hides front elements when showing back
+## Hide front UI elements for back-side display
 func _hide_front() -> void:
 	center_num.hide()
 	corner_num.hide()
@@ -168,19 +156,16 @@ func _hide_front() -> void:
 	right_shadow_symbol.hide()
 	corner_color_blind_symbol.hide()
 
-
-## Applies colorblind symbol based on card color mapping + modulates with card color
-func _apply_colorblind_symbol(display_color: CardResource.CardColor, c: Color) -> void:
+## Apply colorblind symbol based on current color
+func _apply_colorblind_symbol(display_color: CardResource.CardColor, _c: Color) -> void:
 	if display_color == CardResource.CardColor.BLACK:
 		corner_color_blind_symbol.hide()
 		return
-
 	corner_color_blind_symbol.show()
 	corner_color_blind_symbol.texture = _card_res.get_color_blind_symbol_texture_for_color(display_color)
 	corner_color_blind_symbol.modulate = Color.WHITE
 
-
-## Converts enum color to display color
+## Convert card color enum to display color
 func get_card_color(card_color: CardResource.CardColor) -> Color:
 	match card_color:
 		CardResource.CardColor.RED:
@@ -195,31 +180,26 @@ func get_card_color(card_color: CardResource.CardColor) -> Color:
 			return COLOR_BLACK_TEXT
 	return COLOR_BLACK_TEXT
 
-
 func _mouse_enter() -> void:
 	if _show_front and !is_top_card:
 		animation_player.play("zoom")
-
 
 func _mouse_exit() -> void:
 	if _show_front and !is_top_card:
 		animation_player.play_backwards("zoom")
 
-
-## Enables/disables clicking for this card
+## Enable/disable click behavior for this card
 func set_clickable(active: bool, stop_hover: bool = false) -> void:
 	button.disabled = !active
 	button.mouse_filter = Control.MOUSE_FILTER_STOP
 	if stop_hover:
 		button.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
-
 func _on_button_pressed() -> void:
 	if hand_card_holder != null:
 		hand_card_holder.set_card(self)
 
-
-## Updates visual state based on holder and turn rules
+## Update clickable state based on holder rules
 func update_playable_visuals() -> void:
 	if hand_card_holder == null:
 		set_clickable(false)
@@ -233,8 +213,7 @@ func update_playable_visuals() -> void:
 	var playable := hand_card_holder.can_play_card(_card_res)
 	set_clickable(playable)
 
-
-## Card scaling
+## Resize card by scale based on card_size
 func rezise_card() -> void:
 	if card_size == "Small":
 		scale = Vector2(0.5, 0.5)
@@ -243,30 +222,30 @@ func rezise_card() -> void:
 	else:
 		scale = Vector2(1, 1)
 
-
-func smooth_move_button_to_top_card(duration: float = 0.35, overshoot: float = 14.0) -> void:
+## Animate moving this card button to the top card
+func smooth_move_button_to_top_card_juicy(duration: float = 0.35, overshoot: float = 14.0) -> void:
 	if current_top_card == null:
 		return
 	if current_top_card == self:
 		return
 	if button == null or !is_instance_valid(button):
 		return
-		
+
+	show_front = true
+
 	var parent_control := button.get_parent() as Control
 	if parent_control == null:
 		return
-		
+
 	var target_global_pos: Vector2 = current_top_card.button.global_position
 	var target_local_pos: Vector2 = parent_control.get_global_transform().affine_inverse() * target_global_pos
-	var dir := (target_local_pos - button.position).normalized()
-	var overshoot_pos := target_local_pos + dir * overshoot
-	
+
+	var dir := (target_local_pos - button.position)
+	if dir.length() < 0.001:
+		return
+
+	var overshoot_pos := target_local_pos + dir.normalized() * overshoot
+
 	var tween := create_tween()
-	
-	tween.tween_property(button, "position", overshoot_pos, duration * 0.75)\
-		.set_trans(Tween.TRANS_QUAD)\
-		.set_ease(Tween.EASE_OUT)
-		
-	tween.tween_property(button, "position", target_local_pos, duration * 0.25)\
-		.set_trans(Tween.TRANS_QUAD)\
-		.set_ease(Tween.EASE_IN)
+	tween.tween_property(button, "position", overshoot_pos, duration * 0.75).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_property(button, "position", target_local_pos, duration * 0.25).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)

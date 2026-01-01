@@ -2,12 +2,10 @@
 extends Resource
 class_name CardResource
 
-## Enums
 enum CardColor { RED, GREEN, BLUE, YELLOW, BLACK }
 enum CardSymbol { HEART, CLUB, SPADE, DIAMOND }
 enum CardType { NUMBER, SKIP, REVERSE, DRAW, WILD, WILD_DRAW }
 
-## Card backgrounds
 const BLACK: Texture2D = preload("uid://xspumfxdwrqn")
 const BLUE: Texture2D = preload("uid://cxov74crw1ujc")
 const GREEN: Texture2D = preload("uid://yywrx2q6xxab")
@@ -15,25 +13,21 @@ const RED: Texture2D = preload("uid://khc0k7ws2b0g")
 const YELLOW: Texture2D = preload("uid://bu7wu3q2mvxsn")
 const BACKGROUND: Texture2D = preload("uid://db8vqriaoo1oj")
 
-## Special icons
 const REVERSE_ICON: Texture2D = preload("uid://d0rbdll1ydx8e")
 const SKIP_ICON: Texture2D = preload("uid://dmfqk7awjm070")
 const WILD_ICON: Texture2D = preload("uid://bxv1k8rgyqe5j")
 const WILDDRAW_ICON: Texture2D = preload("uid://tbva5m4rm4g4")
 
-## Colorblind icons
 const CLUB: Texture2D = preload("uid://41e111jurgy5")
 const HEART: Texture2D = preload("uid://8p7uyuv60l14")
 const DIAMOND: Texture2D = preload("uid://d0buk1j22pbu1")
 const SPADE: Texture2D = preload("uid://b7a4n3o1ildc7")
 
-## Card data
 @export var color: CardColor = CardColor.RED
 @export var type: CardType = CardType.NUMBER
 @export var value: int = 0
 
-
-## Background texture
+## Get background texture (or back side if hidden)
 func get_background_texture(hidden_card: bool = false) -> Texture2D:
 	if hidden_card:
 		return BACKGROUND
@@ -45,8 +39,7 @@ func get_background_texture(hidden_card: bool = false) -> Texture2D:
 		CardColor.BLACK: return BLACK
 	return RED
 
-
-## Display text for numbers / draw
+## Get display text for number and draw cards
 func get_display_text() -> String:
 	match type:
 		CardType.NUMBER:
@@ -57,8 +50,7 @@ func get_display_text() -> String:
 			return "+" + str(value)
 	return ""
 
-
-## Special symbol for skip/reverse/wild
+## Get symbol texture for action cards
 func get_symbol_texture() -> Texture2D:
 	match type:
 		CardType.SKIP:
@@ -71,8 +63,7 @@ func get_symbol_texture() -> Texture2D:
 			return WILDDRAW_ICON
 	return null
 
-
-## Colorblind symbol texture based on card color
+## Get colorblind symbol for a given color
 func get_color_blind_symbol_texture_for_color(c: CardColor) -> Texture2D:
 	match c:
 		CardColor.RED: return HEART
@@ -82,8 +73,7 @@ func get_color_blind_symbol_texture_for_color(c: CardColor) -> Texture2D:
 		CardColor.BLACK: return null
 	return HEART
 
-
-## Background texture for given color
+## Get background texture for a specific color
 func get_background_texture_for_color(c: CardColor) -> Texture2D:
 	match c:
 		CardColor.RED: return RED

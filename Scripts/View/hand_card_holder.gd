@@ -11,16 +11,12 @@ const HAND_CARD_HOLDER = preload("uid://bpglgdslmw461")
 
 var player_index := -1
 var bot_index := -1
-
 var turn_active := false
 var _current_sep: float = 0.0
 
 var _busy := false
 var _queued: CardView = null
 var _waiting_color_turn_end := false
-
-
-
 
 static func create() -> HandCardHolder:
 	return HAND_CARD_HOLDER.instantiate()
@@ -30,25 +26,24 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	align_cards(delta)
-	
 
-
-## Sets active state for turn control
+## Set active state for turn logic
 func set_turn_active(value: bool) -> void:
 	turn_active = value
 	refresh_playable_cards()
 
-
-## Aligns cards smoothly based on count
+## Align cards smoothly based on hand size
 func align_cards(delta: float) -> void:
 	var count := get_child_count()
 	var target_sep := _get_target_separation(count)
 	_current_sep = lerp(_current_sep, float(target_sep), 1.0 - exp(-smooth_speed * delta))
 	add_theme_constant_override("separation", int(round(_current_sep)))
 
-
-## Returns separation value for current hand size
+## Get separation value for current hand size
 func _get_target_separation(count: int) -> int:
+	if is_bot and count <= 21: return -75
+	if is_bot and count <= 45: return -130
+	if is_bot: return -153
 	if count <= 7: return 0
 	if count <= 10: return -25
 	if count <= 15: return -50
@@ -62,8 +57,7 @@ func _get_target_separation(count: int) -> int:
 	if count <= 90: return -150
 	return -153
 
-
-## Adds a card view to this holder
+## Add a card to this holder
 func add_card(card_res: CardResource) -> void:
 	var card_view: CardView = CARD_VIEW.instantiate()
 	card_view.hand_card_holder = self
@@ -72,64 +66,69 @@ func add_card(card_res: CardResource) -> void:
 	card_view.show_front = !is_bot
 	refresh_playable_cards()
 
-
-
-## Plays a card and handles wild color selection correctly
+## Play a card and handle turn flow and wild color selection
 func set_card(card_view: CardView) -> void:
 	if card_view == null or !is_instance_valid(card_view) or card_view.card_res == null:
 		return
-	
+
 	if _busy:
 		_queued = card_view
 		return
-	
+
 	if queue_manager == null:
 		return
-	
+
 	if !queue_manager.can_play_now(self):
 		return
-	
+
 	if !can_play_card(card_view.card_res):
 		return
-	
+
 	_busy = true
 	_queued = null
-	
+
 	card_view.set_clickable(false, true)
 	var animation_duration := 0.3
-	card_view.smooth_move_button_to_top_card(animation_duration)
+	card_view.smooth_move_button_to_top_card_juicy(animation_duration)
 	await get_tree().create_timer(animation_duration).timeout
-	
+
 	var played_card_res := card_view.card_res
-	
+
 	if is_instance_valid(card_view):
 		remove_child(card_view)
 		card_view.queue_free()
-	
+
 	card_manager.set_top_card_runtime(played_card_res)
-	
+
 	_busy = false
 	refresh_playable_cards()
-	
+
 	if card_manager.waiting_for_color:
 		_waiting_color_turn_end = true
 	else:
-		queue_manager.register_card_play()
-	
+		queue_manager.register_card_play(played_card_res)
+
 	if _queued != null and is_instance_valid(_queued):
 		var next := _queued
 		_queued = null
 		call_deferred("set_card", next)
 
-
-
-## Checks if card matches current top card rules
+## Check if a card is playable with current rules (including draw stacks)
 func can_play_card(card_res: CardResource) -> bool:
 	if card_res == null:
 		return false
 
 	if card_manager.waiting_for_color:
 		return false
+
+	if queue_manager != null and queue_manager.draw_stack_amount > 0:
+		if queue_manager.draw_stack_is_wild:
+			return false
+		if card_res.type != CardResource.CardType.DRAW:
+			return false
+		if card_res.value < queue_manager.draw_stack_min_value:
+			return false
+		return true
 
 	var top := card_manager.top_card
 	if top == null:
@@ -151,8 +150,7 @@ func can_play_card(card_res: CardResource) -> bool:
 
 	return false
 
-
-## Sorts hand by color, type and value
+## Sort hand by color, type, then value
 func sort_cards_full() -> void:
 	var color_order := {
 		CardResource.CardColor.RED: 0,
@@ -192,45 +190,36 @@ func sort_cards_full() -> void:
 	for i in range(card_views.size()):
 		move_child(card_views[i], i)
 
-
-## Refreshes clickable state for all cards
-func refresh_clickable_cards() -> void:
-	for c in get_children():
-		if c is CardView:
-			c.can_be_clicked()
-
-
-## Updates clickability for all hand cards based on rules and turn state
+## Refresh playable/clickable state for all cards
 func refresh_playable_cards() -> void:
-	for c in get_children():
-		if c is CardView:
-			var playable := can_play_card(c.card_res)
-			var allowed = turn_active and !is_bot and c.show_front and playable
-			c.set_clickable(allowed)
-			
-			var target_color := Color.WHITE if allowed else Color.DIM_GRAY
-			smooth_modulate(c, target_color, 0.3)
+	if !is_bot:
+		for c in get_children():
+			if c is CardView:
+				var playable := can_play_card(c.card_res)
+				var allowed = turn_active and !is_bot and c.show_front and playable
+				c.set_clickable(allowed)
 
+				var target_color := Color.WHITE if allowed else Color.DIM_GRAY
+				smooth_modulate(c, target_color, 0.3)
+
+## Smoothly modulate a node color with a tween
 func smooth_modulate(node: CanvasItem, target: Color, duration: float = 0.15) -> void:
 	if node.has_meta("modulate_tween"):
 		var old_tween = node.get_meta("modulate_tween")
 		if old_tween and old_tween.is_running():
 			old_tween.kill()
-		
+
 	var tween := create_tween()
 	tween.tween_property(node, "modulate", target, duration).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-	
 	node.set_meta("modulate_tween", tween)
 
-
-## Refreshes playable cards after wild color was applied and handles solo turn end
+## After color select, finalize wild-play turn state
 func _on_color_selected(_color: CardResource.CardColor) -> void:
 	call_deferred("_after_color_selected")
 
-## Executes after CardManager updated waiting_for_color
+## Continue after wild color is applied
 func _after_color_selected() -> void:
 	refresh_playable_cards()
-	
 	if _waiting_color_turn_end:
 		_waiting_color_turn_end = false
-		queue_manager.register_card_play()
+		queue_manager.register_card_play(card_manager.top_card)

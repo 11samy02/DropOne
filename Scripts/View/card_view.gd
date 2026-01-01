@@ -5,11 +5,43 @@ class_name CardView
 var hand_card_holder: HandCardHolder
 
 @export var is_top_card := false
-@export var show_front := true
-@export var card_res: CardResource
-@export var override_color_enabled := false
-@export var override_color: CardResource.CardColor = CardResource.CardColor.RED
+@export_enum("Small", "Medium", "Large") var card_size := "Medium"
 
+var _show_front := true
+@export var show_front := true:
+	get:
+		return _show_front
+	set(value):
+		_show_front = value
+		if is_inside_tree():
+			load_card()
+
+var _card_res: CardResource = null
+@export var card_res: CardResource:
+	get:
+		return _card_res
+	set(value):
+		_card_res = value
+		if is_inside_tree():
+			load_card()
+
+var _override_color_enabled := false
+@export var override_color_enabled := false:
+	get:
+		return _override_color_enabled
+	set(value):
+		_override_color_enabled = value
+		if is_inside_tree():
+			load_card()
+
+var _override_color: CardResource.CardColor = CardResource.CardColor.RED
+@export var override_color: CardResource.CardColor = CardResource.CardColor.RED:
+	get:
+		return _override_color
+	set(value):
+		_override_color = value
+		if is_inside_tree():
+			load_card()
 
 @onready var background: TextureRect = %background
 @onready var center_num: Label = %center_num
@@ -29,40 +61,40 @@ const COLOR_YELLOW := Color("#c39f00")
 const COLOR_RED := Color("#ad0000")
 const COLOR_GREEN := Color("#0ca500")
 const COLOR_BLACK_TEXT := Color.WHITE
-const CORNER_TEXT_COLOR := Color.WHITE
 
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	button.mouse_filter = Control.MOUSE_FILTER_STOP
-	
-	if background.material != null:
-		background.material = background.material.duplicate()
-	
 	load_card()
+	rezise_card()
 
 
 func _process(delta: float) -> void:
 	if Engine.is_editor_hint():
 		load_card()
+	rezise_card()
 
+
+## Loads all card visuals
 func load_card() -> void:
-	if card_res == null:
+	if _card_res == null:
 		return
 
-	if !show_front:
-		background.texture = card_res.get_background_texture(true)
+	if !_show_front:
+		background.texture = _card_res.get_background_texture(true)
 		_hide_front()
+		update_playable_visuals()
 		return
 	
-	var display_color := card_res.color
-	if override_color_enabled:
-		display_color = override_color
+	var display_color := _card_res.color
+	if _override_color_enabled:
+		display_color = _override_color
 	
-	background.texture = card_res.get_background_texture_for_color(display_color)
+	background.texture = _card_res.get_background_texture_for_color(display_color)
 	
-	var sym := card_res.get_symbol_texture()
-	var text := card_res.get_display_text()
+	var sym := _card_res.get_symbol_texture()
+	var text := _card_res.get_display_text()
 	var c := get_card_color(display_color)
 	
 	left_num.modulate = Color.WHITE
@@ -93,18 +125,18 @@ func load_card() -> void:
 	
 			left_num.text = text
 			right_num.text = text
-	
-			left_num.modulate = Color.WHITE
-			right_num.modulate = Color.WHITE
 		else:
 			left_num.hide()
 			right_num.hide()
 			shadow_symbol.show()
 	
-		if card_res.type != CardResource.CardType.WILD and card_res.type != CardResource.CardType.WILD_DRAW:
+		if _card_res.type != CardResource.CardType.WILD and _card_res.type != CardResource.CardType.WILD_DRAW:
 			symbol.modulate = c
+			shadow_symbol.show()
 		else:
 			symbol.modulate = Color.WHITE
+			shadow_symbol.hide()
+
 	
 	else:
 		symbol.hide()
@@ -123,13 +155,11 @@ func load_card() -> void:
 		right_num.text = text
 	
 		center_num.modulate = c
-		left_num.modulate = Color.WHITE
-		right_num.modulate = Color.WHITE
+	
 	update_playable_visuals()
 
 
-
-
+## Hides front elements when showing back
 func _hide_front() -> void:
 	center_num.hide()
 	left_num.hide()
@@ -141,6 +171,8 @@ func _hide_front() -> void:
 	left_shadow_symbol.hide()
 	right_shadow_symbol.hide()
 
+
+## Converts enum color to display color
 func get_card_color(card_color: CardResource.CardColor) -> Color:
 	match card_color:
 		CardResource.CardColor.RED:
@@ -155,16 +187,18 @@ func get_card_color(card_color: CardResource.CardColor) -> Color:
 			return COLOR_BLACK_TEXT
 	return COLOR_BLACK_TEXT
 
+
 func _mouse_enter() -> void:
-	if show_front and !is_top_card:
+	if _show_front and !is_top_card:
 		animation_player.play("zoom")
 
+
 func _mouse_exit() -> void:
-	if show_front and !is_top_card:
+	if _show_front and !is_top_card:
 		animation_player.play_backwards("zoom")
 
 
-
+## Enables/disables clicking for this card
 func set_clickable(active: bool, stop_hover: bool = false) -> void:
 	button.disabled = !active
 	button.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -173,34 +207,33 @@ func set_clickable(active: bool, stop_hover: bool = false) -> void:
 		button.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 
-
-func can_be_clicked() -> void:
-	if hand_card_holder == null:
-		return
-	if is_top_card or !show_front:
-		set_clickable(false)
-		return
-	
-	set_clickable(hand_card_holder.can_play_card(card_res))
-
-
-
 func _on_button_pressed() -> void:
 	if hand_card_holder != null:
 		hand_card_holder.set_card(self)
 
-func set_pulsing(value: bool = false) -> void:
-	var mat := background.material as ShaderMaterial
-	if mat == null:
-		return
-	mat.set_shader_parameter("highlight_enabled", value)
 
+## Updates visual state based on holder and turn rules
 func update_playable_visuals() -> void:
 	if hand_card_holder == null:
-		return
-	if !show_front:
-		set_pulsing(false)
+		set_clickable(false)
 		return
 	
-	var playable := hand_card_holder.can_play_card(card_res)
-	set_pulsing(playable)
+	if is_top_card or !_show_front:
+		set_clickable(false)
+		return
+	
+	if !hand_card_holder.turn_active:
+		set_clickable(false)
+		return
+	
+	var playable := hand_card_holder.can_play_card(_card_res)
+	set_clickable(playable)
+
+
+func rezise_card() -> void:
+	if card_size == "Small":
+		scale = Vector2(0.5,0.5)
+	elif card_size == "Medium":
+		scale = Vector2(0.75,0.75)
+	else:
+		scale = Vector2(1,1)

@@ -13,7 +13,7 @@ script = ExtResource("1_4bhoy")
 top_card_view = NodePath("MarginContainer/CenterContainer/MarginContainer/HBoxContainer/TopCard")
 
 [node name="QueueManager" parent="." node_paths=PackedStringArray("player_container", "card_manager") instance=ExtResource("2_1vgeo")]
-player_container = NodePath("../MarginContainer/MainPlayerContainer")
+player_container = NodePath("../MarginContainer/PlayerContainer")
 card_manager = NodePath("..")
 bots_count = 0
 
@@ -99,21 +99,14 @@ size_flags_horizontal = 4
 is_top_card = true
 card_res = null
 
-[node name="MainPlayerContainer" type="Control" parent="MarginContainer"]
+[node name="PlayerContainer" type="Control" parent="MarginContainer"]
 layout_mode = 2
 size_flags_horizontal = 4
 size_flags_vertical = 8
 
-[node name="MarginContainer2" type="MarginContainer" parent="MarginContainer"]
-layout_mode = 2
-size_flags_horizontal = 4
-size_flags_vertical = 4
-theme_override_constants/margin_top = 300
-
-[node name="Color Selector" parent="MarginContainer/MarginContainer2" instance=ExtResource("4_2uwj3")]
+[node name="Color Selector" parent="MarginContainer" instance=ExtResource("4_2uwj3")]
 visible = false
 layout_mode = 2
-size_flags_vertical = 4
 
 [node name="Timer" type="Timer" parent="."]
 wait_time = 0.1

@@ -1,18 +1,19 @@
 [gd_scene load_steps=14 format=3 uid="uid://deat7hguf61ur"]
 
 [ext_resource type="Script" uid="uid://dwcx18si3di77" path="res://Scripts/View/card_view.gd" id="1_cy6ll"]
-[ext_resource type="Script" uid="uid://cqusp4ug0a2ee" path="res://Classes/CardResource.gd" id="2_p7nbu"]
+[ext_resource type="Script" uid="uid://cqusp4ug0a2ee" path="res://Scripts/Managers/CardResource.gd" id="2_p7nbu"]
 [ext_resource type="Texture2D" uid="uid://khc0k7ws2b0g" path="res://Assets/card-theme/default/red.png" id="3_p7nbu"]
-[ext_resource type="Texture2D" uid="uid://tbva5m4rm4g4" path="res://Assets/card-symbols/wilddraw.png" id="4_p7nbu"]
+[ext_resource type="Texture2D" uid="uid://d0rbdll1ydx8e" path="res://Assets/card-symbols/reverse.png" id="4_p7nbu"]
 
 [sub_resource type="Resource" id="Resource_xv604"]
 script = ExtResource("2_p7nbu")
+type = 2
 metadata/_custom_type_script = "uid://cqusp4ug0a2ee"
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_p7nbu"]
 
 [sub_resource type="LabelSettings" id="LabelSettings_cy6ll"]
-font_size = 128
+font_size = 90
 outline_size = 20
 outline_color = Color(0, 0, 0, 1)
 shadow_size = 10
@@ -20,7 +21,7 @@ shadow_color = Color(0, 0, 0, 0.39215687)
 shadow_offset = Vector2(5, 5)
 
 [sub_resource type="LabelSettings" id="LabelSettings_1kj0g"]
-font_size = 40
+font_size = 28
 outline_size = 4
 outline_color = Color(0, 0, 0, 1)
 shadow_size = 5
@@ -32,58 +33,34 @@ length = 0.001
 tracks/0/type = "value"
 tracks/0/imported = false
 tracks/0/enabled = true
-tracks/0/path = NodePath("button:scale")
+tracks/0/path = NodePath("button:position")
 tracks/0/interp = 1
 tracks/0/loop_wrap = true
 tracks/0/keys = {
 "times": PackedFloat32Array(0),
 "transitions": PackedFloat32Array(1),
 "update": 0,
-"values": [Vector2(1, 1)]
+"values": [Vector2(0, 0)]
 }
 tracks/1/type = "value"
 tracks/1/imported = false
 tracks/1/enabled = true
-tracks/1/path = NodePath("button:size")
+tracks/1/path = NodePath("button:z_index")
 tracks/1/interp = 1
 tracks/1/loop_wrap = true
 tracks/1/keys = {
 "times": PackedFloat32Array(0),
 "transitions": PackedFloat32Array(1),
-"update": 0,
-"values": [Vector2(225, 315)]
+"update": 1,
+"values": [0]
 }
 tracks/2/type = "value"
 tracks/2/imported = false
 tracks/2/enabled = true
-tracks/2/path = NodePath("button:position")
+tracks/2/path = NodePath("button:modulate")
 tracks/2/interp = 1
 tracks/2/loop_wrap = true
 tracks/2/keys = {
-"times": PackedFloat32Array(0),
-"transitions": PackedFloat32Array(1),
-"update": 0,
-"values": [Vector2(0, 0)]
-}
-tracks/3/type = "value"
-tracks/3/imported = false
-tracks/3/enabled = true
-tracks/3/path = NodePath("button:z_index")
-tracks/3/interp = 1
-tracks/3/loop_wrap = true
-tracks/3/keys = {
-"times": PackedFloat32Array(0),
-"transitions": PackedFloat32Array(1),
-"update": 1,
-"values": [0]
-}
-tracks/4/type = "value"
-tracks/4/imported = false
-tracks/4/enabled = true
-tracks/4/path = NodePath("button:modulate")
-tracks/4/interp = 1
-tracks/4/loop_wrap = true
-tracks/4/keys = {
 "times": PackedFloat32Array(0),
 "transitions": PackedFloat32Array(1),
 "update": 0,
@@ -226,15 +203,16 @@ _data = {
 }
 
 [node name="CardView" type="Control"]
-custom_minimum_size = Vector2(225, 315)
+custom_minimum_size = Vector2(168.75, 236.25)
 layout_mode = 3
 anchors_preset = 0
-offset_right = 225.0
-offset_bottom = 315.0
-pivot_offset = Vector2(112, 315)
+offset_right = 168.75
+offset_bottom = 236.25
+pivot_offset = Vector2(84.375, 236.25)
 size_flags_horizontal = 6
 size_flags_vertical = 3
 script = ExtResource("1_cy6ll")
+card_size = "Large"
 card_res = SubResource("Resource_xv604")
 metadata/_edit_use_anchors_ = true
 
@@ -277,7 +255,7 @@ theme_override_constants/margin_bottom = 14
 
 [node name="center_num" type="Label" parent="button/Content"]
 unique_name_in_owner = true
-modulate = Color(0.6784314, 0, 0, 1)
+visible = false
 layout_mode = 2
 size_flags_horizontal = 4
 theme_override_colors/font_color = Color(0.6784314, 0, 0, 1)
@@ -286,6 +264,7 @@ label_settings = SubResource("LabelSettings_cy6ll")
 
 [node name="left_num" type="Label" parent="button/Content"]
 unique_name_in_owner = true
+visible = false
 layout_mode = 2
 size_flags_horizontal = 0
 size_flags_vertical = 0
@@ -294,6 +273,7 @@ label_settings = SubResource("LabelSettings_1kj0g")
 
 [node name="right_num" type="Label" parent="button/Content"]
 unique_name_in_owner = true
+visible = false
 layout_mode = 2
 size_flags_horizontal = 8
 size_flags_vertical = 8
@@ -302,8 +282,8 @@ label_settings = SubResource("LabelSettings_1kj0g")
 
 [node name="symbol" type="TextureRect" parent="button/Content"]
 unique_name_in_owner = true
-visible = false
-custom_minimum_size = Vector2(0, 140)
+modulate = Color(0.6784314, 0, 0, 1)
+custom_minimum_size = Vector2(0, 100)
 layout_mode = 2
 size_flags_vertical = 4
 texture = ExtResource("4_p7nbu")
@@ -312,16 +292,14 @@ stretch_mode = 5
 
 [node name="shadow_symbol" type="TextureRect" parent="button/Content/symbol"]
 unique_name_in_owner = true
-visible = false
 modulate = Color(0, 0, 0, 1)
 show_behind_parent = true
-custom_minimum_size = Vector2(0, 150)
+custom_minimum_size = Vector2(43, 110)
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_top = 3.0
-offset_bottom = 13.0
+offset_bottom = 10.0
 grow_horizontal = 2
 grow_vertical = 2
 size_flags_vertical = 4
@@ -331,7 +309,6 @@ stretch_mode = 5
 
 [node name="left_symbol" type="TextureRect" parent="button/Content"]
 unique_name_in_owner = true
-visible = false
 custom_minimum_size = Vector2(40, 40)
 layout_mode = 2
 size_flags_horizontal = 0
@@ -359,7 +336,6 @@ stretch_mode = 5
 
 [node name="right_symbol" type="TextureRect" parent="button/Content"]
 unique_name_in_owner = true
-visible = false
 custom_minimum_size = Vector2(40, 40)
 layout_mode = 2
 size_flags_horizontal = 8

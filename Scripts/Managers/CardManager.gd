@@ -3,17 +3,15 @@ class_name CardManager
 
 @export var top_card: CardResource
 @export var top_card_view: CardView
-@export var hand_card_holder: HandCardHolder
 
 var deck: Array[CardResource] = []
 var discard_pile: Array[CardResource] = []
 
-var card_max_count := 8
-var currennt_count := 0
 var current_color: CardResource.CardColor
 
 var waiting_for_color := false
 var pending_wild_card: CardResource = null
+
 
 func _ready() -> void:
 	randomize()
@@ -22,9 +20,12 @@ func _ready() -> void:
 	deck.shuffle()
 	set_top_card()
 
+
 func connect_signals() -> void:
 	Signals.COLOR_color_selected.connect(select_color)
 
+
+## Creates a full UNO deck
 func create_default_cards() -> Array[CardResource]:
 	var arr: Array[CardResource] = []
 	
@@ -53,6 +54,8 @@ func create_default_cards() -> Array[CardResource]:
 	
 	return arr
 
+
+## Creates a single card resource
 func create_card(color: CardResource.CardColor, type: CardResource.CardType, value: int) -> CardResource:
 	var card := CardResource.new()
 	card.color = color
@@ -60,19 +63,8 @@ func create_card(color: CardResource.CardColor, type: CardResource.CardType, val
 	card.value = value
 	return card
 
-func _on_timer_timeout() -> void:
-	if currennt_count >= card_max_count:
-		await get_tree().create_timer(0.5).timeout
-		#hand_card_holder.sort_cards_full()
-		return
-	
-	var card := draw_card()
-	if card == null:
-		return
-	
-	hand_card_holder.add_card(card)
-	currennt_count += 1
 
+## Sets the first non-action top card
 func set_top_card() -> void:
 	while deck.size() > 0:
 		var card: CardResource = deck[0]
@@ -85,13 +77,14 @@ func set_top_card() -> void:
 		deck.remove_at(0)
 		deck.append(card)
 
+
+## Updates top card + discard pile + wild handling
 func set_top_card_runtime(card: CardResource) -> void:
 	if top_card != null:
 		discard_pile.append(top_card)
 
 	top_card = card
 	top_card_view.card_res = top_card
-
 	top_card_view.override_color_enabled = false
 
 	if card.type == CardResource.CardType.WILD or card.type == CardResource.CardType.WILD_DRAW:
@@ -107,36 +100,31 @@ func set_top_card_runtime(card: CardResource) -> void:
 		top_card_view.load_card()
 
 
+## Applies selected wild color and updates top card view reliably
 func select_color(color: CardResource.CardColor) -> void:
 	if !waiting_for_color:
 		return
-
+	
 	current_color = color
 	waiting_for_color = false
-
-	if pending_wild_card != null:
-		top_card_view.override_color_enabled = true
-		top_card_view.override_color = color
-		top_card_view.load_card()
-
+	
+	top_card_view.override_color_enabled = true
+	top_card_view.override_color = color
+	top_card_view.load_card()
+	
 	pending_wild_card = null
 
-	hand_card_holder.refresh_clickable_cards()
 
 
-
-
-
+## Requests a draw action (handled by QueueManager)
 func _on_draw_deck_pressed() -> void:
 	if waiting_for_color:
 		return
 	
-	var card := draw_card()
-	if card == null:
-		return
-	
-	hand_card_holder.add_card(card)
+	Signals.DECK_draw_pressed.emit()
 
+
+## Draws a card from the deck
 func draw_card() -> CardResource:
 	if deck.is_empty():
 		refill_deck_from_discard()
@@ -148,6 +136,8 @@ func draw_card() -> CardResource:
 	deck.remove_at(0)
 	return card
 
+
+## Refills deck from discard pile (keeps last card)
 func refill_deck_from_discard() -> void:
 	if discard_pile.size() <= 1:
 		return
@@ -156,3 +146,13 @@ func refill_deck_from_discard() -> void:
 	deck = discard_pile
 	deck.shuffle()
 	discard_pile = [keep_top]
+
+
+## Returns current top card
+func get_top_card() -> CardResource:
+	return top_card
+
+
+## Returns currently active color
+func get_current_color() -> CardResource.CardColor:
+	return current_color

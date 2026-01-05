@@ -1,0 +1,74 @@
+[gd_resource type="Resource" script_class="DeckResource" load_steps=14 format=3 uid="uid://csc7dwlwjrerd"]
+
+[ext_resource type="Script" uid="uid://c40nbsxolq1km" path="res://Scripts/Globals/DeckEntryResource.gd" id="1_6hiei"]
+[ext_resource type="Script" uid="uid://7ntgiiwhye0n" path="res://Scripts/Globals/DeckNumberRuleResource.gd" id="2_jwtkq"]
+[ext_resource type="Script" uid="uid://52s8intselne" path="res://Scripts/Globals/DeckResource.gd" id="3_hu05d"]
+
+[sub_resource type="Resource" id="Resource_kk4lq"]
+script = ExtResource("1_6hiei")
+count = 3
+duplicate_for_all_colors = true
+
+[sub_resource type="Resource" id="Resource_q8hfw"]
+script = ExtResource("1_6hiei")
+type = 2
+count = 3
+duplicate_for_all_colors = true
+
+[sub_resource type="Resource" id="Resource_640cx"]
+script = ExtResource("1_6hiei")
+type = 3
+value = 1
+count = 2
+duplicate_for_all_colors = true
+
+[sub_resource type="Resource" id="Resource_tgccl"]
+script = ExtResource("1_6hiei")
+type = 3
+value = 2
+count = 2
+duplicate_for_all_colors = true
+
+[sub_resource type="Resource" id="Resource_8bg15"]
+script = ExtResource("1_6hiei")
+type = 3
+value = 3
+duplicate_for_all_colors = true
+
+[sub_resource type="Resource" id="Resource_rd5ek"]
+script = ExtResource("1_6hiei")
+color = 4
+type = 4
+count = 12
+
+[sub_resource type="Resource" id="Resource_w2d6w"]
+script = ExtResource("1_6hiei")
+color = 4
+type = 5
+value = 2
+count = 8
+
+[sub_resource type="Resource" id="Resource_ocooq"]
+script = ExtResource("1_6hiei")
+color = 4
+type = 5
+value = 4
+count = 6
+
+[sub_resource type="Resource" id="Resource_aec3t"]
+script = ExtResource("1_6hiei")
+type = 6
+count = 2
+duplicate_for_all_colors = true
+
+[sub_resource type="Resource" id="Resource_dyoqy"]
+script = ExtResource("2_jwtkq")
+overrides = {
+"0": 1.0
+}
+
+[resource]
+script = ExtResource("3_hu05d")
+deck_name = "Storm"
+number_rules = SubResource("Resource_dyoqy")
+entries = Array[ExtResource("1_6hiei")]([SubResource("Resource_kk4lq"), SubResource("Resource_q8hfw"), SubResource("Resource_640cx"), SubResource("Resource_tgccl"), SubResource("Resource_8bg15"), SubResource("Resource_rd5ek"), SubResource("Resource_w2d6w"), SubResource("Resource_ocooq"), SubResource("Resource_aec3t")])

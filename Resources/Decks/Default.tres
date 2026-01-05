@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="DeckResource" load_steps=13 format=3 uid="uid://dcclq3f73qy6m"]
+[gd_resource type="Resource" script_class="DeckResource" load_steps=14 format=3 uid="uid://dcclq3f73qy6m"]
 
 [ext_resource type="Script" uid="uid://c40nbsxolq1km" path="res://Scripts/Globals/DeckEntryResource.gd" id="1_fnbum"]
 [ext_resource type="Script" uid="uid://7ntgiiwhye0n" path="res://Scripts/Globals/DeckNumberRuleResource.gd" id="2_nkyor"]
@@ -6,13 +6,14 @@
 
 [sub_resource type="Resource" id="Resource_obg4a"]
 script = ExtResource("1_fnbum")
-count = 3
+count = 2
 duplicate_for_all_colors = true
 metadata/_custom_type_script = "uid://c40nbsxolq1km"
 
 [sub_resource type="Resource" id="Resource_yy43s"]
 script = ExtResource("1_fnbum")
 type = 2
+count = 2
 duplicate_for_all_colors = true
 metadata/_custom_type_script = "uid://c40nbsxolq1km"
 
@@ -51,7 +52,7 @@ script = ExtResource("1_fnbum")
 color = 4
 type = 5
 value = 2
-count = 6
+count = 4
 metadata/_custom_type_script = "uid://c40nbsxolq1km"
 
 [sub_resource type="Resource" id="Resource_q1fow"]
@@ -62,14 +63,19 @@ value = 4
 count = 4
 metadata/_custom_type_script = "uid://c40nbsxolq1km"
 
+[sub_resource type="Resource" id="Resource_t1nod"]
+script = ExtResource("1_fnbum")
+type = 6
+duplicate_for_all_colors = true
+metadata/_custom_type_script = "uid://c40nbsxolq1km"
+
 [sub_resource type="Resource" id="Resource_ki865"]
 script = ExtResource("2_nkyor")
-default_copies = 3
 metadata/_custom_type_script = "uid://7ntgiiwhye0n"
 
 [resource]
 script = ExtResource("2_t1nod")
 deck_name = "Default"
 number_rules = SubResource("Resource_ki865")
-entries = Array[ExtResource("1_fnbum")]([SubResource("Resource_obg4a"), SubResource("Resource_yy43s"), SubResource("Resource_hy3qt"), SubResource("Resource_0hoi4"), SubResource("Resource_q371t"), SubResource("Resource_n8jbx"), SubResource("Resource_71rly"), SubResource("Resource_q1fow")])
+entries = Array[ExtResource("1_fnbum")]([SubResource("Resource_obg4a"), SubResource("Resource_yy43s"), SubResource("Resource_hy3qt"), SubResource("Resource_0hoi4"), SubResource("Resource_q371t"), SubResource("Resource_n8jbx"), SubResource("Resource_71rly"), SubResource("Resource_q1fow"), SubResource("Resource_t1nod")])
 metadata/_custom_type_script = "uid://52s8intselne"

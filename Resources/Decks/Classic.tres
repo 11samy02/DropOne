@@ -1,0 +1,49 @@
+[gd_resource type="Resource" script_class="DeckResource" load_steps=10 format=3 uid="uid://mlcbuxl1b4dp"]
+
+[ext_resource type="Script" uid="uid://c40nbsxolq1km" path="res://Scripts/Globals/DeckEntryResource.gd" id="1_41iuw"]
+[ext_resource type="Script" uid="uid://7ntgiiwhye0n" path="res://Scripts/Globals/DeckNumberRuleResource.gd" id="2_41iuw"]
+[ext_resource type="Script" uid="uid://52s8intselne" path="res://Scripts/Globals/DeckResource.gd" id="3_4wg82"]
+
+[sub_resource type="Resource" id="Resource_4bdgq"]
+script = ExtResource("1_41iuw")
+type = 2
+count = 3
+duplicate_for_all_colors = true
+
+[sub_resource type="Resource" id="Resource_4wg82"]
+script = ExtResource("1_41iuw")
+type = 3
+value = 2
+count = 3
+duplicate_for_all_colors = true
+
+[sub_resource type="Resource" id="Resource_0pjad"]
+script = ExtResource("1_41iuw")
+count = 2
+duplicate_for_all_colors = true
+
+[sub_resource type="Resource" id="Resource_k04at"]
+script = ExtResource("1_41iuw")
+type = 2
+count = 2
+duplicate_for_all_colors = true
+
+[sub_resource type="Resource" id="Resource_xowej"]
+script = ExtResource("1_41iuw")
+type = 3
+value = 2
+count = 2
+duplicate_for_all_colors = true
+
+[sub_resource type="Resource" id="Resource_2x488"]
+script = ExtResource("2_41iuw")
+default_copies = 3
+overrides = {
+"0": 2.0
+}
+
+[resource]
+script = ExtResource("3_4wg82")
+deck_name = "Classic"
+number_rules = SubResource("Resource_2x488")
+entries = Array[ExtResource("1_41iuw")]([SubResource("Resource_4bdgq"), SubResource("Resource_4wg82"), SubResource("Resource_0pjad"), SubResource("Resource_k04at"), SubResource("Resource_xowej")])

@@ -459,14 +459,20 @@ func _check_and_finish_current_holder() -> bool:
 		return false
 	
 	winners.append(holder)
-	
+
 	var removed_index := current_turn_index
 	turn_order.remove_at(removed_index)
-	
+
 	if turn_order.size() == 0:
 		return true
-	
-	current_turn_index = clamp(removed_index, 0, turn_order.size() - 1)
+
+	if direction == 1:
+		current_turn_index = removed_index % turn_order.size()
+	else:
+		current_turn_index = (removed_index - 1) % turn_order.size()
+		if current_turn_index < 0:
+			current_turn_index += turn_order.size()
+
 	return true
 
 
@@ -529,40 +535,38 @@ func resolve_place_all(finisher_view: CardView) -> void:
 	var owner := place_all_owner
 	var finisher_res := finisher_view.card_res
 
-	var to_play: Array[CardView] = []
+	var target_pos := Vector2.ZERO
+	if card_manager != null and card_manager.top_card_view != null and is_instance_valid(card_manager.top_card_view):
+		target_pos = card_manager.top_card_view.global_position
+	else:
+		target_pos = finisher_view.global_position
+
+	var to_play: Array = []
 	for c in owner.get_children():
 		if c is CardView and c != finisher_view:
-			if c != null and is_instance_valid(c) and c.card_res != null:
+			if is_instance_valid(c) and c.card_res != null:
 				if c.card_res.color == place_all_color:
-					to_play.append(c)
+					to_play.append({
+						"cv": c,
+						"res": c.card_res
+					})
 
+	var delay_step := 0.04
 	var fly_duration := 0.28
-	var hold_time := 0.08
 
-	for cv in to_play:
-		if cv == null or !is_instance_valid(cv):
-			continue
-		if cv.card_res == null:
-			continue
-
-		var res := cv.card_res
-
-		cv.set_clickable(false, true)
-		cv.smooth_move_button_to_top_card_juicy(fly_duration)
-
-		await get_tree().create_timer(fly_duration).timeout
+	for i in range(to_play.size()):
+		var entry = to_play[i]
+		var cv: CardView = entry["cv"]
+		var res: CardResource = entry["res"]
 
 		if cv == null or !is_instance_valid(cv):
 			continue
 
-		if cv.get_parent() == owner:
-			owner.remove_child(cv)
+		var delay := float(i) * delay_step
+		call_deferred("_place_all_burst_launch_and_cleanup", cv, res, owner, delay, fly_duration, target_pos)
 
-		cv.queue_free()
-
-		card_manager.set_top_card_runtime(res)
-
-		await get_tree().create_timer(hold_time).timeout
+	var total_time := (to_play.size() * delay_step) + fly_duration
+	await get_tree().create_timer(total_time).timeout
 
 	if finisher_view == null or !is_instance_valid(finisher_view):
 		place_all_active = false
@@ -585,7 +589,6 @@ func resolve_place_all(finisher_view: CardView) -> void:
 		owner.remove_child(finisher_view)
 
 	finisher_view.queue_free()
-
 	card_manager.set_top_card_runtime(finisher_res)
 
 	await get_tree().process_frame
@@ -593,8 +596,54 @@ func resolve_place_all(finisher_view: CardView) -> void:
 	place_all_active = false
 	place_all_owner = null
 	place_all_resolving = false
-
+	
 	register_card_play(finisher_res)
+
+func _place_all_burst_launch_and_cleanup(cv: CardView, res: CardResource, owner: HandCardHolder, delay: float, fly_duration: float, target_pos: Vector2) -> void:
+	if cv == null or !is_instance_valid(cv):
+		return
+	if res == null:
+		return
+	if owner == null or !is_instance_valid(owner):
+		return
+
+	await get_tree().create_timer(delay).timeout
+
+	if cv == null or !is_instance_valid(cv):
+		return
+	if owner == null or !is_instance_valid(owner):
+		return
+
+	var ui_parent := owner.get_parent()
+	if ui_parent == null or !is_instance_valid(ui_parent):
+		return
+
+	var start_pos := cv.global_position
+
+	if cv.get_parent() == owner:
+		owner.remove_child(cv)
+
+	ui_parent.add_child(cv)
+	cv.set_as_top_level(true)
+	cv.global_position = start_pos
+
+	# ✅ Force bot cards to show front while flying
+	cv.show_front = true
+	if cv.has_method("load_card"):
+		cv.load_card()
+
+	cv.set_clickable(false, true)
+
+	var tween := create_tween()
+	tween.tween_property(cv, "global_position", target_pos, fly_duration).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+
+	await get_tree().create_timer(fly_duration).timeout
+
+	if cv == null or !is_instance_valid(cv):
+		return
+
+	cv.queue_free()
+	card_manager.set_top_card_runtime(res)
 
 
 ## Cancels place-all mode safely and ends the current turn

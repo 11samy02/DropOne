@@ -1,0 +1,75 @@
+[gd_resource type="Resource" script_class="DeckResource" load_steps=14 format=3 uid="uid://c6jk4kq42tj5j"]
+
+[ext_resource type="Script" uid="uid://c40nbsxolq1km" path="res://Scripts/Globals/DeckEntryResource.gd" id="1_pbjwp"]
+[ext_resource type="Script" uid="uid://7ntgiiwhye0n" path="res://Scripts/Globals/DeckNumberRuleResource.gd" id="2_edlk4"]
+[ext_resource type="Script" uid="uid://52s8intselne" path="res://Scripts/Globals/DeckResource.gd" id="3_fwvf4"]
+
+[sub_resource type="Resource" id="Resource_gemvr"]
+script = ExtResource("1_pbjwp")
+count = 4
+duplicate_for_all_colors = true
+
+[sub_resource type="Resource" id="Resource_vu1ic"]
+script = ExtResource("1_pbjwp")
+type = 2
+count = 3
+duplicate_for_all_colors = true
+
+[sub_resource type="Resource" id="Resource_xr1fe"]
+script = ExtResource("1_pbjwp")
+type = 3
+value = 1
+count = 3
+duplicate_for_all_colors = true
+
+[sub_resource type="Resource" id="Resource_nt1fq"]
+script = ExtResource("1_pbjwp")
+type = 3
+value = 2
+count = 3
+duplicate_for_all_colors = true
+
+[sub_resource type="Resource" id="Resource_pmbif"]
+script = ExtResource("1_pbjwp")
+type = 3
+value = 3
+count = 2
+duplicate_for_all_colors = true
+
+[sub_resource type="Resource" id="Resource_4qoyo"]
+script = ExtResource("1_pbjwp")
+color = 4
+type = 4
+count = 10
+
+[sub_resource type="Resource" id="Resource_lkug3"]
+script = ExtResource("1_pbjwp")
+color = 4
+type = 5
+value = 2
+count = 10
+
+[sub_resource type="Resource" id="Resource_uyxok"]
+script = ExtResource("1_pbjwp")
+color = 4
+type = 5
+value = 4
+count = 8
+
+[sub_resource type="Resource" id="Resource_w727b"]
+script = ExtResource("1_pbjwp")
+type = 6
+count = 3
+duplicate_for_all_colors = true
+
+[sub_resource type="Resource" id="Resource_px45g"]
+script = ExtResource("2_edlk4")
+overrides = {
+"0": 1.0
+}
+
+[resource]
+script = ExtResource("3_fwvf4")
+deck_name = "Furious"
+number_rules = SubResource("Resource_px45g")
+entries = Array[ExtResource("1_pbjwp")]([SubResource("Resource_gemvr"), SubResource("Resource_vu1ic"), SubResource("Resource_xr1fe"), SubResource("Resource_nt1fq"), SubResource("Resource_pmbif"), SubResource("Resource_4qoyo"), SubResource("Resource_lkug3"), SubResource("Resource_uyxok"), SubResource("Resource_w727b")])

@@ -4,5 +4,6 @@
 
 [node name="KiController" type="Node"]
 script = ExtResource("1_jrxxg")
+think_time = 0.1
 difficulty = 1
 personality = 1

@@ -1,32 +1,13 @@
-[gd_scene load_steps=15 format=3 uid="uid://b3cbm8norl5h7"]
+[gd_scene load_steps=10 format=3 uid="uid://b3cbm8norl5h7"]
 
 [ext_resource type="Script" uid="uid://dr0t8llnaw7ml" path="res://Scripts/Managers/CardManager.gd" id="1_4bhoy"]
 [ext_resource type="PackedScene" uid="uid://0lhp5dikyv3u" path="res://Scenes/Managers/queue_manager.tscn" id="2_1vgeo"]
 [ext_resource type="PackedScene" uid="uid://deat7hguf61ur" path="res://Scenes/View/card_view.tscn" id="2_6eb2d"]
 [ext_resource type="PackedScene" uid="uid://p4ppil0si11i" path="res://Scenes/View/draw_deck.tscn" id="2_jamtu"]
-[ext_resource type="Resource" uid="uid://cefwusdp1rxx2" path="res://Resources/Decks/Test.tres" id="2_ytmc7"]
 [ext_resource type="Texture2D" uid="uid://4u7booj3hl7a" path="res://Assets/Ui/background.png" id="3_1vgeo"]
-[ext_resource type="Script" uid="uid://duq6tdn31q054" path="res://Scripts/Globals/BotProfile.gd" id="3_c0tlk"]
 [ext_resource type="PackedScene" uid="uid://ckshnidv1ms8k" path="res://Scenes/View/color_selector.tscn" id="4_2uwj3"]
 [ext_resource type="Script" uid="uid://bnr51bhyllk4k" path="res://Scripts/View/deck_count.gd" id="5_aqhs8"]
 [ext_resource type="Script" uid="uid://da686y68ol6iv" path="res://Scripts/View/plus_stack_label.gd" id="7_luibc"]
-
-[sub_resource type="Resource" id="Resource_ytmc7"]
-script = ExtResource("3_c0tlk")
-difficulty = 4
-personality = 2
-metadata/_custom_type_script = "uid://duq6tdn31q054"
-
-[sub_resource type="Resource" id="Resource_c0tlk"]
-script = ExtResource("3_c0tlk")
-difficulty = 4
-metadata/_custom_type_script = "uid://duq6tdn31q054"
-
-[sub_resource type="Resource" id="Resource_abt31"]
-script = ExtResource("3_c0tlk")
-difficulty = 4
-personality = 1
-metadata/_custom_type_script = "uid://duq6tdn31q054"
 
 [sub_resource type="LabelSettings" id="LabelSettings_aqhs8"]
 font_size = 70
@@ -34,19 +15,14 @@ shadow_size = 15
 shadow_color = Color(0, 0, 0, 0.5647059)
 shadow_offset = Vector2(5, 5)
 
-[node name="CardManager" type="Node" node_paths=PackedStringArray("top_card_view", "queue_manager", "draw_button")]
+[node name="CardManager" type="Node" node_paths=PackedStringArray("top_card_view")]
 script = ExtResource("1_4bhoy")
 top_card_view = NodePath("MarginContainer/CenterContainer/MarginContainer/HBoxContainer/TopCard")
-queue_manager = NodePath("QueueManager")
-draw_button = NodePath("MarginContainer/CenterContainer/MarginContainer/HBoxContainer/DrawDeck")
-loaded_deck = ExtResource("2_ytmc7")
 
 [node name="QueueManager" parent="." node_paths=PackedStringArray("player_container", "other_player_containers", "card_manager") instance=ExtResource("2_1vgeo")]
 player_container = NodePath("../MarginContainer/MainPlayerContainer")
-other_player_containers = [NodePath("../player2_container"), NodePath("../player2_container2"), NodePath("../player2_container4"), NodePath("../player2_container7"), NodePath("../player2_container6"), NodePath("../player2_container3"), NodePath("../player2_container5")]
+other_player_containers = [NodePath("../player2_container"), NodePath("../player2_container2"), NodePath("../player2_container3")]
 card_manager = NodePath("..")
-start_card_count = 14
-bot_profiles = Array[ExtResource("3_c0tlk")]([SubResource("Resource_ytmc7"), SubResource("Resource_c0tlk"), SubResource("Resource_abt31")])
 
 [node name="Background" type="Control" parent="."]
 layout_mode = 3
@@ -86,7 +62,7 @@ size_flags_vertical = 4
 
 [node name="MarginContainer" type="MarginContainer" parent="MarginContainer/CenterContainer"]
 layout_mode = 2
-theme_override_constants/margin_bottom = 105
+theme_override_constants/margin_bottom = 150
 
 [node name="HBoxContainer" type="HBoxContainer" parent="MarginContainer/CenterContainer/MarginContainer"]
 layout_mode = 2
@@ -133,17 +109,14 @@ card_res = null
 [node name="plus stack label" type="Label" parent="MarginContainer/CenterContainer/MarginContainer/HBoxContainer/TopCard" node_paths=PackedStringArray("queue_manager")]
 unique_name_in_owner = true
 layout_mode = 1
-anchors_preset = 3
+anchors_preset = 1
 anchor_left = 1.0
-anchor_top = 1.0
 anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = 15.25
-offset_top = -151.25
-offset_right = 98.25
-offset_bottom = -65.25
+offset_left = 11.25
+offset_top = -68.0
+offset_right = 94.25
+offset_bottom = 18.0
 grow_horizontal = 0
-grow_vertical = 0
 text = "+2"
 label_settings = SubResource("LabelSettings_aqhs8")
 script = ExtResource("7_luibc")
@@ -175,10 +148,10 @@ layout_mode = 3
 anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
-offset_left = -200.0
-offset_top = 800.0
-offset_right = -200.0
-offset_bottom = 800.0
+offset_left = -250.0
+offset_top = 250.0
+offset_right = -250.0
+offset_bottom = 250.0
 grow_horizontal = 0
 size_flags_horizontal = 4
 size_flags_vertical = 0
@@ -186,53 +159,11 @@ mouse_filter = 2
 
 [node name="player2_container2" type="Control" parent="."]
 layout_mode = 3
-anchors_preset = 1
-anchor_left = 1.0
-anchor_right = 1.0
-offset_left = -300.0
-offset_top = 500.0
-offset_right = -300.0
-offset_bottom = 500.0
-grow_horizontal = 0
-size_flags_horizontal = 4
-size_flags_vertical = 0
-mouse_filter = 2
-
-[node name="player2_container4" type="Control" parent="."]
-layout_mode = 3
 anchors_preset = 5
 anchor_left = 0.5
 anchor_right = 0.5
-offset_left = 381.07495
-offset_top = 350.0
-offset_right = 381.07495
-offset_bottom = 350.0
-grow_horizontal = 2
-size_flags_horizontal = 4
-size_flags_vertical = 0
-mouse_filter = 2
-
-[node name="player2_container7" type="Control" parent="."]
-layout_mode = 3
-anchors_preset = 5
-anchor_left = 0.5
-anchor_right = 0.5
-offset_top = 275.0
-offset_bottom = 275.0
-grow_horizontal = 2
-size_flags_horizontal = 4
-size_flags_vertical = 0
-mouse_filter = 2
-
-[node name="player2_container6" type="Control" parent="."]
-layout_mode = 3
-anchors_preset = 5
-anchor_left = 0.5
-anchor_right = 0.5
-offset_left = -325.0
-offset_top = 350.0
-offset_right = -325.0
-offset_bottom = 350.0
+offset_top = 150.0
+offset_bottom = 150.0
 grow_horizontal = 2
 size_flags_horizontal = 4
 size_flags_vertical = 0
@@ -241,21 +172,10 @@ mouse_filter = 2
 [node name="player2_container3" type="Control" parent="."]
 layout_mode = 3
 anchors_preset = 0
-offset_left = 350.0
-offset_top = 500.0
-offset_right = 350.0
-offset_bottom = 500.0
-size_flags_horizontal = 4
-size_flags_vertical = 0
-mouse_filter = 2
-
-[node name="player2_container5" type="Control" parent="."]
-layout_mode = 3
-anchors_preset = 0
-offset_left = 200.0
-offset_top = 800.0
-offset_right = 200.0
-offset_bottom = 800.0
+offset_left = 250.0
+offset_top = 250.0
+offset_right = 250.0
+offset_bottom = 250.0
 size_flags_horizontal = 4
 size_flags_vertical = 0
 mouse_filter = 2

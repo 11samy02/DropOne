@@ -4,7 +4,7 @@ class_name CardResource
 
 enum CardColor { RED, GREEN, BLUE, YELLOW, BLACK }
 enum CardSymbol { HEART, CLUB, SPADE, DIAMOND }
-enum CardType { NUMBER, SKIP, REVERSE, DRAW, WILD, WILD_DRAW }
+enum CardType { NUMBER, SKIP, REVERSE, DRAW, WILD, WILD_DRAW, PLACE_ALL }
 
 const BLACK: Texture2D = preload("uid://xspumfxdwrqn")
 const BLUE: Texture2D = preload("uid://cxov74crw1ujc")
@@ -17,6 +17,7 @@ const REVERSE_ICON: Texture2D = preload("uid://d0rbdll1ydx8e")
 const SKIP_ICON: Texture2D = preload("uid://dmfqk7awjm070")
 const WILD_ICON: Texture2D = preload("uid://bxv1k8rgyqe5j")
 const WILDDRAW_ICON: Texture2D = preload("uid://tbva5m4rm4g4")
+const PLACE_ALL_ICON: Texture2D = preload("uid://5lfp3wlw4ueu")
 
 const CLUB: Texture2D = preload("uid://41e111jurgy5")
 const HEART: Texture2D = preload("uid://8p7uyuv60l14")
@@ -61,6 +62,8 @@ func get_symbol_texture() -> Texture2D:
 			return WILD_ICON
 		CardType.WILD_DRAW:
 			return WILDDRAW_ICON
+		CardType.PLACE_ALL:
+			return PLACE_ALL_ICON
 	return null
 
 ## Get colorblind symbol for a given color

@@ -1,13 +1,15 @@
 [gd_scene load_steps=15 format=3 uid="uid://deat7hguf61ur"]
 
 [ext_resource type="Script" uid="uid://dwcx18si3di77" path="res://Scripts/View/card_view.gd" id="1_cy6ll"]
-[ext_resource type="Script" uid="uid://cqusp4ug0a2ee" path="res://Scripts/Managers/CardResource.gd" id="2_p7nbu"]
-[ext_resource type="Texture2D" uid="uid://khc0k7ws2b0g" path="res://Assets/card-theme/default/red.png" id="3_p7nbu"]
-[ext_resource type="Texture2D" uid="uid://d0rbdll1ydx8e" path="res://Assets/card-symbols/reverse.png" id="4_p7nbu"]
-[ext_resource type="Texture2D" uid="uid://8p7uyuv60l14" path="res://Assets/card-symbols/heart.png" id="5_xv604"]
+[ext_resource type="Script" uid="uid://cqusp4ug0a2ee" path="res://Scripts/Globals/CardResource.gd" id="2_p7nbu"]
+[ext_resource type="Texture2D" uid="uid://yywrx2q6xxab" path="res://Assets/card-theme/default/green.png" id="3_xv604"]
+[ext_resource type="Texture2D" uid="uid://5lfp3wlw4ueu" path="res://Assets/card-symbols/place-all-colors.png" id="4_xv604"]
+[ext_resource type="Texture2D" uid="uid://41e111jurgy5" path="res://Assets/card-symbols/club.png" id="5_fmmoy"]
 
 [sub_resource type="Resource" id="Resource_xv604"]
 script = ExtResource("2_p7nbu")
+color = 1
+value = 4
 metadata/_custom_type_script = "uid://cqusp4ug0a2ee"
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_p7nbu"]
@@ -187,7 +189,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-texture = ExtResource("3_p7nbu")
+texture = ExtResource("3_xv604")
 expand_mode = 3
 stretch_mode = 5
 
@@ -205,11 +207,11 @@ theme_override_constants/margin_bottom = 14
 
 [node name="center_num" type="Label" parent="button/Content"]
 unique_name_in_owner = true
-modulate = Color(0.6784314, 0, 0, 1)
+modulate = Color(0.047058824, 0.64705884, 0, 1)
 layout_mode = 2
 size_flags_horizontal = 4
 theme_override_colors/font_color = Color(0.6784314, 0, 0, 1)
-text = "0"
+text = "4"
 label_settings = SubResource("LabelSettings_cy6ll")
 
 [node name="corner_num" type="Label" parent="button/Content"]
@@ -217,17 +219,17 @@ unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 8
 size_flags_vertical = 0
-text = "0"
+text = "4"
 label_settings = SubResource("LabelSettings_1kj0g")
 
 [node name="symbol" type="TextureRect" parent="button/Content"]
 unique_name_in_owner = true
 visible = false
-modulate = Color(0.6784314, 0, 0, 1)
+modulate = Color(0.047058824, 0.64705884, 0, 1)
 custom_minimum_size = Vector2(0, 100)
 layout_mode = 2
 size_flags_vertical = 4
-texture = ExtResource("4_p7nbu")
+texture = ExtResource("4_xv604")
 expand_mode = 1
 stretch_mode = 5
 
@@ -245,7 +247,7 @@ offset_bottom = 10.0
 grow_horizontal = 2
 grow_vertical = 2
 size_flags_vertical = 4
-texture = ExtResource("4_p7nbu")
+texture = ExtResource("4_xv604")
 expand_mode = 1
 stretch_mode = 5
 
@@ -256,7 +258,7 @@ custom_minimum_size = Vector2(40, 40)
 layout_mode = 2
 size_flags_horizontal = 8
 size_flags_vertical = 0
-texture = ExtResource("4_p7nbu")
+texture = ExtResource("4_xv604")
 expand_mode = 1
 stretch_mode = 5
 
@@ -273,7 +275,7 @@ offset_right = 42.0
 offset_bottom = 44.0
 size_flags_horizontal = 0
 size_flags_vertical = 0
-texture = ExtResource("4_p7nbu")
+texture = ExtResource("4_xv604")
 expand_mode = 1
 stretch_mode = 5
 
@@ -283,7 +285,7 @@ custom_minimum_size = Vector2(30, 30)
 layout_mode = 2
 size_flags_horizontal = 0
 size_flags_vertical = 8
-texture = ExtResource("5_xv604")
+texture = ExtResource("5_fmmoy")
 expand_mode = 1
 stretch_mode = 4
 
@@ -300,7 +302,7 @@ offset_right = 42.0
 offset_bottom = 44.0
 size_flags_horizontal = 0
 size_flags_vertical = 0
-texture = ExtResource("4_p7nbu")
+texture = ExtResource("4_xv604")
 expand_mode = 1
 stretch_mode = 5
 

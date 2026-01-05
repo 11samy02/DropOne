@@ -1,10 +1,15 @@
 extends Node
 class_name CardManager
 
+@export_group("Ui Elements")
 @export var top_card: CardResource
 @export var top_card_view: CardView
 @export var queue_manager: QueueManager
-@export var draw_button: Button
+@export var draw_button: TextureButton
+
+@export_group("Deck")
+@export var loaded_deck: DeckResource
+
 
 var deck: Array[CardResource] = []
 var discard_pile: Array[CardResource] = []
@@ -25,31 +30,11 @@ func _ready() -> void:
 func connect_signals() -> void:
 	Signals.COLOR_color_selected.connect(select_color)
 
-## Create a full UNO deck (numbers, actions, wilds)
+
+## Creates the default DropOne deck scaled for up to 8 players with extra draw variants and expanded action density
 func create_default_cards() -> Array[CardResource]:
-	var arr: Array[CardResource] = []
-	var colors := [
-		CardResource.CardColor.RED,
-		CardResource.CardColor.GREEN,
-		CardResource.CardColor.BLUE,
-		CardResource.CardColor.YELLOW
-	]
+	return create_cards_from_deck(loaded_deck)
 
-	for c in colors:
-		arr.append(create_card(c, CardResource.CardType.NUMBER, 0))
-		for n in range(1, 10):
-			arr.append(create_card(c, CardResource.CardType.NUMBER, n))
-			arr.append(create_card(c, CardResource.CardType.NUMBER, n))
-		for i in range(2):
-			arr.append(create_card(c, CardResource.CardType.SKIP, 0))
-			arr.append(create_card(c, CardResource.CardType.REVERSE, 0))
-			arr.append(create_card(c, CardResource.CardType.DRAW, 2))
-
-	for i in range(4):
-		arr.append(create_card(CardResource.CardColor.BLACK, CardResource.CardType.WILD, 0))
-		arr.append(create_card(CardResource.CardColor.BLACK, CardResource.CardType.WILD_DRAW, 4))
-
-	return arr
 
 ## Create a card resource instance
 func create_card(color: CardResource.CardColor, type: CardResource.CardType, value: int) -> CardResource:
@@ -120,7 +105,7 @@ func draw_card() -> CardResource:
 		refill_deck_from_discard()
 	if deck.is_empty():
 		return null
-	var card: CardResource = deck[0].duplicate()
+	var card: CardResource = deck[0]
 	deck.remove_at(0)
 	return card
 
@@ -155,3 +140,52 @@ func update_draw_button_state() -> void:
 ## React to turn changes for draw button state
 func _on_turn_changed(_holder: HandCardHolder) -> void:
 	update_draw_button_state()
+
+func create_cards_from_deck(deck_res: DeckResource) -> Array[CardResource]:
+	var arr: Array[CardResource] = []
+	if deck_res == null:
+		return arr
+	
+	var colors := [
+		CardResource.CardColor.RED,
+		CardResource.CardColor.GREEN,
+		CardResource.CardColor.BLUE,
+		CardResource.CardColor.YELLOW
+	]
+	
+	if deck_res.number_rules != null:
+		add_number_cards(arr, colors, deck_res.number_rules)
+	
+	for entry in deck_res.entries:
+		if entry == null:
+			continue
+		add_entry_cards(arr, entry)
+	
+	return arr
+
+
+func add_number_cards(arr: Array[CardResource], colors: Array, rule: DeckNumberRuleResource) -> void:
+	var min_n := rule.min_number
+	var max_n := rule.max_number
+	var default_copies := rule.default_copies
+	var overrides := rule.overrides
+	
+	for c in colors:
+		for n in range(min_n, max_n + 1):
+			var key := str(n)
+			var copies := default_copies
+			if overrides.has(key):
+				copies = int(overrides[key])
+			
+			for i in range(copies):
+				arr.append(create_card(c, CardResource.CardType.NUMBER, n))
+
+
+func add_entry_cards(arr: Array[CardResource], entry: DeckEntryResource) -> void:
+	if entry.duplicate_for_all_colors:
+		for c in entry.colors:
+			for i in range(entry.count):
+				arr.append(create_card(c, entry.type, entry.value))
+	else:
+		for i in range(entry.count):
+			arr.append(create_card(entry.color, entry.type, entry.value))

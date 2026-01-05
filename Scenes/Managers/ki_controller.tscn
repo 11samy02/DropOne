@@ -1,0 +1,8 @@
+[gd_scene load_steps=2 format=3 uid="uid://bmuikrjlcco78"]
+
+[ext_resource type="Script" uid="uid://cm6tvc5c3qn8x" path="res://Scripts/Managers/ki_controller.gd" id="1_jrxxg"]
+
+[node name="KiController" type="Node"]
+script = ExtResource("1_jrxxg")
+difficulty = 1
+personality = 1

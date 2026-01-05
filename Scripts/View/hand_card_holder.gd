@@ -18,31 +18,32 @@ var _busy := false
 var _queued: CardView = null
 var _waiting_color_turn_end := false
 
+## Creates and returns an instance of this holder scene
 static func create() -> HandCardHolder:
 	return HAND_CARD_HOLDER.instantiate()
 
+## Connects required signals for wild color selection follow-up
 func _ready() -> void:
 	Signals.COLOR_color_selected.connect(_on_color_selected)
 
+## Updates card alignment smoothly every frame
 func _process(delta: float) -> void:
 	align_cards(delta)
 
-## Set active state for turn logic
+## Activates or deactivates this holder's turn state and refreshes playable cards
 func set_turn_active(value: bool) -> void:
 	turn_active = value
 	refresh_playable_cards()
 
-## Align cards smoothly based on hand size
+## Smoothly aligns cards based on dynamic separation for the current hand size
 func align_cards(delta: float) -> void:
 	var count := get_child_count()
 	var target_sep := _get_target_separation(count)
 	_current_sep = lerp(_current_sep, float(target_sep), 1.0 - exp(-smooth_speed * delta))
 	add_theme_constant_override("separation", int(round(_current_sep)))
 
-## Get separation value for current hand size
+## Returns the appropriate card separation based on how many cards are in the hand
 func _get_target_separation(count: int) -> int:
-	if is_bot and count <= 21: return -75
-	if is_bot and count <= 45: return -130
 	if is_bot: return -153
 	if count <= 7: return 0
 	if count <= 10: return -25
@@ -57,16 +58,84 @@ func _get_target_separation(count: int) -> int:
 	if count <= 90: return -150
 	return -153
 
-## Add a card to this holder
+## Defines ordering rules for sorting cards by color, type, and value
+func _compare_cards(a: CardResource, b: CardResource) -> bool:
+	var color_order := {
+		CardResource.CardColor.RED: 0,
+		CardResource.CardColor.GREEN: 1,
+		CardResource.CardColor.BLUE: 2,
+		CardResource.CardColor.YELLOW: 3,
+		CardResource.CardColor.BLACK: 4
+	}
+
+	var type_order := {
+		CardResource.CardType.NUMBER: 0,
+		CardResource.CardType.DRAW: 1,
+		CardResource.CardType.SKIP: 2,
+		CardResource.CardType.REVERSE: 3,
+		CardResource.CardType.PLACE_ALL: 4,
+		CardResource.CardType.WILD: 5,
+		CardResource.CardType.WILD_DRAW: 6
+	}
+
+	var ca = color_order[a.color]
+	var cb = color_order[b.color]
+	if ca != cb:
+		return ca < cb
+
+	var ta = type_order[a.type]
+	var tb = type_order[b.type]
+	if ta != tb:
+		return ta < tb
+
+	return a.value < b.value
+
+## Returns the correct insertion index for a new card based on sorting rules
+func _get_insert_index(card_res: CardResource) -> int:
+	var children := get_children()
+	for i in range(children.size()):
+		var c := children[i]
+		if c is CardView and c.card_res != null:
+			if _compare_cards(card_res, c.card_res):
+				return i
+	return children.size()
+
+## Adds a card to this holder and places it directly into the correct sorted position
 func add_card(card_res: CardResource) -> void:
 	var card_view: CardView = CARD_VIEW.instantiate()
 	card_view.hand_card_holder = self
+	card_view.visible = false
 	add_child(card_view)
+
 	card_view.card_res = card_res
 	card_view.show_front = !is_bot
+
+	var insert_index := _get_insert_index(card_res)
+	move_child(card_view, insert_index)
+
+	call_deferred("_finalize_spawned_card", card_view)
+
+## Finalizes a newly added card after layout settles and plays an appear animation if available
+func _finalize_spawned_card(card_view: CardView) -> void:
+	if card_view == null or !is_instance_valid(card_view):
+		return
+
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+	if card_view == null or !is_instance_valid(card_view):
+		return
+
+	card_view.visible = true
+
+	if card_view.has_node("AnimationPlayer"):
+		var ap := card_view.get_node("AnimationPlayer") as AnimationPlayer
+		if ap != null and ap.has_animation("appear"):
+			ap.play("appear")
+
 	refresh_playable_cards()
 
-## Play a card and handle turn flow and wild color selection
+## Plays a card, handles special rules, and supports place-all finisher selection flow
 func set_card(card_view: CardView) -> void:
 	if card_view == null or !is_instance_valid(card_view) or card_view.card_res == null:
 		return
@@ -87,110 +156,114 @@ func set_card(card_view: CardView) -> void:
 	_busy = true
 	_queued = null
 
+	var played_card_res := card_view.card_res
+
+	if queue_manager.place_all_active and queue_manager.place_all_owner == self:
+		card_view.set_clickable(false, true)
+		queue_manager.resolve_place_all(card_view)
+		_busy = false
+		refresh_playable_cards()
+		return
+
 	card_view.set_clickable(false, true)
 	var animation_duration := 0.3
 	card_view.smooth_move_button_to_top_card_juicy(animation_duration)
 	await get_tree().create_timer(animation_duration).timeout
 
-	var played_card_res := card_view.card_res
 
 	if is_instance_valid(card_view):
 		remove_child(card_view)
 		card_view.queue_free()
 
+	if queue_manager != null:
+		if played_card_res.type == CardResource.CardType.WILD or played_card_res.type == CardResource.CardType.WILD_DRAW:
+			queue_manager.set_wild_color_owner(self)
+
 	card_manager.set_top_card_runtime(played_card_res)
+
+	if played_card_res.type == CardResource.CardType.PLACE_ALL:
+		queue_manager.start_place_all(self, played_card_res.color, played_card_res)
 
 	_busy = false
 	refresh_playable_cards()
 
 	if card_manager.waiting_for_color:
 		_waiting_color_turn_end = true
-	else:
+	elif played_card_res.type != CardResource.CardType.PLACE_ALL:
 		queue_manager.register_card_play(played_card_res)
-
+	
 	if _queued != null and is_instance_valid(_queued):
 		var next := _queued
 		_queued = null
 		call_deferred("set_card", next)
 
-## Check if a card is playable with current rules (including draw stacks)
+
+## Returns whether a card may be played under the current top card and game rules (including draw stacking and place-all mode)
 func can_play_card(card_res: CardResource) -> bool:
 	if card_res == null:
 		return false
-
-	if card_manager.waiting_for_color:
-		return false
-
+	
+	if queue_manager != null and queue_manager.place_all_active:
+		if queue_manager.place_all_owner != self:
+			return false
+		if card_res.color != queue_manager.place_all_color:
+			return false
+		return true
+	
 	if queue_manager != null and queue_manager.draw_stack_amount > 0:
 		if queue_manager.draw_stack_is_wild:
 			return false
 		if card_res.type != CardResource.CardType.DRAW:
 			return false
-		if card_res.value < queue_manager.draw_stack_min_value:
-			return false
-		return true
-
+		
+		if card_res.value == queue_manager.draw_stack_min_value:
+			return true
+		
+		if card_res.value > queue_manager.draw_stack_min_value:
+			return card_res.color == queue_manager.draw_stack_color
+		
+		return false
+	
 	var top := card_manager.top_card
 	if top == null:
 		return false
-
+	
 	var current_color := card_manager.current_color
-
+	
 	if card_res.type == CardResource.CardType.WILD or card_res.type == CardResource.CardType.WILD_DRAW:
 		return true
-
+	
 	if card_res.color == current_color and card_res.color != CardResource.CardColor.BLACK:
 		return true
-
+	
 	if card_res.type == top.type and card_res.type != CardResource.CardType.NUMBER:
+		if card_res.type == CardResource.CardType.DRAW:
+			return card_res.color == current_color
 		return true
-
+	
 	if card_res.type == CardResource.CardType.NUMBER and top.type == CardResource.CardType.NUMBER and card_res.value == top.value:
 		return true
-
+	
 	return false
 
-## Sort hand by color, type, then value
+## Sorts the full hand instantly into correct order using the compare rules
 func sort_cards_full() -> void:
-	var color_order := {
-		CardResource.CardColor.RED: 0,
-		CardResource.CardColor.GREEN: 1,
-		CardResource.CardColor.BLUE: 2,
-		CardResource.CardColor.YELLOW: 3,
-		CardResource.CardColor.BLACK: 4
-	}
+	var card_views: Array[CardView] = []
+	for c in get_children():
+		if c is CardView:
+			card_views.append(c)
 
-	var type_order := {
-		CardResource.CardType.NUMBER: 0,
-		CardResource.CardType.DRAW: 1,
-		CardResource.CardType.SKIP: 2,
-		CardResource.CardType.REVERSE: 3,
-		CardResource.CardType.WILD: 4,
-		CardResource.CardType.WILD_DRAW: 5
-	}
+	if card_views.size() <= 1:
+		return
 
-	var card_views: Array = get_children()
 	card_views.sort_custom(func(a, b):
-		var ar = a.card_res
-		var br = b.card_res
-
-		var ca = color_order[ar.color]
-		var cb = color_order[br.color]
-		if ca != cb:
-			return ca < cb
-
-		var ta = type_order[ar.type]
-		var tb = type_order[br.type]
-		if ta != tb:
-			return ta < tb
-
-		return ar.value < br.value
+		return _compare_cards(a.card_res, b.card_res)
 	)
 
 	for i in range(card_views.size()):
 		move_child(card_views[i], i)
 
-## Refresh playable/clickable state for all cards
+## Refreshes clickable state and visuals for all cards in this hand
 func refresh_playable_cards() -> void:
 	if !is_bot:
 		for c in get_children():
@@ -202,7 +275,7 @@ func refresh_playable_cards() -> void:
 				var target_color := Color.WHITE if allowed else Color.DIM_GRAY
 				smooth_modulate(c, target_color, 0.3)
 
-## Smoothly modulate a node color with a tween
+## Smoothly transitions node modulate color for playable feedback
 func smooth_modulate(node: CanvasItem, target: Color, duration: float = 0.15) -> void:
 	if node.has_meta("modulate_tween"):
 		var old_tween = node.get_meta("modulate_tween")
@@ -213,13 +286,55 @@ func smooth_modulate(node: CanvasItem, target: Color, duration: float = 0.15) ->
 	tween.tween_property(node, "modulate", target, duration).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	node.set_meta("modulate_tween", tween)
 
-## After color select, finalize wild-play turn state
+## Queues post-wild processing after a color has been selected
 func _on_color_selected(_color: CardResource.CardColor) -> void:
 	call_deferred("_after_color_selected")
 
-## Continue after wild color is applied
+## Finalizes wild play and turn flow after color selection
 func _after_color_selected() -> void:
 	refresh_playable_cards()
 	if _waiting_color_turn_end:
 		_waiting_color_turn_end = false
 		queue_manager.register_card_play(card_manager.top_card)
+		queue_manager.clear_wild_owner()
+
+func start_place_all_visual_resolve(finisher_view: CardView) -> void:
+	if finisher_view == null or !is_instance_valid(finisher_view):
+		return
+	if finisher_view.card_res == null:
+		return
+	
+	var color := finisher_view.card_res.color
+	
+	var to_play: Array[CardView] = []
+	for c in get_children():
+		if c is CardView and c != finisher_view and c.card_res != null:
+			if c.card_res.color == color:
+				to_play.append(c)
+	
+	for cv in to_play:
+		if cv == null or !is_instance_valid(cv):
+			continue
+		
+		var res := cv.card_res
+		cv.set_clickable(false, true)
+		cv.smooth_move_button_to_top_card_juicy(0.22, 10.0)
+		await get_tree().create_timer(0.22).timeout
+		
+		if is_instance_valid(cv):
+			remove_child(cv)
+			cv.queue_free()
+		
+		card_manager.set_top_card_runtime(res)
+		await get_tree().create_timer(0.05).timeout
+	
+	var finisher_res := finisher_view.card_res
+	finisher_view.set_clickable(false, true)
+	finisher_view.smooth_move_button_to_top_card_juicy(0.25, 12.0)
+	await get_tree().create_timer(0.25).timeout
+	
+	if is_instance_valid(finisher_view):
+		remove_child(finisher_view)
+		finisher_view.queue_free()
+	
+	card_manager.set_top_card_runtime(finisher_res)

@@ -210,3 +210,61 @@ func add_entry_cards(arr: Array[CardResource], entry: DeckEntryResource) -> void
 	else:
 		for i in range(entry.count):
 			arr.append(create_card(entry.color, entry.type, entry.value))
+
+func draw_specific_card_from_top_range(range: int, prefer_fn: Callable) -> CardResource:
+	if deck.is_empty():
+		refill_deck_from_discard()
+	if deck.is_empty():
+		return null
+	
+	range = clamp(range, 1, deck.size())
+	
+	var best_index := 0
+	var best_score := -999999
+	
+	for i in range(range):
+		var c := deck[i]
+		if c == null:
+			continue
+		
+		var s := int(prefer_fn.call(c))
+		if s > best_score:
+			best_score = s
+			best_index = i
+	
+	var picked := deck[best_index]
+	deck.remove_at(best_index)
+	return picked
+
+func force_insert_card_on_top(card: CardResource) -> void:
+	if card == null:
+		return
+	deck.insert(0, card)
+
+func force_insert_card_at(index: int, card: CardResource) -> void:
+	if card == null:
+		return
+	index = clamp(index, 0, deck.size())
+	deck.insert(index, card)
+
+func remove_first_matching_card(predicate: Callable) -> CardResource:
+	if deck.is_empty():
+		refill_deck_from_discard()
+	if deck.is_empty():
+		return null
+	
+	for i in range(deck.size()):
+		var c := deck[i]
+		if c == null:
+			continue
+		if bool(predicate.call(c)):
+			deck.remove_at(i)
+			return c
+	
+	return null
+
+func get_deck_size() -> int:
+	return deck.size()
+
+func get_discard_size() -> int:
+	return discard_pile.size()

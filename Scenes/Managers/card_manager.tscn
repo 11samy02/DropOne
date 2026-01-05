@@ -11,7 +11,7 @@
 [ext_resource type="Script" uid="uid://bnr51bhyllk4k" path="res://Scripts/View/deck_count.gd" id="5_aqhs8"]
 [ext_resource type="Script" uid="uid://da686y68ol6iv" path="res://Scripts/View/plus_stack_label.gd" id="7_luibc"]
 
-[sub_resource type="Resource" id="Resource_ytmc7"]
+[sub_resource type="Resource" id="Resource_abt31"]
 script = ExtResource("3_c0tlk")
 difficulty = 5
 personality = 5
@@ -34,7 +34,7 @@ loaded_deck = ExtResource("2_ytmc7")
 player_container = NodePath("../MarginContainer/MainPlayerContainer")
 other_player_containers = [NodePath("../player2_container"), NodePath("../player2_container2"), NodePath("../player2_container4"), NodePath("../player2_container7"), NodePath("../player2_container6"), NodePath("../player2_container3"), NodePath("../player2_container5")]
 card_manager = NodePath("..")
-bot_profiles = Array[ExtResource("3_c0tlk")]([SubResource("Resource_ytmc7")])
+bot_profiles = Array[ExtResource("3_c0tlk")]([SubResource("Resource_abt31")])
 
 [node name="Background" type="Control" parent="."]
 layout_mode = 3

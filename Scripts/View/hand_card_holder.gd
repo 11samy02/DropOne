@@ -245,7 +245,6 @@ func can_play_card(card_res: CardResource) -> bool:
 					return true
 				return false
 
-			# If top is not DRAW: fall back to normal rules (color match etc.)
 			return card_res.color == current_color
 
 		return true
@@ -347,3 +346,10 @@ func start_place_all_visual_resolve(finisher_view: CardView) -> void:
 		finisher_view.queue_free()
 	
 	card_manager.set_top_card_runtime(finisher_res)
+
+func get_all_card_resources() -> Array[CardResource]:
+	var arr: Array[CardResource] = []
+	for c in get_children():
+		if c is CardView and c.card_res != null:
+			arr.append(c.card_res)
+	return arr

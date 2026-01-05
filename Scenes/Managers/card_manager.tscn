@@ -4,7 +4,7 @@
 [ext_resource type="PackedScene" uid="uid://0lhp5dikyv3u" path="res://Scenes/Managers/queue_manager.tscn" id="2_1vgeo"]
 [ext_resource type="PackedScene" uid="uid://deat7hguf61ur" path="res://Scenes/View/card_view.tscn" id="2_6eb2d"]
 [ext_resource type="PackedScene" uid="uid://p4ppil0si11i" path="res://Scenes/View/draw_deck.tscn" id="2_jamtu"]
-[ext_resource type="Resource" uid="uid://c6jk4kq42tj5j" path="res://Resources/Decks/Furios.tres" id="2_ytmc7"]
+[ext_resource type="Resource" uid="uid://dcclq3f73qy6m" path="res://Resources/Decks/Default.tres" id="2_ytmc7"]
 [ext_resource type="Texture2D" uid="uid://4u7booj3hl7a" path="res://Assets/Ui/background.png" id="3_1vgeo"]
 [ext_resource type="Script" uid="uid://duq6tdn31q054" path="res://Scripts/Globals/BotProfile.gd" id="3_c0tlk"]
 [ext_resource type="PackedScene" uid="uid://ckshnidv1ms8k" path="res://Scenes/View/color_selector.tscn" id="4_2uwj3"]
@@ -13,7 +13,7 @@
 
 [sub_resource type="Resource" id="Resource_ytmc7"]
 script = ExtResource("3_c0tlk")
-difficulty = 4
+difficulty = 5
 personality = 5
 metadata/_custom_type_script = "uid://duq6tdn31q054"
 

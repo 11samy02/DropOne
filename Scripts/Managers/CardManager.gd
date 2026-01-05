@@ -109,6 +109,27 @@ func draw_card() -> CardResource:
 	deck.remove_at(0)
 	return card
 
+## Returns the next card in the deck without removing it (Omega cheat)
+func peek_next_card(offset: int = 0) -> CardResource:
+	if deck.is_empty():
+		return null
+	if offset < 0:
+		offset = 0
+	if offset >= deck.size():
+		return null
+	return deck[offset]
+
+
+## Returns the next N cards (Omega cheat)
+func peek_next_cards(amount: int = 3) -> Array[CardResource]:
+	var res: Array[CardResource] = []
+	if deck.is_empty():
+		return res
+	for i in range(min(amount, deck.size())):
+		res.append(deck[i])
+	return res
+
+
 ## Refill deck from discard pile while keeping top
 func refill_deck_from_discard() -> void:
 	if discard_pile.size() <= 1:

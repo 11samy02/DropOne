@@ -238,7 +238,16 @@ func can_play_card(card_res: CardResource) -> bool:
 	
 	if card_res.type == top.type and card_res.type != CardResource.CardType.NUMBER:
 		if card_res.type == CardResource.CardType.DRAW:
+			if top.type == CardResource.CardType.DRAW:
+				if card_res.value == top.value:
+					return true
+				if card_res.color == top.color and card_res.value > top.value:
+					return true
+				return false
+
+			# If top is not DRAW: fall back to normal rules (color match etc.)
 			return card_res.color == current_color
+
 		return true
 	
 	if card_res.type == CardResource.CardType.NUMBER and top.type == CardResource.CardType.NUMBER and card_res.value == top.value:

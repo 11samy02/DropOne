@@ -39,7 +39,7 @@ enum AIPersonality { BALANCED, AGGRESSOR, COLLECTOR, CHAOS, PUNISHER, COLOR_MONA
 ##
 ## OMEGA:
 ## - Near-perfect play
-## - Uses full information + mini simulation
+## - Uses full information + peek + opponent scanning
 ## - Hard focuses next player threats
 ## - Prioritizes guaranteed win paths and denies opponent wins
 @export var difficulty: AIDifficulty = AIDifficulty.MASTER
@@ -84,7 +84,6 @@ func _ready() -> void:
 	Signals.TURN_changed.connect(_on_turn_changed)
 	Signals.COLOR_request_color_select.connect(_on_color_request)
 
-## Build difficulty and personality weight tables
 func _build_configs() -> void:
 	_diff_cfg = {
 		AIDifficulty.ROOKIE: {
@@ -168,20 +167,20 @@ func _build_configs() -> void:
 			"omega_depth": 0
 		},
 		AIDifficulty.OMEGA: {
-			"punish_low": 95,
-			"save_wild": 60,
-			"save_wild_draw": 85,
+			"punish_low": 999,
+			"save_wild": 250,
+			"save_wild_draw": 450,
 			"prefer_normal": 0,
-			"prefer_action": 60,
-			"prefer_draw": 85,
-			"prefer_skip_reverse": 95,
-			"stack_skill": 100,
-			"color_lock": 100,
-			"hand_dump": 100,
-			"avoid_help_opponents": 100,
-			"neighbor_focus": 120,
-			"endgame_focus": 140,
-			"omega_depth": 2
+			"prefer_action": 250,
+			"prefer_draw": 450,
+			"prefer_skip_reverse": 550,
+			"stack_skill": 1000,
+			"color_lock": 850,
+			"hand_dump": 900,
+			"avoid_help_opponents": 1000,
+			"neighbor_focus": 1200,
+			"endgame_focus": 2000,
+			"omega_depth": 4
 		}
 	}
 
@@ -248,7 +247,6 @@ func _build_configs() -> void:
 		}
 	}
 
-## Trigger KI turn when this holder becomes active
 func _on_turn_changed(holder: HandCardHolder) -> void:
 	if holder == null:
 		return
@@ -260,7 +258,6 @@ func _on_turn_changed(holder: HandCardHolder) -> void:
 		return
 	play_turn()
 
-## Handle KI playing a full turn (play / draw / pass) including place-all follow-up logic
 func play_turn() -> void:
 	if card_manager == null or queue_manager == null or hand_card_holder == null:
 		return
@@ -361,7 +358,6 @@ func play_turn() -> void:
 func _still_my_turn() -> bool:
 	return queue_manager != null and queue_manager.get_current_holder() == hand_card_holder
 
-## Collect all playable card views from this bot hand
 func get_playable_cards() -> Array[CardView]:
 	var arr: Array[CardView] = []
 	for c in hand_card_holder.get_children():
@@ -370,7 +366,6 @@ func get_playable_cards() -> Array[CardView]:
 				arr.append(c)
 	return arr
 
-## Choose the highest scoring card based on difficulty and personality
 func choose_best_card(playable: Array[CardView]) -> CardView:
 	if playable.is_empty():
 		return null
@@ -389,7 +384,6 @@ func choose_best_card(playable: Array[CardView]) -> CardView:
 	
 	return best
 
-## Score a card using weighted heuristics + neighbor awareness + endgame awareness
 func score_card(card_view: CardView) -> int:
 	if card_view == null or card_view.card_res == null:
 		return -999999
@@ -411,6 +405,7 @@ func score_card(card_view: CardView) -> int:
 	var global_low := global_threat_cards <= 2
 	
 	var next_is_threat := next_cards <= 2
+	
 	var prev_is_threat := prev_cards <= 2
 	
 	var my_colors := count_colors_in_hand()
@@ -550,7 +545,6 @@ func score_card(card_view: CardView) -> int:
 	
 	return score
 
-## Chooses the best finisher card for place-all mode based on difficulty and personality
 func choose_best_place_all_finisher(color: CardResource.CardColor) -> CardView:
 	var candidates: Array[CardView] = []
 	for c in hand_card_holder.get_children():
@@ -596,7 +590,6 @@ func choose_best_place_all_finisher(color: CardResource.CardColor) -> CardView:
 	
 	return best
 
-## Scores a place-all finisher card with special emphasis on only-last-effect rules
 func score_place_all_finisher(card_view: CardView, cfg: Dictionary, pcfg: Dictionary) -> int:
 	if card_view == null or card_view.card_res == null:
 		return -999999
@@ -627,7 +620,6 @@ func score_place_all_finisher(card_view: CardView, cfg: Dictionary, pcfg: Dictio
 	
 	return score
 
-## Counts how many cards of a specific color exist in the bot hand
 func count_specific_color_in_hand(color: CardResource.CardColor) -> int:
 	var count := 0
 	for c in hand_card_holder.get_children():
@@ -636,7 +628,6 @@ func count_specific_color_in_hand(color: CardResource.CardColor) -> int:
 				count += 1
 	return count
 
-## Find the smallest hand size among opponents
 func get_most_threatening_opponent_cards() -> int:
 	if queue_manager == null:
 		return 9999
@@ -647,7 +638,6 @@ func get_most_threatening_opponent_cards() -> int:
 		best = min(best, h.get_child_count())
 	return best
 
-## Count non-black colors in this hand
 func count_colors_in_hand() -> Dictionary:
 	var counts := {}
 	for c in hand_card_holder.get_children():
@@ -658,7 +648,6 @@ func count_colors_in_hand() -> Dictionary:
 			counts[col] = counts.get(col, 0) + 1
 	return counts
 
-## Return the strongest color from a count dictionary
 func get_best_color_from_counts(counts: Dictionary) -> CardResource.CardColor:
 	var best_color := CardResource.CardColor.RED
 	var best_count := -1
@@ -669,7 +658,6 @@ func get_best_color_from_counts(counts: Dictionary) -> CardResource.CardColor:
 			best_color = color
 	return best_color
 
-## Check if any opponent is near winning
 func is_any_opponent_low_cards(max_cards: int = 2) -> bool:
 	if queue_manager == null:
 		return false
@@ -680,7 +668,6 @@ func is_any_opponent_low_cards(max_cards: int = 2) -> bool:
 			return true
 	return false
 
-## Returns the next holder in current direction
 func get_next_holder() -> HandCardHolder:
 	if queue_manager == null:
 		return null
@@ -694,7 +681,6 @@ func get_next_holder() -> HandCardHolder:
 		n += queue_manager.turn_order.size()
 	return queue_manager.turn_order[n]
 
-## Returns the previous holder in current direction
 func get_prev_holder() -> HandCardHolder:
 	if queue_manager == null:
 		return null
@@ -708,7 +694,6 @@ func get_prev_holder() -> HandCardHolder:
 		p += queue_manager.turn_order.size()
 	return queue_manager.turn_order[p]
 
-## Respond to color request only if this bot owns the wild selection
 func _on_color_request() -> void:
 	if queue_manager == null or hand_card_holder == null or card_manager == null:
 		return
@@ -717,7 +702,6 @@ func _on_color_request() -> void:
 	await get_tree().create_timer(0.2).timeout
 	Signals.COLOR_color_selected.emit(choose_best_wild_color())
 
-## Choose wild color using difficulty+personality weighting and opponent weakness + neighbor awareness
 func choose_best_wild_color() -> CardResource.CardColor:
 	if difficulty == AIDifficulty.OMEGA:
 		return _omega_choose_best_wild_color()
@@ -759,7 +743,6 @@ func choose_best_wild_color() -> CardResource.CardColor:
 	
 	return best_color
 
-## Count how often opponents have a specific color in their hand
 func get_opponent_color_count(color: CardResource.CardColor) -> int:
 	if queue_manager == null:
 		return 0
@@ -773,7 +756,6 @@ func get_opponent_color_count(color: CardResource.CardColor) -> int:
 					count += 1
 	return count
 
-## Fallback: choose the color opponents have least
 func choose_opponents_least_common_color() -> CardResource.CardColor:
 	if queue_manager == null:
 		return CardResource.CardColor.RED
@@ -823,214 +805,244 @@ func _omega_score_move(card_view: CardView) -> int:
 	if _omega_is_immediate_win(card_view):
 		return 999999999
 	
-	var force2 := _omega_can_force_win_in_two(card_view)
 	var card := card_view.card_res
 	
 	var my_count := hand_card_holder.get_child_count()
 	var endgame := my_count <= 4
 	var hard_lock := my_count <= 2
+	var early_game := my_count >= 6
 	
 	var next_holder := get_next_holder()
 	var prev_holder := get_prev_holder()
 	
 	var next_cards := (next_holder.get_child_count() if next_holder != null else 9999)
+	var next_is_one := next_cards == 1
 	var prev_cards := (prev_holder.get_child_count() if prev_holder != null else 9999)
 	
 	var next_is_threat := next_cards <= 2
+
 	var prev_is_threat := prev_cards <= 2
 	
 	var global_threat_cards := get_most_threatening_opponent_cards()
 	var global_low := global_threat_cards <= 2
 	
-	var win_push := (20 - my_count) * 70
+	var my_colors := count_colors_in_hand()
+	var my_best_color := get_best_color_from_counts(my_colors)
+	var is_my_best_color := card.color == my_best_color and card.color != CardResource.CardColor.BLACK
+	var same_color_count := count_specific_color_in_hand(card.color)
+	
 	var s := 0
 	
-	s += win_push
+	
+	if next_is_one:
+		if card.type == CardResource.CardType.NUMBER:
+			s -= 120000
+		if card.type == CardResource.CardType.SKIP:
+			s += 250000
+		if card.type == CardResource.CardType.DRAW:
+			s += 300000 + int(card.value) * 25000
+		if card.type == CardResource.CardType.WILD_DRAW:
+			s += 450000 + int(card.value) * 50000
+		if card.type == CardResource.CardType.WILD:
+			s += 200000
+		if card.type == CardResource.CardType.REVERSE:
+			s += 150000
+	
+	s += (25 - my_count) * 75
 	
 	if endgame:
-		s += 900
-		s += (5 - my_count) * 200
-	
-	if force2:
-		s += 450000
+		s += 3500
+		s += (6 - my_count) * 900
 	
 	if global_low:
-		s += 1800
+		s += 5000
 	
-	var same_color_count := count_specific_color_in_hand(card.color)
+	var peek_bonus := _omega_peek_bonus_for_card(card)
+	s += peek_bonus
 	
 	match card.type:
 		CardResource.CardType.NUMBER:
-			s += 60
-			s += (9 - card.value) * 8
+			s += 800
+			s += (9 - card.value) * 30
+			if is_my_best_color:
+				s += 2200
+			if early_game and is_my_best_color:
+				s += 1800
 			if endgame:
-				s += 350
+				s += 1600
 		
 		CardResource.CardType.SKIP:
-			s += 1200
+			s += 6000
 			if next_is_threat:
-				s += 5500
+				s += 22000
 			elif global_low:
-				s += 2400
+				s += 12000
 			if endgame:
-				s += 1800
+				s += 15000
 		
 		CardResource.CardType.REVERSE:
-			s += 900
+			s += 4200
 			
 			if queue_manager != null and queue_manager.turn_order.size() == 2:
-				s += 4000
+				s += 15000
 			
 			if _omega_reverse_is_kill_move():
-				s += 7000
+				s += 22000
 			
 			if global_low:
 				if next_is_threat:
-					s += 2500
+					s += 12000
 				if prev_is_threat:
-					s -= 2200
+					s -= 10000
 			
 			if endgame:
-				s += 1400
+				s += 8000
 		
 		CardResource.CardType.DRAW:
-			s += 1500 + int(card.value) * 260
+			s += 12000 + int(card.value) * 2500
+			
+			if early_game:
+				s -= 2500
 			
 			if next_is_threat:
-				s += 7000 + int(card.value) * 230
+				s += 32000 + int(card.value) * 3500
 			elif global_low:
-				s += 2800
+				s += 14000
 			
 			if queue_manager != null and queue_manager.draw_stack_amount > 0:
-				if _omega_is_good_stack_extension(card):
-					s += 12000 + int(card.value) * 1200
+				if _omega_stack_move_is_valid_by_rules(card):
+					s += 60000
+					s += int(card.value) * 9000
 				else:
-					s -= 14000
+					s -= 250000
 			
 			if endgame:
-				s += 2000
+				s += 25000
 		
 		CardResource.CardType.WILD:
-			s += 1300
+			s += 15000
+			
+			if early_game:
+				s -= 6000
+			
+			if next_is_one:
+				s += 200000
 			
 			if next_is_threat:
-				s += 3800
+				s += 24000
 			elif global_low:
-				s += 2000
+				s += 15000
+			
+			if is_my_best_color:
+				s += 3500
 			
 			if endgame:
-				s += 2200
+				s += 32000
+			
+			
+
 		
 		CardResource.CardType.WILD_DRAW:
-			s += 4200 + int(card.value) * 520
+			s += 35000 + int(card.value) * 8000
+			
+			if early_game:
+				s -= 12000
+				
+			if next_is_one:
+				s += 400000
+
 			
 			if next_is_threat:
-				s += 11000
+				s += 55000
 			elif global_low:
-				s += 4200
+				s += 22000
 			
 			if endgame:
-				s += 3200
+				s += 65000
 		
 		CardResource.CardType.PLACE_ALL:
-			s += 1600 + same_color_count * 480
+			if same_color_count >= 2 and _omega_has_place_all_finisher(card.color):
+				s += 75000 + same_color_count * 15000
+			else:
+				s -= 50000
 			
 			if next_is_threat:
-				s += 4200
+				s += 18000
 			elif global_low:
-				s += 2400
-			
-			if same_color_count <= 1:
-				s -= 20000
+				s += 9000
 			
 			if endgame:
-				s += 3500 + same_color_count * 280
-	
-	if global_low:
-		if card.type == CardResource.CardType.DRAW or card.type == CardResource.CardType.WILD_DRAW:
-			s += 12000
-		if card.type == CardResource.CardType.SKIP:
-			s += 9000
-		if card.type == CardResource.CardType.REVERSE:
-			s += 6000
+				s += 35000 + same_color_count * 12000
 	
 	if hard_lock:
 		if card.type == CardResource.CardType.SKIP:
-			s += 40000
+			s += 150000
 		if card.type == CardResource.CardType.DRAW or card.type == CardResource.CardType.WILD_DRAW:
-			s += 50000
+			s += 200000
 		if card.type == CardResource.CardType.REVERSE:
-			s += 25000
+			s += 90000
 		if card.type == CardResource.CardType.WILD:
-			s += 20000
+			s += 85000
 		if card.type == CardResource.CardType.PLACE_ALL and same_color_count >= 2:
-			s += 35000
-	
-	s += _omega_minimax_penalty_after_move(card_view)
+			s += 120000
 	
 	return s
 
-func _omega_minimax_penalty_after_move(chosen: CardView) -> int:
-	if queue_manager == null or hand_card_holder == null:
+func _omega_peek_bonus_for_card(card: CardResource) -> int:
+	if card_manager == null:
+		return 0
+	if !card_manager.has_method("peek_next_cards"):
 		return 0
 	
-	var next_holder := get_next_holder()
-	if next_holder == null:
-		return 0
+	var peek := card_manager.peek_next_cards(4)
+	var bonus := 0
 	
-	var opp_best := _omega_estimate_opponent_best_response(next_holder)
-	return -opp_best
+	for c in peek:
+		if c == null:
+			continue
+		
+		if c.type == CardResource.CardType.WILD_DRAW or c.type == CardResource.CardType.DRAW:
+			if card.type == CardResource.CardType.DRAW or card.type == CardResource.CardType.WILD_DRAW:
+				bonus += 6500
+			if card.type == CardResource.CardType.SKIP or card.type == CardResource.CardType.REVERSE:
+				bonus += 3200
+		
+		if c.type == CardResource.CardType.WILD:
+			if card.type == CardResource.CardType.WILD:
+				bonus += 2800
+	
+	return bonus
 
-func _omega_estimate_opponent_best_response(holder: HandCardHolder) -> int:
-	if holder == null or card_manager == null:
-		return 0
-	
-	var playable: Array[CardResource] = []
-	for c in holder.get_children():
+func _omega_has_place_all_finisher(color: CardResource.CardColor) -> bool:
+	for c in hand_card_holder.get_children():
 		if c is CardView and c.card_res != null:
-			if holder.can_play_card(c.card_res):
-				playable.append(c.card_res)
-	
-	if playable.is_empty():
-		return 0
-	
-	var best := 0
-	for cr in playable:
-		var s := _omega_estimate_threat_value(cr, holder)
-		if s > best:
-			best = s
-	
-	return best
+			if c.card_res.color == color:
+				if c.card_res.type == CardResource.CardType.DRAW or c.card_res.type == CardResource.CardType.SKIP or c.card_res.type == CardResource.CardType.REVERSE:
+					return true
+	return false
 
-func _omega_estimate_threat_value(card: CardResource, holder: HandCardHolder) -> int:
+func _omega_stack_move_is_valid_by_rules(card: CardResource) -> bool:
+	if queue_manager == null:
+		return true
+	if queue_manager.draw_stack_amount <= 0:
+		return true
+	if queue_manager.draw_stack_is_wild:
+		return true
 	if card == null:
-		return 0
+		return false
+	if card.type != CardResource.CardType.DRAW:
+		return false
 	
-	var holder_count := holder.get_child_count()
-	var is_threat := holder_count <= 2
+	var stack_color := queue_manager.draw_stack_color
+	var stack_min := queue_manager.draw_stack_min_value
 	
-	var s := 0
+	if card.value == stack_min:
+		return true
 	
-	match card.type:
-		CardResource.CardType.DRAW:
-			s += 700 + int(card.value) * 140
-		CardResource.CardType.WILD_DRAW:
-			s += 1000 + int(card.value) * 180
-		CardResource.CardType.SKIP:
-			s += 850
-		CardResource.CardType.REVERSE:
-			s += 550
-		CardResource.CardType.WILD:
-			s += 650
-		CardResource.CardType.PLACE_ALL:
-			s += 600
-		_:
-			s += 180
+	if card.color == stack_color and card.value >= stack_min:
+		return true
 	
-	if is_threat:
-		s += 900
-	
-	return s
+	return false
 
 func _omega_choose_best_place_all_finisher(candidates: Array[CardView]) -> CardView:
 	var best := candidates[0]
@@ -1049,22 +1061,24 @@ func _omega_choose_best_place_all_finisher(candidates: Array[CardView]) -> CardV
 		
 		match card.type:
 			CardResource.CardType.DRAW:
-				s += 1600 + int(card.value) * 240
+				s += 65000 + int(card.value) * 9000
 			CardResource.CardType.SKIP:
-				s += 1800
+				s += 72000
 			CardResource.CardType.REVERSE:
-				s += 900
+				s += 48000
+				if queue_manager != null and queue_manager.turn_order.size() == 2:
+					s += 42000
 			CardResource.CardType.NUMBER:
-				s += 200 + (9 - card.value) * 8
+				s += 8000 + (9 - card.value) * 800
 		
 		if next_threat:
 			if card.type == CardResource.CardType.DRAW or card.type == CardResource.CardType.SKIP:
-				s += 1500
+				s += 55000
 		
 		if endgame:
-			s += 900
+			s += 45000
 			if card.type == CardResource.CardType.DRAW or card.type == CardResource.CardType.SKIP:
-				s += 900
+				s += 35000
 		
 		if s > best_score:
 			best_score = s
@@ -1073,35 +1087,38 @@ func _omega_choose_best_place_all_finisher(candidates: Array[CardView]) -> CardV
 	return best
 
 func _omega_choose_best_wild_color() -> CardResource.CardColor:
+	if _omega_next_player_has_one_card():
+		return _omega_choose_blocking_color_against_next_player()
+
 	if queue_manager == null:
 		return CardResource.CardColor.RED
-	
+
 	var my_counts := count_colors_in_hand()
-	
+
 	var best_color := CardResource.CardColor.RED
 	var best_score := -999999
-	
+
 	var next_holder := get_next_holder()
 	var next_is_threat := next_holder != null and next_holder.get_child_count() <= 2
-	
+
 	for color in [CardResource.CardColor.RED, CardResource.CardColor.GREEN, CardResource.CardColor.BLUE, CardResource.CardColor.YELLOW]:
 		var mine := int(my_counts.get(color, 0))
 		var opp := get_opponent_color_count(color)
-		
+
 		var score := 0
-		score += mine * 60
-		score += (60 - opp) * 25
-		
+		score += mine * 220
+		score += (70 - opp) * 130
+
 		if next_is_threat:
-			score += (60 - opp) * 20
-		
+			score += (70 - opp) * 200
+
 		if mine <= 0:
-			score -= 100
-		
+			score -= 5000
+
 		if score > best_score:
 			best_score = score
 			best_color = color
-	
+
 	return best_color
 
 func _omega_is_immediate_win(card_view: CardView) -> bool:
@@ -1109,134 +1126,9 @@ func _omega_is_immediate_win(card_view: CardView) -> bool:
 		return false
 	if card_view == null or card_view.card_res == null:
 		return false
-	var my_count := hand_card_holder.get_child_count()
-	return my_count <= 1
-
-func _omega_can_force_win_in_two(chosen: CardView) -> bool:
-	if chosen == null or chosen.card_res == null:
-		return false
-	if hand_card_holder == null or queue_manager == null or card_manager == null:
-		return false
 	
 	var my_count := hand_card_holder.get_child_count()
-	if my_count > 3:
-		return false
-	
-	var state := _omega_simulate_after_move_state(chosen, hand_card_holder)
-	if state.is_empty():
-		return false
-	
-	var next_holder := get_next_holder()
-	if next_holder == null:
-		return false
-	
-	var opp_best_value := _omega_estimate_opponent_best_response(next_holder)
-	if opp_best_value >= 1600:
-		return false
-	
-	var still_my_turn_after := false
-	if chosen.card_res.type == CardResource.CardType.SKIP:
-		still_my_turn_after = true
-	if chosen.card_res.type == CardResource.CardType.DRAW:
-		still_my_turn_after = true
-	if chosen.card_res.type == CardResource.CardType.WILD_DRAW:
-		still_my_turn_after = true
-	
-	if still_my_turn_after:
-		return _omega_holder_has_any_playable_card_for_state(hand_card_holder, state, true)
-	
-	return _omega_holder_has_any_playable_card_for_state(hand_card_holder, state, false)
-
-func _omega_simulate_after_move_state(card_view: CardView, holder: HandCardHolder) -> Dictionary:
-	if card_view == null or card_view.card_res == null:
-		return {}
-	if holder == null:
-		return {}
-	
-	var res := card_view.card_res
-	var top := card_manager.top_card
-	var current_color := card_manager.current_color
-	
-	var new_top := res
-	var new_color := current_color
-	
-	if res.type == CardResource.CardType.WILD or res.type == CardResource.CardType.WILD_DRAW:
-		new_color = _omega_choose_best_wild_color()
-	else:
-		new_color = res.color
-	
-	var dict := {
-		"top_type": new_top.type,
-		"top_value": new_top.value,
-		"top_color": new_top.color,
-		"current_color": new_color
-	}
-	
-	return dict
-
-func _omega_holder_has_any_playable_card_for_state(holder: HandCardHolder, state: Dictionary, must_win_now: bool) -> bool:
-	if holder == null:
-		return false
-	if typeof(state) != TYPE_DICTIONARY:
-		return false
-	
-	var target_count := holder.get_child_count() - 1
-	
-	for c in holder.get_children():
-		if c is CardView and c.card_res != null:
-			if _omega_can_play_card_in_state(c.card_res, state):
-				if must_win_now and target_count != 0:
-					continue
-				if target_count == 0:
-					return true
-				if target_count == 1:
-					return true
-	
-	return false
-
-func _omega_can_play_card_in_state(card_res: CardResource, state: Dictionary) -> bool:
-	if card_res == null:
-		return false
-	
-	var current_color = state.get("current_color", CardResource.CardColor.RED)
-	var top_type := int(state.get("top_type", CardResource.CardType.NUMBER))
-	var top_value := int(state.get("top_value", 0))
-	
-	if card_res.type == CardResource.CardType.WILD or card_res.type == CardResource.CardType.WILD_DRAW:
-		return true
-	
-	if card_res.color == current_color and card_res.color != CardResource.CardColor.BLACK:
-		return true
-	
-	if card_res.type == top_type and card_res.type != CardResource.CardType.NUMBER:
-		if card_res.type == CardResource.CardType.DRAW:
-			return card_res.color == current_color
-		return true
-	
-	if card_res.type == CardResource.CardType.NUMBER and top_type == CardResource.CardType.NUMBER and card_res.value == top_value:
-		return true
-	
-	return false
-
-func _omega_is_good_stack_extension(card: CardResource) -> bool:
-	if queue_manager == null:
-		return false
-	if queue_manager.draw_stack_amount <= 0:
-		return false
-	if queue_manager.draw_stack_is_wild:
-		return false
-	if card == null:
-		return false
-	if card.type != CardResource.CardType.DRAW:
-		return false
-	
-	if card.color != queue_manager.draw_stack_color:
-		return false
-	
-	if card.value < queue_manager.draw_stack_min_value:
-		return false
-	
-	return true
+	return my_count == 1
 
 func _omega_reverse_is_kill_move() -> bool:
 	var next_holder := get_next_holder()
@@ -1247,7 +1139,51 @@ func _omega_reverse_is_kill_move() -> bool:
 	var next_cards := next_holder.get_child_count()
 	var prev_cards := prev_holder.get_child_count()
 	
+	if next_cards == 1 and prev_cards > 1:
+		return true
+	
 	if next_cards <= 2 and prev_cards > 2:
 		return true
 	
 	return false
+
+
+func _omega_next_player_card_count() -> int:
+	var next_holder := get_next_holder()
+	if next_holder == null:
+		return 9999
+	return next_holder.get_child_count()
+
+func _omega_next_player_has_one_card() -> bool:
+	return _omega_next_player_card_count() == 1
+
+func _omega_get_next_player_color_counts() -> Dictionary:
+	var next_holder := get_next_holder()
+	var counts := {
+		CardResource.CardColor.RED: 0,
+		CardResource.CardColor.GREEN: 0,
+		CardResource.CardColor.BLUE: 0,
+		CardResource.CardColor.YELLOW: 0
+	}
+	if next_holder == null:
+		return counts
+	
+	for c in next_holder.get_children():
+		if c is CardView and c.card_res != null:
+			var col = c.card_res.color
+			if col != CardResource.CardColor.BLACK:
+				counts[col] += 1
+
+	return counts
+
+func _omega_choose_blocking_color_against_next_player() -> CardResource.CardColor:
+	var counts := _omega_get_next_player_color_counts()
+	var best_color := CardResource.CardColor.RED
+	var best_count := 999999
+	for color in [CardResource.CardColor.RED, CardResource.CardColor.GREEN, CardResource.CardColor.BLUE, CardResource.CardColor.YELLOW]:
+		var v := int(counts[color])
+		if v < best_count:
+			best_count = v
+			best_color = color
+
+	return best_color

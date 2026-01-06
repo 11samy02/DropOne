@@ -100,7 +100,10 @@ func _build_configs() -> void:
 			"avoid_help_opponents": 0,
 			"neighbor_focus": 5,
 			"endgame_focus": 5,
-			"omega_depth": 0
+			"omega_depth": 0,
+			"prefer_swap": 0,
+			"prefer_target_draw": 0,
+			"prefer_roulette": 0
 		},
 		AIDifficulty.CASUAL: {
 			"punish_low": 10,
@@ -116,7 +119,10 @@ func _build_configs() -> void:
 			"avoid_help_opponents": 5,
 			"neighbor_focus": 15,
 			"endgame_focus": 15,
-			"omega_depth": 0
+			"omega_depth": 0,
+			"prefer_swap": 8,
+			"prefer_target_draw": 12,
+			"prefer_roulette": 6
 		},
 		AIDifficulty.SMART: {
 			"punish_low": 25,
@@ -132,7 +138,10 @@ func _build_configs() -> void:
 			"avoid_help_opponents": 10,
 			"neighbor_focus": 35,
 			"endgame_focus": 35,
-			"omega_depth": 0
+			"omega_depth": 0,
+			"prefer_swap": 18,
+			"prefer_target_draw": 22,
+			"prefer_roulette": 15
 		},
 		AIDifficulty.HARD: {
 			"punish_low": 40,
@@ -148,7 +157,10 @@ func _build_configs() -> void:
 			"avoid_help_opponents": 20,
 			"neighbor_focus": 55,
 			"endgame_focus": 55,
-			"omega_depth": 0
+			"omega_depth": 0,
+			"prefer_swap": 28,
+			"prefer_target_draw": 40,
+			"prefer_roulette": 25
 		},
 		AIDifficulty.MASTER: {
 			"punish_low": 60,
@@ -164,7 +176,10 @@ func _build_configs() -> void:
 			"avoid_help_opponents": 35,
 			"neighbor_focus": 85,
 			"endgame_focus": 85,
-			"omega_depth": 0
+			"omega_depth": 0,
+			"prefer_swap": 45,
+			"prefer_target_draw": 80,
+			"prefer_roulette": 55
 		},
 		AIDifficulty.OMEGA: {
 			"punish_low": 999,
@@ -180,7 +195,10 @@ func _build_configs() -> void:
 			"avoid_help_opponents": 1000,
 			"neighbor_focus": 1200,
 			"endgame_focus": 2000,
-			"omega_depth": 4
+			"omega_depth": 4,
+			"prefer_swap": 800,
+			"prefer_target_draw": 1600,
+			"prefer_roulette": 950
 		}
 	}
 
@@ -193,7 +211,10 @@ func _build_configs() -> void:
 			"color_focus": 0,
 			"hand_dump": 0,
 			"neighbor_focus": 0,
-			"endgame_focus": 0
+			"endgame_focus": 0,
+			"swap_focus": 0,
+			"target_focus": 0,
+			"roulette_focus": 0
 		},
 		AIPersonality.AGGRESSOR: {
 			"aggression": 35,
@@ -203,7 +224,10 @@ func _build_configs() -> void:
 			"color_focus": 0,
 			"hand_dump": -10,
 			"neighbor_focus": 10,
-			"endgame_focus": 20
+			"endgame_focus": 20,
+			"swap_focus": -10,
+			"target_focus": 20,
+			"roulette_focus": 5
 		},
 		AIPersonality.COLLECTOR: {
 			"aggression": -15,
@@ -213,7 +237,10 @@ func _build_configs() -> void:
 			"color_focus": 10,
 			"hand_dump": -35,
 			"neighbor_focus": 0,
-			"endgame_focus": 10
+			"endgame_focus": 10,
+			"swap_focus": 25,
+			"target_focus": -10,
+			"roulette_focus": -5
 		},
 		AIPersonality.CHAOS: {
 			"aggression": 10,
@@ -223,7 +250,10 @@ func _build_configs() -> void:
 			"color_focus": -10,
 			"hand_dump": 20,
 			"neighbor_focus": -10,
-			"endgame_focus": 0
+			"endgame_focus": 0,
+			"swap_focus": 20,
+			"target_focus": 15,
+			"roulette_focus": 35
 		},
 		AIPersonality.PUNISHER: {
 			"aggression": 15,
@@ -233,7 +263,10 @@ func _build_configs() -> void:
 			"color_focus": 0,
 			"hand_dump": 5,
 			"neighbor_focus": 25,
-			"endgame_focus": 25
+			"endgame_focus": 25,
+			"swap_focus": 25,
+			"target_focus": 60,
+			"roulette_focus": 10
 		},
 		AIPersonality.COLOR_MONARCH: {
 			"aggression": 0,
@@ -243,7 +276,10 @@ func _build_configs() -> void:
 			"color_focus": 65,
 			"hand_dump": -15,
 			"neighbor_focus": 10,
-			"endgame_focus": 10
+			"endgame_focus": 10,
+			"swap_focus": 10,
+			"target_focus": 10,
+			"roulette_focus": 0
 		}
 	}
 
@@ -259,6 +295,8 @@ func _on_turn_changed(holder: HandCardHolder) -> void:
 	play_turn()
 
 func play_turn() -> void:
+	if queue_manager != null and queue_manager.roulette_active:
+		return
 	if card_manager == null or queue_manager == null or hand_card_holder == null:
 		return
 	if card_manager.waiting_for_color:
@@ -364,6 +402,10 @@ func play_turn() -> void:
 				return
 
 	if _still_my_turn():
+		var playable_after := get_playable_cards()
+		if playable_after.is_empty() and _still_my_turn():
+			queue_manager.end_turn()
+			return
 		queue_manager.end_turn()
 
 func _still_my_turn() -> bool:
@@ -548,6 +590,87 @@ func score_card(card_view: CardView) -> int:
 			if endgame:
 				score += endgame_bonus + same_color_count * 10
 
+		CardResource.CardType.WILD_DRAW_REVERSE:
+			score += int(cfg["prefer_draw"])
+			score += int(cfg["prefer_action"])
+			score += int(cfg["save_wild_draw"]) / 2
+			score += int(cfg["prefer_skip_reverse"])
+			score += int(pcfg["aggression"])
+			score += 60
+			if queue_manager != null and queue_manager.turn_order.size() == 2:
+				score -= 250000
+			if next_is_threat:
+				score += (neighbor_focus * 2) + int(cfg["punish_low"]) * 2 + int(pcfg["punish"])
+			elif global_low:
+				score += int(cfg["punish_low"]) + int(pcfg["punish"]) / 2
+
+			if endgame:
+				score += endgame_bonus * 2
+
+		CardResource.CardType.SWAP_HANDS:
+			score += int(cfg["prefer_swap"])
+			score += int(cfg["prefer_action"])
+			score += int(pcfg["swap_focus"])
+			score += int(pcfg["punish"]) / 2
+
+			if global_low:
+				score += int(cfg["punish_low"]) + int(pcfg["punish"])
+			if next_is_threat:
+				score += neighbor_focus + int(cfg["punish_low"])
+
+			if my_count <= 3:
+				score -= 150
+
+			if endgame:
+				score += endgame_bonus
+
+		CardResource.CardType.TARGET_DRAW:
+			score += int(cfg["prefer_target_draw"])
+			score += int(cfg["prefer_action"])
+			score += int(pcfg["target_focus"])
+			score += int(pcfg["punish"])
+
+			score += int(card.value) * 18
+
+			if next_is_threat:
+				score += (neighbor_focus * 2) + int(cfg["punish_low"]) * 2 + int(pcfg["punish"])
+			elif global_low:
+				score += int(cfg["punish_low"]) + int(pcfg["punish"]) / 2
+
+			if endgame:
+				score += endgame_bonus
+
+		CardResource.CardType.MULTI_TARGET_DRAW:
+			score += int(cfg["prefer_target_draw"])
+			score += int(cfg["prefer_action"])
+			score += int(pcfg["target_focus"]) / 2
+			score += int(pcfg["punish"]) / 2
+
+			score += int(card.value) * 9
+
+			if global_low:
+				score += int(cfg["punish_low"]) * 2 + int(pcfg["punish"])
+
+			if my_count <= 3:
+				score -= 120
+
+			if endgame:
+				score += endgame_bonus / 2
+
+		CardResource.CardType.WILD_COLOR_ROULET:
+			score += int(cfg["prefer_roulette"])
+			score += int(cfg["prefer_action"])
+			score += int(pcfg["roulette_focus"])
+			score += int(pcfg["chaos"]) / 2
+
+			if next_is_threat:
+				score += neighbor_focus + int(cfg["punish_low"])
+			if global_low:
+				score += int(cfg["punish_low"]) / 2
+
+			if endgame:
+				score += endgame_bonus
+
 	score += int(my_count) * int(cfg["hand_dump"]) / 6
 
 	if personality == AIPersonality.CHAOS:
@@ -627,6 +750,21 @@ func score_place_all_finisher(card_view: CardView, cfg: Dictionary, pcfg: Dictio
 			score += int(cfg["prefer_normal"])
 			score += (9 - card.value)
 			score += int(pcfg["conserve"]) / 2
+
+		CardResource.CardType.TARGET_DRAW:
+			score += int(cfg["prefer_target_draw"])
+			score += int(pcfg["target_focus"])
+			score += int(card.value) * 15
+
+		CardResource.CardType.MULTI_TARGET_DRAW:
+			score += int(cfg["prefer_target_draw"]) / 2
+			score += int(pcfg["target_focus"]) / 2
+			score += int(card.value) * 10
+
+		CardResource.CardType.WILD_COLOR_ROULET:
+			score += int(cfg["prefer_roulette"])
+			score += int(pcfg["roulette_focus"])
+			score += int(pcfg["chaos"]) / 2
 
 	return score
 
@@ -796,6 +934,11 @@ func choose_opponents_least_common_color() -> CardResource.CardColor:
 
 	return best_color
 
+
+## ===========================
+## OMEGA EXTENSIONS (FULL)
+## ===========================
+
 func _omega_choose_best_card(playable: Array[CardView]) -> CardView:
 	var best := playable[0]
 	var best_score := -999999
@@ -856,6 +999,16 @@ func _omega_score_move(card_view: CardView) -> int:
 			s += 120000
 		if card.type == CardResource.CardType.REVERSE:
 			s += 150000
+		if card.type == CardResource.CardType.TARGET_DRAW:
+			s += 280000 + int(card.value) * 22000
+		if card.type == CardResource.CardType.MULTI_TARGET_DRAW:
+			s += 150000 + int(card.value) * 14000
+		if card.type == CardResource.CardType.WILD_DRAW_REVERSE:
+			s += 330000 + int(card.value) * 45000
+		if card.type == CardResource.CardType.WILD_COLOR_ROULET:
+			s += 170000
+		if card.type == CardResource.CardType.SWAP_HANDS:
+			s += 120000
 
 	if global_one and !next_is_one:
 		if card.type == CardResource.CardType.NUMBER:
@@ -870,6 +1023,10 @@ func _omega_score_move(card_view: CardView) -> int:
 			s += 90000
 		if card.type == CardResource.CardType.REVERSE:
 			s += 70000
+		if card.type == CardResource.CardType.TARGET_DRAW:
+			s += 160000 + int(card.value) * 18000
+		if card.type == CardResource.CardType.WILD_DRAW_REVERSE:
+			s += 260000 + int(card.value) * 32000
 
 	s += (25 - my_count) * 75
 
@@ -979,6 +1136,58 @@ func _omega_score_move(card_view: CardView) -> int:
 			if endgame:
 				s += 65000
 
+		CardResource.CardType.WILD_DRAW_REVERSE:
+			s += 50000 + int(card.value) * 10500
+			s += 22000
+
+			if early_game:
+				s -= 16000
+
+			if next_is_threat:
+				s += 75000 + int(card.value) * 12000
+			elif global_low:
+				s += 32000
+
+			if endgame:
+				s += 95000
+
+		CardResource.CardType.SWAP_HANDS:
+			var nextc := _omega_next_player_card_count()
+			if my_count >= 7 and nextc <= 4:
+				s += 120000
+			elif my_count >= 8:
+				s += 65000
+			else:
+				s += 9000
+
+			if endgame:
+				s -= 85000
+
+		CardResource.CardType.TARGET_DRAW:
+			s += 52000 + int(card.value) * 12000
+			if next_is_threat:
+				s += 85000
+			elif global_low:
+				s += 35000
+			if endgame:
+				s += 25000
+
+		CardResource.CardType.MULTI_TARGET_DRAW:
+			s += 24000 + int(card.value) * 9000
+			if global_low:
+				s += 65000
+			if endgame:
+				s += 15000
+
+		CardResource.CardType.WILD_COLOR_ROULET:
+			s += 45000
+			if next_is_threat:
+				s += 50000
+			if global_low:
+				s += 25000
+			if endgame:
+				s += 60000
+
 		CardResource.CardType.PLACE_ALL:
 			if same_color_count >= 2 and _omega_has_place_all_finisher(card.color):
 				s += 75000 + same_color_count * 15000
@@ -998,10 +1207,16 @@ func _omega_score_move(card_view: CardView) -> int:
 			s += 150000
 		if card.type == CardResource.CardType.DRAW or card.type == CardResource.CardType.WILD_DRAW:
 			s += 200000
+		if card.type == CardResource.CardType.WILD_DRAW_REVERSE:
+			s += 260000
+		if card.type == CardResource.CardType.TARGET_DRAW:
+			s += 220000
 		if card.type == CardResource.CardType.REVERSE:
 			s += 90000
 		if card.type == CardResource.CardType.WILD:
 			s += 85000
+		if card.type == CardResource.CardType.WILD_COLOR_ROULET:
+			s += 150000
 		if card.type == CardResource.CardType.PLACE_ALL and same_color_count >= 2:
 			s += 120000
 
@@ -1021,14 +1236,18 @@ func _omega_peek_bonus_for_card(card: CardResource) -> int:
 			continue
 
 		if c.type == CardResource.CardType.WILD_DRAW or c.type == CardResource.CardType.DRAW:
-			if card.type == CardResource.CardType.DRAW or card.type == CardResource.CardType.WILD_DRAW:
+			if card.type == CardResource.CardType.DRAW or card.type == CardResource.CardType.WILD_DRAW or card.type == CardResource.CardType.WILD_DRAW_REVERSE:
 				bonus += 6500
 			if card.type == CardResource.CardType.SKIP or card.type == CardResource.CardType.REVERSE:
 				bonus += 3200
 
 		if c.type == CardResource.CardType.WILD:
-			if card.type == CardResource.CardType.WILD:
+			if card.type == CardResource.CardType.WILD or card.type == CardResource.CardType.SWAP_HANDS:
 				bonus += 2800
+
+		if c.type == CardResource.CardType.TARGET_DRAW or c.type == CardResource.CardType.MULTI_TARGET_DRAW:
+			if card.type == CardResource.CardType.TARGET_DRAW or card.type == CardResource.CardType.MULTI_TARGET_DRAW:
+				bonus += 4200
 
 	return bonus
 
@@ -1089,14 +1308,18 @@ func _omega_choose_best_place_all_finisher(candidates: Array[CardView]) -> CardV
 					s += 42000
 			CardResource.CardType.NUMBER:
 				s += 8000 + (9 - card.value) * 800
+			CardResource.CardType.TARGET_DRAW:
+				s += 62000 + int(card.value) * 10000
+			CardResource.CardType.MULTI_TARGET_DRAW:
+				s += 42000 + int(card.value) * 8000
 
 		if next_threat:
-			if card.type == CardResource.CardType.DRAW or card.type == CardResource.CardType.SKIP:
+			if card.type == CardResource.CardType.DRAW or card.type == CardResource.CardType.SKIP or card.type == CardResource.CardType.TARGET_DRAW:
 				s += 55000
 
 		if endgame:
 			s += 45000
-			if card.type == CardResource.CardType.DRAW or card.type == CardResource.CardType.SKIP:
+			if card.type == CardResource.CardType.DRAW or card.type == CardResource.CardType.SKIP or card.type == CardResource.CardType.TARGET_DRAW:
 				s += 35000
 
 		if s > best_score:
@@ -1259,17 +1482,33 @@ func _omega_find_perfect_draw_candidate(range: int = 6) -> CardResource:
 				score += 300000 + int(c.value) * 25000
 			if c.type == CardResource.CardType.WILD_DRAW:
 				score += 450000 + int(c.value) * 50000
+			if c.type == CardResource.CardType.WILD_DRAW_REVERSE:
+				score += 520000 + int(c.value) * 55000
+			if c.type == CardResource.CardType.TARGET_DRAW:
+				score += 380000 + int(c.value) * 32000
 			if c.type == CardResource.CardType.WILD:
 				score += 200000
+			if c.type == CardResource.CardType.SWAP_HANDS:
+				score += 160000
 			if c.type == CardResource.CardType.REVERSE:
 				score += 150000
 
 		if c.type == CardResource.CardType.WILD_DRAW:
 			score += 80000
+		if c.type == CardResource.CardType.WILD_DRAW_REVERSE:
+			score += 110000
 		if c.type == CardResource.CardType.DRAW:
 			score += 50000
+		if c.type == CardResource.CardType.TARGET_DRAW:
+			score += 75000
+		if c.type == CardResource.CardType.MULTI_TARGET_DRAW:
+			score += 55000
 		if c.type == CardResource.CardType.SKIP:
 			score += 35000
+		if c.type == CardResource.CardType.WILD_COLOR_ROULET:
+			score += 45000
+		if c.type == CardResource.CardType.SWAP_HANDS:
+			score += 42000
 
 		return score
 	)

@@ -4,7 +4,20 @@ class_name CardResource
 
 enum CardColor { RED, GREEN, BLUE, YELLOW, BLACK }
 enum CardSymbol { HEART, CLUB, SPADE, DIAMOND }
-enum CardType { NUMBER, SKIP, REVERSE, DRAW, WILD, WILD_DRAW, PLACE_ALL }
+enum CardType { 
+	NUMBER, 
+	SKIP, 
+	REVERSE, 
+	DRAW, 
+	WILD, 
+	WILD_DRAW, 
+	PLACE_ALL, 
+	WILD_DRAW_REVERSE, 
+	SWAP_HANDS, 
+	TARGET_DRAW, 
+	WILD_COLOR_ROULET, 
+	MULTI_TARGET_DRAW 
+}
 
 const BLACK: Texture2D = preload("uid://xspumfxdwrqn")
 const BLUE: Texture2D = preload("uid://cxov74crw1ujc")
@@ -18,6 +31,11 @@ const SKIP_ICON: Texture2D = preload("uid://dmfqk7awjm070")
 const WILD_ICON: Texture2D = preload("uid://bxv1k8rgyqe5j")
 const WILDDRAW_ICON: Texture2D = preload("uid://tbva5m4rm4g4")
 const PLACE_ALL_ICON: Texture2D = preload("uid://5lfp3wlw4ueu")
+const WILD_REVERSE_ICON: Texture2D = preload("uid://cvvu8xdx8585x")
+const SWAP_HANDS_ICON: Texture2D = preload("uid://6807rhm30km5")
+const TARGET_ICON: Texture2D = preload("uid://dg7ale62lsylk")
+const COLOR_ROULETTE_ICON: Texture2D = preload("uid://boyrnbacyt0pk")
+const MULTI_TARGET: Texture2D = preload("uid://b7ru1auff4bah")
 
 const CLUB: Texture2D = preload("uid://41e111jurgy5")
 const HEART: Texture2D = preload("uid://8p7uyuv60l14")
@@ -40,7 +58,7 @@ func get_background_texture(hidden_card: bool = false) -> Texture2D:
 		CardColor.BLACK: return BLACK
 	return RED
 
-## Get display text for number and draw cards
+## Get display text for number and draw-like cards
 func get_display_text() -> String:
 	match type:
 		CardType.NUMBER:
@@ -48,6 +66,12 @@ func get_display_text() -> String:
 		CardType.DRAW:
 			return "+" + str(value)
 		CardType.WILD_DRAW:
+			return "+" + str(value)
+		CardType.WILD_DRAW_REVERSE:
+			return "+" + str(value)
+		CardType.TARGET_DRAW:
+			return "+" + str(value)
+		CardType.MULTI_TARGET_DRAW:
 			return "+" + str(value)
 	return ""
 
@@ -64,6 +88,16 @@ func get_symbol_texture() -> Texture2D:
 			return WILDDRAW_ICON
 		CardType.PLACE_ALL:
 			return PLACE_ALL_ICON
+		CardType.WILD_DRAW_REVERSE:
+			return WILD_REVERSE_ICON
+		CardType.SWAP_HANDS:
+			return SWAP_HANDS_ICON
+		CardType.TARGET_DRAW:
+			return TARGET_ICON
+		CardType.WILD_COLOR_ROULET:
+			return COLOR_ROULETTE_ICON
+		CardType.MULTI_TARGET_DRAW:
+			return MULTI_TARGET
 	return null
 
 ## Get colorblind symbol for a given color

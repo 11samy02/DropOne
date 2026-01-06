@@ -123,7 +123,15 @@ func load_card() -> void:
 			corner_num.hide()
 			shadow_symbol.show()
 
-		if _card_res.type != CardResource.CardType.WILD and _card_res.type != CardResource.CardType.WILD_DRAW:
+		var is_wild_style := (
+			_card_res.type == CardResource.CardType.WILD
+			or _card_res.type == CardResource.CardType.WILD_DRAW
+			or _card_res.type == CardResource.CardType.WILD_DRAW_REVERSE
+			or _card_res.type == CardResource.CardType.SWAP_HANDS
+			or _card_res.type == CardResource.CardType.WILD_COLOR_ROULET
+		)
+
+		if !is_wild_style:
 			symbol.modulate = c
 			shadow_symbol.show()
 		else:

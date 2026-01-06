@@ -8,6 +8,8 @@ const HAND_CARD_HOLDER = preload("uid://bpglgdslmw461")
 @export var card_manager: CardManager
 @export var queue_manager: QueueManager
 @export var is_bot := false
+@export var profile: PlayerProfile
+
 
 var player_index := -1
 var bot_index := -1
@@ -71,11 +73,16 @@ func _compare_cards(a: CardResource, b: CardResource) -> bool:
 	var type_order := {
 		CardResource.CardType.NUMBER: 0,
 		CardResource.CardType.DRAW: 1,
-		CardResource.CardType.SKIP: 2,
-		CardResource.CardType.REVERSE: 3,
-		CardResource.CardType.PLACE_ALL: 4,
-		CardResource.CardType.WILD: 5,
-		CardResource.CardType.WILD_DRAW: 6
+		CardResource.CardType.TARGET_DRAW: 2,
+		CardResource.CardType.MULTI_TARGET_DRAW: 3,
+		CardResource.CardType.SKIP: 4,
+		CardResource.CardType.REVERSE: 5,
+		CardResource.CardType.PLACE_ALL: 6,
+		CardResource.CardType.WILD: 7,
+		CardResource.CardType.WILD_DRAW: 8,
+		CardResource.CardType.WILD_DRAW_REVERSE: 9,
+		CardResource.CardType.SWAP_HANDS: 10,
+		CardResource.CardType.WILD_COLOR_ROULET: 11
 	}
 
 	var ca = color_order[a.color]
@@ -83,8 +90,8 @@ func _compare_cards(a: CardResource, b: CardResource) -> bool:
 	if ca != cb:
 		return ca < cb
 
-	var ta = type_order[a.type]
-	var tb = type_order[b.type]
+	var ta = type_order.get(a.type, 999)
+	var tb = type_order.get(b.type, 999)
 	if ta != tb:
 		return ta < tb
 
@@ -170,14 +177,17 @@ func set_card(card_view: CardView) -> void:
 	card_view.smooth_move_button_to_top_card_juicy(animation_duration)
 	await get_tree().create_timer(animation_duration).timeout
 
-
 	if is_instance_valid(card_view):
 		remove_child(card_view)
 		card_view.queue_free()
 
 	if queue_manager != null:
-		if played_card_res.type == CardResource.CardType.WILD or played_card_res.type == CardResource.CardType.WILD_DRAW:
-			queue_manager.set_wild_color_owner(self)
+		match played_card_res.type:
+			CardResource.CardType.WILD, \
+			CardResource.CardType.WILD_DRAW, \
+			CardResource.CardType.WILD_DRAW_REVERSE, \
+			CardResource.CardType.SWAP_HANDS:
+				queue_manager.set_wild_color_owner(self)
 
 	card_manager.set_top_card_runtime(played_card_res)
 
@@ -191,51 +201,56 @@ func set_card(card_view: CardView) -> void:
 		_waiting_color_turn_end = true
 	elif played_card_res.type != CardResource.CardType.PLACE_ALL:
 		queue_manager.register_card_play(played_card_res)
-	
+
 	if _queued != null and is_instance_valid(_queued):
 		var next := _queued
 		_queued = null
 		call_deferred("set_card", next)
 
-
-## Returns whether a card may be played under the current top card and game rules (including draw stacking and place-all mode)
+## Returns whether a card may be played under the current top card and game rules
 func can_play_card(card_res: CardResource) -> bool:
 	if card_res == null:
 		return false
-	
+
 	if queue_manager != null and queue_manager.place_all_active:
 		if queue_manager.place_all_owner != self:
 			return false
 		if card_res.color != queue_manager.place_all_color:
 			return false
 		return true
-	
+
+	if queue_manager != null and queue_manager.target_draw_active:
+		if card_res.type != CardResource.CardType.TARGET_DRAW and card_res.type != CardResource.CardType.MULTI_TARGET_DRAW:
+			return false
+		return card_res.value == queue_manager.target_draw_value
+
 	if queue_manager != null and queue_manager.draw_stack_amount > 0:
 		if queue_manager.draw_stack_is_wild:
 			return false
 		if card_res.type != CardResource.CardType.DRAW:
 			return false
-		
+
 		if card_res.value == queue_manager.draw_stack_min_value:
 			return true
-		
+
 		if card_res.value > queue_manager.draw_stack_min_value:
 			return card_res.color == queue_manager.draw_stack_color
-		
+
 		return false
-	
+
 	var top := card_manager.top_card
 	if top == null:
 		return false
-	
+
 	var current_color := card_manager.current_color
-	
-	if card_res.type == CardResource.CardType.WILD or card_res.type == CardResource.CardType.WILD_DRAW:
-		return true
-	
+
+	match card_res.type:
+		CardResource.CardType.WILD, CardResource.CardType.WILD_DRAW, CardResource.CardType.WILD_DRAW_REVERSE, CardResource.CardType.SWAP_HANDS, CardResource.CardType.WILD_COLOR_ROULET:
+			return true
+
 	if card_res.color == current_color and card_res.color != CardResource.CardColor.BLACK:
 		return true
-	
+
 	if card_res.type == top.type and card_res.type != CardResource.CardType.NUMBER:
 		if card_res.type == CardResource.CardType.DRAW:
 			if top.type == CardResource.CardType.DRAW:
@@ -244,14 +259,12 @@ func can_play_card(card_res: CardResource) -> bool:
 				if card_res.color == top.color and card_res.value > top.value:
 					return true
 				return false
-
 			return card_res.color == current_color
-
 		return true
-	
+
 	if card_res.type == CardResource.CardType.NUMBER and top.type == CardResource.CardType.NUMBER and card_res.value == top.value:
 		return true
-	
+
 	return false
 
 ## Sorts the full hand instantly into correct order using the compare rules
@@ -306,50 +319,28 @@ func _after_color_selected() -> void:
 		queue_manager.register_card_play(card_manager.top_card)
 		queue_manager.clear_wild_owner()
 
-func start_place_all_visual_resolve(finisher_view: CardView) -> void:
-	if finisher_view == null or !is_instance_valid(finisher_view):
-		return
-	if finisher_view.card_res == null:
-		return
-	
-	var color := finisher_view.card_res.color
-	
-	var to_play: Array[CardView] = []
-	for c in get_children():
-		if c is CardView and c != finisher_view and c.card_res != null:
-			if c.card_res.color == color:
-				to_play.append(c)
-	
-	for cv in to_play:
-		if cv == null or !is_instance_valid(cv):
-			continue
-		
-		var res := cv.card_res
-		cv.set_clickable(false, true)
-		cv.smooth_move_button_to_top_card_juicy(0.22, 10.0)
-		await get_tree().create_timer(0.22).timeout
-		
-		if is_instance_valid(cv):
-			remove_child(cv)
-			cv.queue_free()
-		
-		card_manager.set_top_card_runtime(res)
-		await get_tree().create_timer(0.05).timeout
-	
-	var finisher_res := finisher_view.card_res
-	finisher_view.set_clickable(false, true)
-	finisher_view.smooth_move_button_to_top_card_juicy(0.25, 12.0)
-	await get_tree().create_timer(0.25).timeout
-	
-	if is_instance_valid(finisher_view):
-		remove_child(finisher_view)
-		finisher_view.queue_free()
-	
-	card_manager.set_top_card_runtime(finisher_res)
-
+## Returns all card resources currently inside this hand
 func get_all_card_resources() -> Array[CardResource]:
 	var arr: Array[CardResource] = []
 	for c in get_children():
 		if c is CardView and c.card_res != null:
 			arr.append(c.card_res)
 	return arr
+
+func setup_profile(index: int, bot: bool, name: String = "") -> void:
+	player_index = index
+	is_bot = bot
+
+	if profile == null:
+		profile = PlayerProfile.new()
+
+	profile.player_index = index
+	profile.is_bot = bot
+	profile.holder = self
+
+	if name.strip_edges() != "":
+		profile.player_name = name
+	elif profile.player_name.strip_edges() == "":
+		profile.player_name = "Player " + str(index + 1)
+
+	profile.ensure_picture()

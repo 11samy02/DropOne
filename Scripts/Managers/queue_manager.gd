@@ -7,8 +7,6 @@ class_name QueueManager
 
 @export var player_count := 1
 @export var start_card_count := 7
-
-## Profiles for each bot in order (index 0 = first bot, etc.)
 @export var bot_profiles: Array[BotProfile] = []
 
 var winners: Array[HandCardHolder] = []
@@ -29,11 +27,23 @@ var draw_stack_is_wild := false
 var draw_stack_color: CardResource.CardColor = CardResource.CardColor.BLACK
 var wild_color_owner: HandCardHolder = null
 
+var target_draw_active := false
+var target_draw_value := 0
+var target_draw_is_multi := false
+var target_draw_color: CardResource.CardColor = CardResource.CardColor.BLACK
+var pending_target_draw_owner: HandCardHolder = null
+
 var place_all_active := false
 var place_all_owner: HandCardHolder = null
 var place_all_color: CardResource.CardColor = CardResource.CardColor.RED
 var place_all_resolving := false
 
+var roulette_active := false
+var roulette_waiting_for_color := false
+var roulette_owner: HandCardHolder = null
+var roulette_target: HandCardHolder = null
+var roulette_chosen_color: CardResource.CardColor = CardResource.CardColor.BLACK
+var roulette_step_running := false
 
 
 func _ready() -> void:
@@ -44,96 +54,103 @@ func _ready() -> void:
 	start_game()
 
 
-## Connects shared gameplay signals
 func connect_signals() -> void:
 	Signals.DECK_draw_pressed.connect(on_draw_pressed)
+	Signals.TARGET_target_selected.connect(resolve_target_draw)
+	Signals.COLOR_color_selected.connect(_on_roulette_color_selected)
 
 
-## Returns the correct UI container to attach a specific holder to
 func get_container_for_holder(holder: HandCardHolder) -> Control:
 	if holder == null:
 		return player_container
-	
 	if !holder.is_bot and holder.player_index == 0:
 		return player_container
-	
 	var index := get_opponent_index(holder)
 	if index >= 0 and index < other_player_containers.size():
 		return other_player_containers[index]
-	
 	return player_container
 
 
-## Returns the correct "opponent index" used for placement in UI containers
 func get_opponent_index(holder: HandCardHolder) -> int:
 	if holder == null:
 		return -1
-	
 	if !holder.is_bot:
 		return holder.player_index - 1
-	
 	return max(0, player_count - 1) + holder.bot_index
 
 
-## Creates all human players based on player_count
 func create_players() -> void:
 	players.clear()
-	
 	for i in range(player_count):
 		var holder: HandCardHolder = HandCardHolder.create()
 		holder.is_bot = false
 		holder.player_index = i
 		holder.queue_manager = self
 		holder.card_manager = card_manager
-		
+
+		if holder.profile == null:
+			holder.profile = PlayerProfile.new()
+
+		holder.profile.player_index = i
+		holder.profile.is_bot = false
+		holder.profile.player_name = "Player " + str(i + 1)
+		holder.profile.holder = holder
+		holder.profile.ensure_picture()
+
 		get_container_for_holder(holder).add_child(holder)
 		players.append(holder)
 
 
-## Creates all bots based on bot_profiles size and applies their profile settings
 func create_bots() -> void:
 	bots.clear()
-	
 	for i in range(bot_profiles.size()):
 		var holder: HandCardHolder = HandCardHolder.create()
 		holder.is_bot = true
 		holder.bot_index = i
 		holder.queue_manager = self
 		holder.card_manager = card_manager
-		
+
+		if holder.profile == null:
+			holder.profile = PlayerProfile.new()
+
+		var bot_profile := _get_bot_profile(i)
+
+		holder.profile.player_index = max(0, player_count - 1) + i
+		holder.profile.is_bot = true
+		holder.profile.player_name = bot_profile.name if bot_profile.name.strip_edges() != "" else "Bot " + str(i + 1)
+		holder.profile.holder = holder
+		holder.profile.ensure_picture()
+
 		get_container_for_holder(holder).add_child(holder)
 		bots.append(holder)
-		
-		var profile := _get_bot_profile(i)
-		
+
 		var ki := KIController.new()
 		ki.hand_card_holder = holder
 		ki.queue_manager = self
 		ki.card_manager = card_manager
-		ki.difficulty = profile.difficulty
-		ki.personality = profile.personality
+		ki.difficulty = bot_profile.difficulty
+		ki.personality = bot_profile.personality
 		add_child(ki)
 
 
-## Returns the bot profile for a given index or generates a fallback profile if missing
 func _get_bot_profile(index: int) -> BotProfile:
 	if index >= 0 and index < bot_profiles.size():
 		if bot_profiles[index] != null:
 			return bot_profiles[index]
-	
 	var fallback := BotProfile.new()
 	fallback.name = "Bot " + str(index + 1)
 	return fallback
 
 
-## Builds the turn order list (players first, then bots)
 func build_turn_order() -> void:
 	turn_order.clear()
 	turn_order.append_array(players)
 	turn_order.append_array(bots)
+	for h in turn_order:
+		if h != null and h.profile != null:
+			h.profile.holder = h
 
 
-## Starts the game flow and deals the starting hand
 func start_game() -> void:
 	current_turn_index = 0
 	has_played_this_turn = false
@@ -143,23 +160,21 @@ func start_game() -> void:
 	deal_starting_cards(start_card_count)
 
 
-## Returns the holder whose turn is currently active
 func get_current_holder() -> HandCardHolder:
 	return turn_order[current_turn_index]
 
 
-## Returns true if the passed holder is the current active holder
 func is_players_turn(holder: HandCardHolder) -> bool:
 	return holder == get_current_holder()
 
-## Determines if a holder is allowed to play a card right now
+
 func can_play_now(holder: HandCardHolder) -> bool:
 	if place_all_resolving:
 		return false
-	
+	if roulette_active:
+		return false
 	if holder == null:
 		return false
-	
 	if place_all_active:
 		if holder != place_all_owner:
 			return false
@@ -168,7 +183,6 @@ func can_play_now(holder: HandCardHolder) -> bool:
 		if card_manager != null and card_manager.waiting_for_color:
 			return false
 		return true
-	
 	if !is_players_turn(holder):
 		return false
 	if has_played_this_turn:
@@ -178,27 +192,24 @@ func can_play_now(holder: HandCardHolder) -> bool:
 	return true
 
 
-
-
-## Registers the played card and applies its effect logic to the turn system
 func register_card_play(played_card: CardResource) -> void:
 	if played_card == null:
 		end_turn()
 		return
-	
 	if place_all_active:
 		return
-	
+
 	has_played_this_turn = true
-	
+
 	if _check_and_finish_current_holder():
 		_after_holder_finished()
 		return
-	
+
 	match played_card.type:
 		CardResource.CardType.SKIP:
 			next_turn(true)
 			return
+
 		CardResource.CardType.REVERSE:
 			if turn_order.size() == 2:
 				next_turn(true)
@@ -206,59 +217,79 @@ func register_card_play(played_card: CardResource) -> void:
 				apply_reverse()
 				end_turn()
 			return
+
 		CardResource.CardType.DRAW:
 			start_or_stack_draw(played_card.value, false)
 			end_turn()
 			return
+
 		CardResource.CardType.WILD_DRAW:
 			start_or_stack_draw(played_card.value, true)
 			end_turn()
 			return
-	
+
+		CardResource.CardType.WILD_DRAW_REVERSE:
+			if turn_order.size() == 2:
+				start_or_stack_draw(played_card.value, true)
+				force_wild_draw_continue(get_current_holder())
+				end_turn()
+				return
+			apply_reverse()
+			start_or_stack_draw(played_card.value, true)
+			end_turn()
+			return
+
+		CardResource.CardType.SWAP_HANDS:
+			resolve_swap_hands(get_current_holder())
+			end_turn()
+			return
+
+		CardResource.CardType.TARGET_DRAW:
+			start_target_draw(get_current_holder(), played_card.value, false, played_card.color)
+			return
+
+		CardResource.CardType.MULTI_TARGET_DRAW:
+			start_target_draw(get_current_holder(), played_card.value, true, played_card.color)
+			return
+
+		CardResource.CardType.WILD_COLOR_ROULET:
+			start_color_roulette(get_current_holder())
+			return
+
 	end_turn()
 
 
-## Handles progression after a holder finished (winner removed)
 func _after_holder_finished() -> void:
 	has_played_this_turn = false
 	has_drawn_this_turn = false
-	
 	if turn_order.size() == 1:
 		call_deferred("_restart_match")
 		return
-	
 	if current_turn_index >= turn_order.size():
 		current_turn_index = 0
-	
 	update_turn_state()
 	call_deferred("_handle_start_of_turn_effects")
 
-## Restarts the scene when only one player remains
+
 func _restart_match() -> void:
 	await get_tree().create_timer(1.0).timeout
 	get_tree().reload_current_scene()
 
 
-## Flips the direction of play
 func apply_reverse() -> void:
 	direction *= -1
 
 
-## Adds draw stack pressure and keeps track of minimum stack value and wild status
 func start_or_stack_draw(value: int, is_wild: bool) -> void:
 	draw_stack_amount += value
 	draw_stack_min_value = max(draw_stack_min_value, value)
-	
 	if is_wild:
 		draw_stack_is_wild = true
 		return
-		
 	if draw_stack_color == CardResource.CardColor.BLACK:
 		draw_stack_color = card_manager.top_card.color
 
 
-
-## Handles human draw button logic including draw stack interaction
 func on_draw_pressed() -> void:
 	var holder := get_current_holder()
 	if holder == null:
@@ -273,32 +304,33 @@ func on_draw_pressed() -> void:
 		return
 	if card_manager != null and card_manager.waiting_for_color:
 		return
-	
+	if roulette_active:
+		return
+
 	if draw_stack_amount > 0:
 		if draw_stack_is_wild:
 			force_wild_draw_continue(holder)
 		else:
 			force_draw_stack_continue(holder)
 		return
-	
-	var card := card_manager.draw_card()
+
+	var card = card_manager.draw_card()
 	if card == null:
 		return
-	
+
 	holder.add_card(card)
 	holder.refresh_playable_cards()
 	has_drawn_this_turn = true
-	
+
 	if !allow_play_after_draw:
 		end_turn()
 		return
-	
+
 	await get_tree().create_timer(0.25).timeout
 	if !holder_has_playable_card(holder):
 		end_turn()
 
 
-## Allows a bot to draw one card on its turn
 func bot_draw_current() -> bool:
 	var holder := get_current_holder()
 	if holder == null:
@@ -311,26 +343,25 @@ func bot_draw_current() -> bool:
 		return false
 	if card_manager != null and card_manager.waiting_for_color:
 		return false
-	
+	if roulette_active:
+		return false
 	if draw_stack_amount > 0:
 		return false
-	
-	var card := card_manager.draw_card()
+
+	var card = card_manager.draw_card()
 	if card == null:
 		return false
-	
+
 	holder.add_card(card)
 	holder.refresh_playable_cards()
 	has_drawn_this_turn = true
 	return true
 
 
-## Ends the current turn normally
 func end_turn() -> void:
 	next_turn()
 
 
-## Advances to the next turn, optionally skipping one player
 func next_turn(skip_next: bool = false) -> void:
 	if turn_order.size() == 0:
 		return
@@ -338,46 +369,42 @@ func next_turn(skip_next: bool = false) -> void:
 		current_turn_index = 0
 		update_turn_state()
 		return
-	
+
 	var steps := 1
 	if skip_next:
 		steps = 2
-	
+
 	current_turn_index = (current_turn_index + direction * steps) % turn_order.size()
 	if current_turn_index < 0:
 		current_turn_index += turn_order.size()
-	
+
 	has_played_this_turn = false
 	has_drawn_this_turn = false
 	update_turn_state()
 	call_deferred("_handle_start_of_turn_effects")
 
 
-## Updates all holder turn states and emits the TURN_changed signal
 func update_turn_state() -> void:
 	for holder in turn_order:
 		holder.set_turn_active(is_players_turn(holder))
 	Signals.TURN_changed.emit(get_current_holder())
 
 
-## Deals starting cards to all players and bots
 func deal_starting_cards(cards_per_player: int = 7) -> void:
 	for holder in turn_order:
 		for i in range(cards_per_player):
-			var card := card_manager.draw_card()
+			var card = card_manager.draw_card()
 			if card == null:
 				return
 			holder.add_card(card)
 		holder.refresh_playable_cards()
 
 
-## Returns true if the current holder is the human player
 func is_human_turn() -> bool:
 	var holder := get_current_holder()
 	return holder != null and !holder.is_bot
 
 
-## Returns true if the holder has any playable card
 func holder_has_playable_card(holder: HandCardHolder) -> bool:
 	if holder == null:
 		return false
@@ -388,76 +415,75 @@ func holder_has_playable_card(holder: HandCardHolder) -> bool:
 	return false
 
 
-## Applies special stack effects at the beginning of a new turn
 func _handle_start_of_turn_effects() -> void:
+	if roulette_active:
+		_handle_roulette_start()
+		return
+
 	var holder := get_current_holder()
 	if holder == null:
 		return
-	
+
 	if draw_stack_amount > 0 and draw_stack_is_wild:
 		force_wild_draw_continue(holder)
 		return
-	
+
 	if draw_stack_amount > 0 and !draw_stack_is_wild and !holder.is_bot:
 		holder.refresh_playable_cards()
 		return
 
 
-## Forces wild draw stack resolution without skipping the player turn
 func force_wild_draw_continue(holder: HandCardHolder) -> void:
 	for i in range(draw_stack_amount):
-		var card := card_manager.draw_card()
+		var card = card_manager.draw_card()
 		if card == null:
 			break
 		holder.add_card(card)
-	
+
 	draw_stack_amount = 0
 	draw_stack_min_value = 0
 	draw_stack_is_wild = false
 	draw_stack_color = CardResource.CardColor.BLACK
 	holder.refresh_playable_cards()
 
-## Forces normal draw stack resolution without skipping the player turn
+
 func force_draw_stack_continue(holder: HandCardHolder) -> void:
 	for i in range(draw_stack_amount):
-		var card := card_manager.draw_card()
+		var card = card_manager.draw_card()
 		if card == null:
 			break
 		holder.add_card(card)
-	
+
 	draw_stack_amount = 0
 	draw_stack_min_value = 0
 	draw_stack_is_wild = false
 	draw_stack_color = CardResource.CardColor.BLACK
-	
+
 	holder.refresh_playable_cards()
 	has_drawn_this_turn = true
-	
+
 	await get_tree().create_timer(0.25).timeout
 	if !holder_has_playable_card(holder):
 		end_turn()
 
 
-## Returns the current draw stack text for UI display
 func get_draw_stack_text() -> String:
 	if draw_stack_amount <= 0:
 		return ""
 	return "+" + str(draw_stack_amount)
 
 
-## Returns the current turn direction
 func get_direction() -> int:
 	return direction
 
 
-## Removes the current holder if finished and adds them to winners
 func _check_and_finish_current_holder() -> bool:
 	var holder := get_current_holder()
 	if holder == null:
 		return false
 	if holder.get_child_count() > 0:
 		return false
-	
+
 	winners.append(holder)
 
 	var removed_index := current_turn_index
@@ -476,24 +502,20 @@ func _check_and_finish_current_holder() -> bool:
 	return true
 
 
-## Clears the wild owner reference
 func clear_wild_owner() -> void:
 	wild_color_owner = null
 
 
-## Sets the holder who is allowed to choose wild card color
 func set_wild_color_owner(holder: HandCardHolder) -> void:
 	wild_color_owner = holder
 
-## Starts place-all mode if the owner has at least one additional card of that color, otherwise resolves immediately as a normal play
+
 func start_place_all(holder: HandCardHolder, color: CardResource.CardColor, played_card: CardResource) -> void:
 	if holder == null or played_card == null:
 		return
-	
 	if !_holder_has_place_all_finisher(holder, color):
 		register_card_play(played_card)
 		return
-	
 	place_all_active = true
 	place_all_owner = holder
 	place_all_color = color
@@ -501,7 +523,7 @@ func start_place_all(holder: HandCardHolder, color: CardResource.CardColor, play
 	has_drawn_this_turn = false
 	update_turn_state()
 
-## Returns true if the holder has a valid finisher card for the current place-all color
+
 func _holder_has_place_all_finisher(holder: HandCardHolder, color: CardResource.CardColor) -> bool:
 	if holder == null:
 		return false
@@ -512,8 +534,6 @@ func _holder_has_place_all_finisher(holder: HandCardHolder, color: CardResource.
 	return false
 
 
-
-## Resolves place-all by auto-playing all matching cards silently and applying only the finisher effect
 func resolve_place_all(finisher_view: CardView) -> void:
 	if !place_all_active:
 		return
@@ -546,10 +566,7 @@ func resolve_place_all(finisher_view: CardView) -> void:
 		if c is CardView and c != finisher_view:
 			if is_instance_valid(c) and c.card_res != null:
 				if c.card_res.color == place_all_color:
-					to_play.append({
-						"cv": c,
-						"res": c.card_res
-					})
+					to_play.append({"cv": c, "res": c.card_res})
 
 	var delay_step := 0.04
 	var fly_duration := 0.28
@@ -558,10 +575,8 @@ func resolve_place_all(finisher_view: CardView) -> void:
 		var entry = to_play[i]
 		var cv: CardView = entry["cv"]
 		var res: CardResource = entry["res"]
-
 		if cv == null or !is_instance_valid(cv):
 			continue
-
 		var delay := float(i) * delay_step
 		call_deferred("_place_all_burst_launch_and_cleanup", cv, res, owner, delay, fly_duration, target_pos)
 
@@ -596,8 +611,9 @@ func resolve_place_all(finisher_view: CardView) -> void:
 	place_all_active = false
 	place_all_owner = null
 	place_all_resolving = false
-	
+
 	register_card_play(finisher_res)
+
 
 func _place_all_burst_launch_and_cleanup(cv: CardView, res: CardResource, owner: HandCardHolder, delay: float, fly_duration: float, target_pos: Vector2) -> void:
 	if cv == null or !is_instance_valid(cv):
@@ -619,15 +635,12 @@ func _place_all_burst_launch_and_cleanup(cv: CardView, res: CardResource, owner:
 		return
 
 	var start_pos := cv.global_position
-
 	if cv.get_parent() == owner:
 		owner.remove_child(cv)
 
 	ui_parent.add_child(cv)
 	cv.set_as_top_level(true)
 	cv.global_position = start_pos
-
-	# ✅ Force bot cards to show front while flying
 	cv.show_front = true
 	if cv.has_method("load_card"):
 		cv.load_card()
@@ -646,9 +659,304 @@ func _place_all_burst_launch_and_cleanup(cv: CardView, res: CardResource, owner:
 	card_manager.set_top_card_runtime(res)
 
 
-## Cancels place-all mode safely and ends the current turn
 func _cancel_place_all() -> void:
 	place_all_active = false
 	place_all_owner = null
 	place_all_color = CardResource.CardColor.RED
 	end_turn()
+
+
+func get_next_holder(from_holder: HandCardHolder) -> HandCardHolder:
+	if from_holder == null:
+		return null
+	if turn_order.size() <= 1:
+		return null
+	var idx := turn_order.find(from_holder)
+	if idx < 0:
+		return null
+	var n := (idx + direction) % turn_order.size()
+	if n < 0:
+		n += turn_order.size()
+	return turn_order[n]
+
+
+func get_valid_target_holders(exclude: HandCardHolder) -> Array[HandCardHolder]:
+	var res: Array[HandCardHolder] = []
+	for h in turn_order:
+		if h == null:
+			continue
+		if h == exclude:
+			continue
+		res.append(h)
+	return res
+
+
+func get_most_threatening_target(exclude: HandCardHolder) -> HandCardHolder:
+	var best: HandCardHolder = null
+	var best_count := 999999
+	for h in get_valid_target_holders(exclude):
+		var c := h.get_child_count()
+		if c < best_count:
+			best_count = c
+			best = h
+	return best
+
+
+func start_target_draw(owner: HandCardHolder, value: int, multi: bool, color: CardResource.CardColor) -> void:
+	target_draw_active = true
+	target_draw_value = value
+	target_draw_is_multi = multi
+	target_draw_color = color
+	pending_target_draw_owner = owner
+
+	if owner == null:
+		target_draw_active = false
+		return
+
+	if multi:
+		resolve_target_draw(null)
+		return
+
+	if owner.is_bot:
+		var target := get_most_threatening_target(owner)
+		resolve_target_draw(target)
+		return
+
+	Signals.TARGET_request_target_select.emit(owner, false)
+
+
+func resolve_target_draw(target_holder: HandCardHolder) -> void:
+	if !target_draw_active:
+		return
+
+	var owner := pending_target_draw_owner
+
+	if target_draw_is_multi:
+		for h in get_valid_target_holders(owner):
+			for i in range(target_draw_value):
+				var card := card_manager.draw_card()
+				if card == null:
+					break
+				h.add_card(card)
+			h.refresh_playable_cards()
+	else:
+		if target_holder == null:
+			target_holder = get_most_threatening_target(owner)
+		if target_holder != null:
+			for i in range(target_draw_value):
+				var card := card_manager.draw_card()
+				if card == null:
+					break
+				target_holder.add_card(card)
+			target_holder.refresh_playable_cards()
+
+	target_draw_active = false
+	target_draw_value = 0
+	target_draw_is_multi = false
+	target_draw_color = CardResource.CardColor.BLACK
+	pending_target_draw_owner = null
+
+	end_turn()
+
+
+func resolve_swap_hands(owner: HandCardHolder) -> void:
+	if owner == null:
+		return
+	if _check_and_finish_current_holder():
+		_after_holder_finished()
+		return
+	if owner.get_child_count() == 0:
+		return
+
+	var next_holder := get_next_holder(owner)
+	if next_holder == null:
+		return
+
+	var my_cards := owner.get_all_card_resources()
+	var opp_cards := next_holder.get_all_card_resources()
+
+	for c in owner.get_children():
+		if c is CardView:
+			owner.remove_child(c)
+			c.queue_free()
+
+	for c in next_holder.get_children():
+		if c is CardView:
+			next_holder.remove_child(c)
+			c.queue_free()
+
+	for r in opp_cards:
+		owner.add_card(r)
+
+	for r in my_cards:
+		next_holder.add_card(r)
+
+	owner.refresh_playable_cards()
+	next_holder.refresh_playable_cards()
+
+
+func start_color_roulette(owner: HandCardHolder) -> void:
+	if owner == null:
+		return
+
+	var target := get_next_holder(owner)
+	if target == null:
+		return
+
+	roulette_active = true
+	roulette_waiting_for_color = true
+	roulette_owner = owner
+	roulette_target = target
+	roulette_chosen_color = CardResource.CardColor.BLACK
+	roulette_step_running = false
+
+	has_played_this_turn = true
+	has_drawn_this_turn = false
+
+	next_turn(false)
+	await get_tree().process_frame
+
+	if roulette_target == null:
+		_end_roulette(false)
+		return
+
+	if roulette_target.is_bot:
+		var chosen := choose_color_for_roulette(roulette_target)
+		_on_roulette_color_selected(chosen)
+	else:
+		if card_manager != null:
+			card_manager.waiting_for_color = true
+		set_wild_color_owner(roulette_target)
+		Signals.COLOR_request_color_select.emit()
+
+func _on_roulette_color_selected(color: CardResource.CardColor) -> void:
+	if !roulette_active:
+		return
+	if roulette_target == null:
+		_end_roulette(false)
+		return
+	if get_current_holder() != roulette_target:
+		return
+
+	roulette_waiting_for_color = false
+	roulette_chosen_color = color
+
+	_apply_roulette_color_to_top_card(color)
+
+	clear_wild_owner()
+	_handle_roulette_start()
+
+func _handle_roulette_start() -> void:
+	if !roulette_active:
+		return
+	if roulette_target == null:
+		_end_roulette(false)
+		return
+
+	var holder := get_current_holder()
+	if holder != roulette_target:
+		_end_roulette(false)
+		return
+
+	if roulette_waiting_for_color:
+		return
+	if roulette_step_running:
+		return
+
+	roulette_step_running = true
+	call_deferred("_do_roulette_draw_step", holder)
+
+func _do_roulette_draw_step(holder: HandCardHolder) -> void:
+	if holder == null:
+		_end_roulette(false)
+		return
+
+	var card := card_manager.draw_card()
+	if card == null:
+		_end_roulette(false)
+		return
+
+	holder.add_card(card)
+	holder.refresh_playable_cards()
+
+	await get_tree().create_timer(0.22).timeout
+
+	if card.color == roulette_chosen_color:
+		_end_roulette(true)
+		holder.refresh_playable_cards()
+		return
+
+	roulette_step_running = false
+	_handle_roulette_start()
+
+func _end_roulette(success: bool) -> void:
+	roulette_active = false
+	roulette_waiting_for_color = false
+	roulette_owner = null
+	roulette_target = null
+	roulette_chosen_color = CardResource.CardColor.BLACK
+	roulette_step_running = false
+
+	if card_manager != null:
+		card_manager.waiting_for_color = false
+
+	if success:
+		has_drawn_this_turn = true
+		has_played_this_turn = false
+
+		var holder := get_current_holder()
+		if holder != null:
+			holder.refresh_playable_cards()
+
+		await get_tree().process_frame
+
+		var holder2 := get_current_holder()
+		if holder2 != null and holder2.is_bot:
+			for child in get_children():
+				if child is KIController and child.hand_card_holder == holder2:
+					child.call_deferred("play_turn")
+					return
+		return
+
+	end_turn()
+
+func choose_color_for_roulette(target: HandCardHolder) -> CardResource.CardColor:
+	if target == null:
+		return CardResource.CardColor.RED
+
+	if target.is_bot:
+		var counts := {
+			CardResource.CardColor.RED: 0,
+			CardResource.CardColor.GREEN: 0,
+			CardResource.CardColor.BLUE: 0,
+			CardResource.CardColor.YELLOW: 0
+		}
+
+		for c in target.get_children():
+			if c is CardView and c.card_res != null:
+				if c.card_res.color != CardResource.CardColor.BLACK:
+					counts[c.card_res.color] += 1
+
+		var best := CardResource.CardColor.RED
+		var best_count := 999999
+		for col in counts.keys():
+			if counts[col] < best_count:
+				best_count = counts[col]
+				best = col
+		return best
+
+	return CardResource.CardColor.RED
+
+func _apply_roulette_color_to_top_card(color: CardResource.CardColor) -> void:
+	if card_manager == null:
+		return
+
+	card_manager.current_color = color
+	card_manager.waiting_for_color = false
+
+	if card_manager.top_card != null:
+		card_manager.top_card.color = color
+
+	if card_manager.top_card_view != null and is_instance_valid(card_manager.top_card_view):
+		if card_manager.top_card_view.has_method("load_card"):
+			card_manager.top_card_view.load_card()

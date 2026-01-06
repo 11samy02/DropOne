@@ -1,0 +1,86 @@
+[gd_scene load_steps=8 format=3 uid="uid://h382lyh12543"]
+
+[ext_resource type="Texture2D" uid="uid://bsury0f65afv" path="res://Assets/ProfilePictures/1.png" id="1_r00uj"]
+[ext_resource type="Script" uid="uid://32cyh0ht4fuu" path="res://Scripts/View/player_profile_card.gd" id="1_wortx"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_usycu"]
+bg_color = Color(0.24352565, 0.2775189, 0.51581776, 1)
+border_width_left = 5
+border_width_top = 5
+border_width_right = 5
+border_width_bottom = 5
+border_color = Color(0.78039217, 0.7529412, 1, 1)
+corner_radius_top_left = 20
+corner_radius_top_right = 20
+expand_margin_left = 10.0
+expand_margin_top = 15.0
+expand_margin_right = 10.0
+expand_margin_bottom = 5.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_wortx"]
+bg_color = Color(0.24352565, 0.2775189, 0.51581776, 1)
+border_width_left = 5
+border_width_right = 5
+border_width_bottom = 5
+border_color = Color(0.78039217, 0.7529412, 1, 1)
+expand_margin_left = 10.0
+expand_margin_right = 10.0
+
+[sub_resource type="LabelSettings" id="LabelSettings_hj316"]
+font_size = 24
+font_color = Color(0.99999994, 0.89593154, 0.34504914, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_fbgq8"]
+bg_color = Color(0.11861736, 0.1657069, 0.28925824, 1)
+border_width_left = 5
+border_width_right = 5
+border_width_bottom = 5
+border_color = Color(0.78039217, 0.7529412, 1, 1)
+corner_radius_bottom_right = 20
+corner_radius_bottom_left = 20
+expand_margin_left = 10.0
+expand_margin_top = 5.0
+expand_margin_right = 10.0
+
+[sub_resource type="LabelSettings" id="LabelSettings_cam4c"]
+font_size = 24
+
+[node name="PlayerProfile" type="VBoxContainer"]
+alignment = 1
+script = ExtResource("1_wortx")
+
+[node name="Panel" type="Panel" parent="."]
+custom_minimum_size = Vector2(150, 150)
+layout_mode = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_usycu")
+
+[node name="profile" type="TextureRect" parent="Panel"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("1_r00uj")
+expand_mode = 1
+
+[node name="player_name" type="Label" parent="."]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_styles/normal = SubResource("StyleBoxFlat_wortx")
+text = "Player 1"
+label_settings = SubResource("LabelSettings_hj316")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="card_count" type="Label" parent="."]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_styles/normal = SubResource("StyleBoxFlat_fbgq8")
+text = "Player 1"
+label_settings = SubResource("LabelSettings_cam4c")
+horizontal_alignment = 1
+vertical_alignment = 1

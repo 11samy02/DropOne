@@ -139,4 +139,9 @@ static func _parse_type(s: String) -> CardResource.CardType:
 		"WILD": return CardResource.CardType.WILD
 		"WILD_DRAW": return CardResource.CardType.WILD_DRAW
 		"PLACE_ALL": return CardResource.CardType.PLACE_ALL
+		"WILD_DRAW_REVERSE": return CardResource.CardType.WILD_DRAW_REVERSE
+		"SWAP_HANDS": return CardResource.CardType.SWAP_HANDS
+		"TARGET_DRAW": return CardResource.CardType.TARGET_DRAW
+		"MULTI_TARGET_DRAW": return CardResource.CardType.MULTI_TARGET_DRAW
+		"WILD_COLOR_ROULET": return CardResource.CardType.WILD_COLOR_ROULET
 	return CardResource.CardType.NUMBER

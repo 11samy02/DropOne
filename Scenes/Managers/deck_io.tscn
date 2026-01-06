@@ -5,7 +5,7 @@
 [node name="DeckIO" type="Node"]
 script = ExtResource("1_ywkg1")
 deck_json = "{
-  \"deck_name\": \"Storm\",
+  \"deck_name\": \"BalancedTestDeck_8P\",
   \"number_rules\": {
     \"min_number\": 0,
     \"max_number\": 9,
@@ -16,72 +16,112 @@ deck_json = "{
   },
   \"entries\": [
     {
-      \"color\": \"RED\",
       \"type\": \"SKIP\",
       \"value\": 0,
-      \"count\": 3,
-      \"duplicate_for_all_colors\": true
+      \"count\": 2,
+      \"duplicate_for_all_colors\": true,
+      \"colors\": [\"RED\", \"GREEN\", \"BLUE\", \"YELLOW\"]
     },
     {
-      \"color\": \"RED\",
       \"type\": \"REVERSE\",
       \"value\": 0,
-      \"count\": 3,
-      \"duplicate_for_all_colors\": true
+      \"count\": 2,
+      \"duplicate_for_all_colors\": true,
+      \"colors\": [\"RED\", \"GREEN\", \"BLUE\", \"YELLOW\"]
     },
 
     {
-      \"color\": \"RED\",
-      \"type\": \"DRAW\",
-      \"value\": 1,
-      \"count\": 2,
-      \"duplicate_for_all_colors\": true
-    },
-    {
-      \"color\": \"RED\",
       \"type\": \"DRAW\",
       \"value\": 2,
       \"count\": 2,
-      \"duplicate_for_all_colors\": true
+      \"duplicate_for_all_colors\": true,
+      \"colors\": [\"RED\", \"GREEN\", \"BLUE\", \"YELLOW\"]
     },
     {
-      \"color\": \"RED\",
       \"type\": \"DRAW\",
-      \"value\": 3,
-      \"count\": 1,
-      \"duplicate_for_all_colors\": true
-    },
-
-    {
-      \"color\": \"BLACK\",
-      \"type\": \"WILD\",
-      \"value\": 0,
-      \"count\": 12,
-      \"duplicate_for_all_colors\": false
-    },
-    {
-      \"color\": \"BLACK\",
-      \"type\": \"WILD_DRAW\",
-      \"value\": 2,
-      \"count\": 8,
-      \"duplicate_for_all_colors\": false
-    },
-    {
-      \"color\": \"BLACK\",
-      \"type\": \"WILD_DRAW\",
       \"value\": 4,
-      \"count\": 6,
-      \"duplicate_for_all_colors\": false
+      \"count\": 1,
+      \"duplicate_for_all_colors\": true,
+      \"colors\": [\"RED\", \"GREEN\", \"BLUE\", \"YELLOW\"]
     },
 
     {
-      \"color\": \"RED\",
       \"type\": \"PLACE_ALL\",
       \"value\": 0,
-      \"count\": 2,
-      \"duplicate_for_all_colors\": true
+      \"count\": 1,
+      \"duplicate_for_all_colors\": true,
+      \"colors\": [\"RED\", \"GREEN\", \"BLUE\", \"YELLOW\"]
+    },
+
+    {
+      \"type\": \"TARGET_DRAW\",
+      \"value\": 2,
+      \"count\": 1,
+      \"duplicate_for_all_colors\": true,
+      \"colors\": [\"RED\", \"GREEN\", \"BLUE\", \"YELLOW\"]
+    },
+    {
+      \"type\": \"TARGET_DRAW\",
+      \"value\": 4,
+      \"count\": 1,
+      \"duplicate_for_all_colors\": true,
+      \"colors\": [\"RED\", \"GREEN\", \"BLUE\", \"YELLOW\"]
+    },
+
+    {
+      \"type\": \"MULTI_TARGET_DRAW\",
+      \"value\": 1,
+      \"count\": 1,
+      \"duplicate_for_all_colors\": true,
+      \"colors\": [\"RED\", \"GREEN\", \"BLUE\", \"YELLOW\"]
+    },
+    {
+      \"type\": \"MULTI_TARGET_DRAW\",
+      \"value\": 2,
+      \"count\": 1,
+      \"duplicate_for_all_colors\": true,
+      \"colors\": [\"RED\", \"GREEN\", \"BLUE\", \"YELLOW\"]
+    },
+
+    {
+      \"type\": \"WILD\",
+      \"color\": \"BLACK\",
+      \"value\": 0,
+      \"count\": 6
+    },
+    {
+      \"type\": \"WILD_DRAW\",
+      \"color\": \"BLACK\",
+      \"value\": 4,
+      \"count\": 5
+    },
+    {
+      \"type\": \"WILD_DRAW\",
+      \"color\": \"BLACK\",
+      \"value\": 6,
+      \"count\": 3
+    },
+    {
+      \"type\": \"WILD_DRAW_REVERSE\",
+      \"color\": \"BLACK\",
+      \"value\": 4,
+      \"count\": 3
+    },
+
+    {
+      \"type\": \"SWAP_HANDS\",
+      \"color\": \"BLACK\",
+      \"value\": 0,
+      \"count\": 3
+    },
+
+    {
+      \"type\": \"WILD_COLOR_ROULET\",
+      \"color\": \"BLACK\",
+      \"value\": 0,
+      \"count\": 3
     }
   ]
 }
 "
-file_name = "Storm"
+file_name = "Default-plus"

@@ -6,6 +6,8 @@ static var current_top_card: CardView
 
 var hand_card_holder: HandCardHolder
 
+var in_hand_card := true
+
 @export var is_top_card := false
 @export_enum("Small", "Medium", "Large") var card_size := "Medium"
 
@@ -66,10 +68,29 @@ const COLOR_BLACK_TEXT := Color.WHITE
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	button.mouse_filter = Control.MOUSE_FILTER_STOP
+
+	modulate = Color(1, 1, 1, 1)
+	self_modulate = Color(1, 1, 1, 1)
+	visible = true
+	show()
+
 	load_card()
 	rezise_card()
+
+	if animation_player != null and animation_player.has_animation("appear"):
+		if in_hand_card:
+			animation_player.play("appear")
+		else:
+			animation_player.play("appear")
+			animation_player.seek(animation_player.current_animation_length, true)
+			animation_player.stop()
+	else:
+		if animation_player != null:
+			animation_player.stop()
+
 	if is_top_card:
 		current_top_card = self
+
 
 func _process(_delta: float) -> void:
 	if Engine.is_editor_hint():

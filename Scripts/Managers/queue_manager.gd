@@ -37,6 +37,8 @@ var place_all_active := false
 var place_all_owner: HandCardHolder = null
 var place_all_color: CardResource.CardColor = CardResource.CardColor.RED
 var place_all_resolving := false
+var place_all_card: CardResource = null
+var _place_all_sequence_running := false
 
 var roulette_active := false
 var roulette_waiting_for_color := false
@@ -51,7 +53,7 @@ func _ready() -> void:
 	create_players()
 	create_bots()
 	build_turn_order()
-	start_game()
+	call_deferred("start_game")
 
 
 func connect_signals() -> void:
@@ -155,17 +157,40 @@ func start_game() -> void:
 	current_turn_index = 0
 	has_played_this_turn = false
 	has_drawn_this_turn = false
-	update_turn_state()
+
+	place_all_active = false
+	place_all_resolving = false
+	place_all_owner = null
+	place_all_card = null
+	_place_all_sequence_running = false
+
+	if card_manager == null:
+		return
+
 	await get_tree().process_frame
+	await get_tree().process_frame
+
 	deal_starting_cards(start_card_count)
+
+	await get_tree().process_frame
+	update_turn_state()
+	call_deferred("_handle_start_of_turn_effects")
 
 
 func get_current_holder() -> HandCardHolder:
+	if turn_order.is_empty():
+		return null
+	current_turn_index = clamp(current_turn_index, 0, turn_order.size() - 1)
 	return turn_order[current_turn_index]
 
 
 func is_players_turn(holder: HandCardHolder) -> bool:
 	return holder == get_current_holder()
+
+
+func is_human_turn() -> bool:
+	var holder := get_current_holder()
+	return holder != null and !holder.is_bot
 
 
 func can_play_now(holder: HandCardHolder) -> bool:
@@ -196,6 +221,7 @@ func register_card_play(played_card: CardResource) -> void:
 	if played_card == null:
 		end_turn()
 		return
+
 	if place_all_active:
 		return
 
@@ -306,6 +332,8 @@ func on_draw_pressed() -> void:
 		return
 	if roulette_active:
 		return
+	if place_all_resolving:
+		return
 
 	if draw_stack_amount > 0:
 		if draw_stack_is_wild:
@@ -319,6 +347,7 @@ func on_draw_pressed() -> void:
 		return
 
 	holder.add_card(card)
+	holder.sort_cards_full()
 	holder.refresh_playable_cards()
 	has_drawn_this_turn = true
 
@@ -345,6 +374,8 @@ func bot_draw_current() -> bool:
 		return false
 	if roulette_active:
 		return false
+	if place_all_resolving:
+		return false
 	if draw_stack_amount > 0:
 		return false
 
@@ -353,6 +384,7 @@ func bot_draw_current() -> bool:
 		return false
 
 	holder.add_card(card)
+	holder.sort_cards_full()
 	holder.refresh_playable_cards()
 	has_drawn_this_turn = true
 	return true
@@ -391,18 +423,16 @@ func update_turn_state() -> void:
 
 
 func deal_starting_cards(cards_per_player: int = 7) -> void:
+	if card_manager == null:
+		return
 	for holder in turn_order:
 		for i in range(cards_per_player):
 			var card = card_manager.draw_card()
 			if card == null:
-				return
+				break
 			holder.add_card(card)
+		holder.sort_cards_full()
 		holder.refresh_playable_cards()
-
-
-func is_human_turn() -> bool:
-	var holder := get_current_holder()
-	return holder != null and !holder.is_bot
 
 
 func holder_has_playable_card(holder: HandCardHolder) -> bool:
@@ -444,6 +474,7 @@ func force_wild_draw_continue(holder: HandCardHolder) -> void:
 	draw_stack_min_value = 0
 	draw_stack_is_wild = false
 	draw_stack_color = CardResource.CardColor.BLACK
+	holder.sort_cards_full()
 	holder.refresh_playable_cards()
 
 
@@ -459,6 +490,7 @@ func force_draw_stack_continue(holder: HandCardHolder) -> void:
 	draw_stack_is_wild = false
 	draw_stack_color = CardResource.CardColor.BLACK
 
+	holder.sort_cards_full()
 	holder.refresh_playable_cards()
 	has_drawn_this_turn = true
 
@@ -510,159 +542,117 @@ func set_wild_color_owner(holder: HandCardHolder) -> void:
 	wild_color_owner = holder
 
 
-func start_place_all(holder: HandCardHolder, color: CardResource.CardColor, played_card: CardResource) -> void:
-	if holder == null or played_card == null:
+func start_place_all(holder: HandCardHolder, color: CardResource.CardColor, played_card: CardResource, place_all_view: CardView) -> void:
+	if holder == null or played_card == null or place_all_view == null:
 		return
-	if !_holder_has_place_all_finisher(holder, color):
-		register_card_play(played_card)
+	if _place_all_sequence_running:
 		return
+
+	_place_all_sequence_running = true
+
 	place_all_active = true
+	place_all_resolving = true
 	place_all_owner = holder
 	place_all_color = color
-	has_played_this_turn = false
+	place_all_card = played_card
+
+	has_played_this_turn = true
 	has_drawn_this_turn = false
 	update_turn_state()
 
-
-func _holder_has_place_all_finisher(holder: HandCardHolder, color: CardResource.CardColor) -> bool:
-	if holder == null:
-		return false
-	for c in holder.get_children():
-		if c is CardView and c.card_res != null:
-			if c.card_res.color == color:
-				return true
-	return false
-
-
-func resolve_place_all(finisher_view: CardView) -> void:
-	if !place_all_active:
-		return
-	if finisher_view == null or !is_instance_valid(finisher_view):
-		return
-	if place_all_owner == null:
-		return
-	if place_all_owner != get_current_holder():
-		return
-	if finisher_view.hand_card_holder != place_all_owner:
-		return
-	if finisher_view.card_res == null:
-		return
-	if finisher_view.card_res.color != place_all_color:
-		return
-
-	place_all_resolving = true
-
-	var owner := place_all_owner
-	var finisher_res := finisher_view.card_res
-
-	var target_pos := Vector2.ZERO
-	if card_manager != null and card_manager.top_card_view != null and is_instance_valid(card_manager.top_card_view):
-		target_pos = card_manager.top_card_view.global_position
-	else:
-		target_pos = finisher_view.global_position
-
-	var to_play: Array = []
-	for c in owner.get_children():
-		if c is CardView and c != finisher_view:
-			if is_instance_valid(c) and c.card_res != null:
-				if c.card_res.color == place_all_color:
-					to_play.append({"cv": c, "res": c.card_res})
-
-	var delay_step := 0.04
-	var fly_duration := 0.28
-
-	for i in range(to_play.size()):
-		var entry = to_play[i]
-		var cv: CardView = entry["cv"]
-		var res: CardResource = entry["res"]
-		if cv == null or !is_instance_valid(cv):
-			continue
-		var delay := float(i) * delay_step
-		call_deferred("_place_all_burst_launch_and_cleanup", cv, res, owner, delay, fly_duration, target_pos)
-
-	var total_time := (to_play.size() * delay_step) + fly_duration
-	await get_tree().create_timer(total_time).timeout
-
-	if finisher_view == null or !is_instance_valid(finisher_view):
-		place_all_active = false
-		place_all_owner = null
-		place_all_resolving = false
-		return
-
-	finisher_view.set_clickable(false, true)
-	finisher_view.smooth_move_button_to_top_card_juicy(fly_duration)
-
-	await get_tree().create_timer(fly_duration).timeout
-
-	if finisher_view == null or !is_instance_valid(finisher_view):
-		place_all_active = false
-		place_all_owner = null
-		place_all_resolving = false
-		return
-
-	if finisher_view.get_parent() == owner:
-		owner.remove_child(finisher_view)
-
-	finisher_view.queue_free()
-	card_manager.set_top_card_runtime(finisher_res)
+	place_all_view.set_clickable(false, true)
 
 	await get_tree().process_frame
+	await get_tree().process_frame
+
+	await _place_all_play_color_cards_sequential(holder, place_all_view)
+	await _place_all_play_final_place_all_card(holder, place_all_view, played_card)
 
 	place_all_active = false
-	place_all_owner = null
 	place_all_resolving = false
+	place_all_owner = null
+	place_all_color = CardResource.CardColor.RED
+	place_all_card = null
 
-	register_card_play(finisher_res)
+	if holder != null and is_instance_valid(holder):
+		holder._busy = false
+		holder.sort_cards_full()
+		holder.refresh_playable_cards()
 
+	_place_all_sequence_running = false
 
-func _place_all_burst_launch_and_cleanup(cv: CardView, res: CardResource, owner: HandCardHolder, delay: float, fly_duration: float, target_pos: Vector2) -> void:
-	if cv == null or !is_instance_valid(cv):
-		return
-	if res == null:
-		return
-	if owner == null or !is_instance_valid(owner):
-		return
-
-	await get_tree().create_timer(delay).timeout
-
-	if cv == null or !is_instance_valid(cv):
-		return
-	if owner == null or !is_instance_valid(owner):
+	if _check_and_finish_current_holder():
+		_after_holder_finished()
 		return
 
-	var ui_parent := owner.get_parent()
-	if ui_parent == null or !is_instance_valid(ui_parent):
+	end_turn()
+
+
+func _place_all_play_color_cards_sequential(owner: HandCardHolder, place_all_view: CardView) -> void:
+	if owner == null:
 		return
 
-	var start_pos := cv.global_position
-	if cv.get_parent() == owner:
-		owner.remove_child(cv)
+	var duration := 0.20
+	var delay_between := 0.01
 
-	ui_parent.add_child(cv)
-	cv.set_as_top_level(true)
-	cv.global_position = start_pos
-	cv.show_front = true
-	if cv.has_method("load_card"):
-		cv.load_card()
+	var to_play: Array[CardView] = []
+	for c in owner.get_children():
+		if c is CardView and is_instance_valid(c) and c.card_res != null:
+			if c == place_all_view:
+				continue
+			if c.card_res.color == place_all_color:
+				to_play.append(c)
 
-	cv.set_clickable(false, true)
-
-	var tween := create_tween()
-	tween.tween_property(cv, "global_position", target_pos, fly_duration).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-
-	await get_tree().create_timer(fly_duration).timeout
-
-	if cv == null or !is_instance_valid(cv):
+	if to_play.is_empty():
 		return
 
-	cv.queue_free()
-	card_manager.set_top_card_runtime(res)
+	for cv in to_play:
+		if cv == null or !is_instance_valid(cv):
+			continue
+
+		var res := cv.card_res
+
+		cv.set_clickable(false, true)
+		cv.smooth_move_button_to_top_card_juicy(duration)
+
+		await get_tree().create_timer(duration).timeout
+
+		if cv != null and is_instance_valid(cv):
+			if cv.get_parent() == owner:
+				owner.remove_child(cv)
+			cv.queue_free()
+
+		card_manager.set_top_card_runtime(res)
+
+		await get_tree().create_timer(delay_between).timeout
+
+
+func _place_all_play_final_place_all_card(owner: HandCardHolder, place_all_view: CardView, place_all_res: CardResource) -> void:
+	if place_all_view == null or !is_instance_valid(place_all_view):
+		return
+
+	var duration := 0.26
+
+	place_all_view.set_clickable(false, true)
+	place_all_view.smooth_move_button_to_top_card_juicy(duration)
+
+	await get_tree().create_timer(duration).timeout
+
+	if place_all_view != null and is_instance_valid(place_all_view):
+		if place_all_view.get_parent() == owner:
+			owner.remove_child(place_all_view)
+		place_all_view.queue_free()
+
+	card_manager.set_top_card_runtime(place_all_res)
 
 
 func _cancel_place_all() -> void:
 	place_all_active = false
 	place_all_owner = null
 	place_all_color = CardResource.CardColor.RED
+	place_all_resolving = false
+	place_all_card = null
+	_place_all_sequence_running = false
 	end_turn()
 
 
@@ -738,6 +728,7 @@ func resolve_target_draw(target_holder: HandCardHolder) -> void:
 				if card == null:
 					break
 				h.add_card(card)
+			h.sort_cards_full()
 			h.refresh_playable_cards()
 	else:
 		if target_holder == null:
@@ -748,6 +739,7 @@ func resolve_target_draw(target_holder: HandCardHolder) -> void:
 				if card == null:
 					break
 				target_holder.add_card(card)
+			target_holder.sort_cards_full()
 			target_holder.refresh_playable_cards()
 
 	target_draw_active = false
@@ -791,6 +783,8 @@ func resolve_swap_hands(owner: HandCardHolder) -> void:
 	for r in my_cards:
 		next_holder.add_card(r)
 
+	owner.sort_cards_full()
+	next_holder.sort_cards_full()
 	owner.refresh_playable_cards()
 	next_holder.refresh_playable_cards()
 
@@ -829,6 +823,7 @@ func start_color_roulette(owner: HandCardHolder) -> void:
 		set_wild_color_owner(roulette_target)
 		Signals.COLOR_request_color_select.emit()
 
+
 func _on_roulette_color_selected(color: CardResource.CardColor) -> void:
 	if !roulette_active:
 		return
@@ -845,6 +840,7 @@ func _on_roulette_color_selected(color: CardResource.CardColor) -> void:
 
 	clear_wild_owner()
 	_handle_roulette_start()
+
 
 func _handle_roulette_start() -> void:
 	if !roulette_active:
@@ -866,6 +862,7 @@ func _handle_roulette_start() -> void:
 	roulette_step_running = true
 	call_deferred("_do_roulette_draw_step", holder)
 
+
 func _do_roulette_draw_step(holder: HandCardHolder) -> void:
 	if holder == null:
 		_end_roulette(false)
@@ -877,6 +874,7 @@ func _do_roulette_draw_step(holder: HandCardHolder) -> void:
 		return
 
 	holder.add_card(card)
+	holder.sort_cards_full()
 	holder.refresh_playable_cards()
 
 	await get_tree().create_timer(0.22).timeout
@@ -888,6 +886,7 @@ func _do_roulette_draw_step(holder: HandCardHolder) -> void:
 
 	roulette_step_running = false
 	_handle_roulette_start()
+
 
 func _end_roulette(success: bool) -> void:
 	roulette_active = false
@@ -920,6 +919,7 @@ func _end_roulette(success: bool) -> void:
 
 	end_turn()
 
+
 func choose_color_for_roulette(target: HandCardHolder) -> CardResource.CardColor:
 	if target == null:
 		return CardResource.CardColor.RED
@@ -947,6 +947,7 @@ func choose_color_for_roulette(target: HandCardHolder) -> CardResource.CardColor
 
 	return CardResource.CardColor.RED
 
+
 func _apply_roulette_color_to_top_card(color: CardResource.CardColor) -> void:
 	if card_manager == null:
 		return
@@ -958,5 +959,4 @@ func _apply_roulette_color_to_top_card(color: CardResource.CardColor) -> void:
 		card_manager.top_card.color = color
 
 	if card_manager.top_card_view != null and is_instance_valid(card_manager.top_card_view):
-		if card_manager.top_card_view.has_method("load_card"):
-			card_manager.top_card_view.load_card()
+		card_manager.top_card_view.load_card()

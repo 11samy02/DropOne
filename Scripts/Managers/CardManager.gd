@@ -15,6 +15,8 @@ var discard_pile: Array[CardResource] = []
 var current_color: CardResource.CardColor
 var waiting_for_color := false
 var pending_wild_card: CardResource = null
+var is_initialized: bool = false
+
 
 func _ready() -> void:
 	randomize()
@@ -24,6 +26,8 @@ func _ready() -> void:
 	deck.shuffle()
 	set_top_card()
 	update_draw_button_state()
+	is_initialized = true
+
 
 ## Connect shared signals
 func connect_signals() -> void:

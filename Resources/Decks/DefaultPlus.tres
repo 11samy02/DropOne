@@ -103,7 +103,7 @@ metadata/_custom_type_script = "uid://c40nbsxolq1km"
 [sub_resource type="Resource" id="Resource_vjhle"]
 script = ExtResource("1_l2l1w")
 type = 11
-value = 2
+value = 1
 duplicate_for_all_colors = true
 metadata/_custom_type_script = "uid://c40nbsxolq1km"
 

@@ -350,25 +350,24 @@ func play_turn() -> void:
 			var played_res := best.card_res
 			hand_card_holder.set_card(best)
 
-			await get_tree().create_timer(0.05).timeout
+			await get_tree().create_timer(0.1).timeout
 			if !_still_my_turn():
 				return
 
 			if played_res != null and played_res.type == CardResource.CardType.PLACE_ALL:
-				await get_tree().create_timer(0.35).timeout
+				await get_tree().create_timer(0.25).timeout
 				if !_still_my_turn():
 					return
 
 				var finisher := choose_best_place_all_finisher(played_res.color)
 				if finisher != null:
 					hand_card_holder.set_card(finisher)
-	
-					await get_tree().create_timer(0.05).timeout
-					if !_still_my_turn():
-						return
-	
+				else:
+					queue_manager.end_turn()
+				return
+
 			return
-	
+
 	var drew := _omega_try_cheat_draw()
 	if drew:
 		await get_tree().create_timer(0.25).timeout
@@ -382,22 +381,21 @@ func play_turn() -> void:
 				var played_res2 := best2.card_res
 				hand_card_holder.set_card(best2)
 
-				await get_tree().create_timer(0.05).timeout
+				await get_tree().create_timer(0.1).timeout
 				if !_still_my_turn():
 					return
 
 				if played_res2 != null and played_res2.type == CardResource.CardType.PLACE_ALL:
-					await get_tree().create_timer(0.35).timeout
+					await get_tree().create_timer(0.25).timeout
 					if !_still_my_turn():
 						return
 
 					var finisher2 := choose_best_place_all_finisher(played_res2.color)
 					if finisher2 != null:
 						hand_card_holder.set_card(finisher2)
-
-						await get_tree().create_timer(0.05).timeout
-						if !_still_my_turn():
-							return
+					else:
+						queue_manager.end_turn()
+					return
 
 				return
 

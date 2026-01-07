@@ -2,13 +2,13 @@
 
 [ext_resource type="Script" uid="uid://dwcx18si3di77" path="res://Scripts/View/card_view.gd" id="1_cy6ll"]
 [ext_resource type="Script" uid="uid://cqusp4ug0a2ee" path="res://Scripts/Globals/CardResource.gd" id="2_p7nbu"]
-[ext_resource type="Texture2D" uid="uid://yywrx2q6xxab" path="res://Assets/card-theme/default/green.png" id="3_xv604"]
-[ext_resource type="Texture2D" uid="uid://5lfp3wlw4ueu" path="res://Assets/card-symbols/place-all-colors.png" id="4_xv604"]
-[ext_resource type="Texture2D" uid="uid://41e111jurgy5" path="res://Assets/card-symbols/club.png" id="5_fmmoy"]
+[ext_resource type="Texture2D" uid="uid://khc0k7ws2b0g" path="res://Assets/card-theme/default/red.png" id="3_xv604"]
+[ext_resource type="Texture2D" uid="uid://dg7ale62lsylk" path="res://Assets/card-symbols/target.png" id="4_xv604"]
+[ext_resource type="Texture2D" uid="uid://8p7uyuv60l14" path="res://Assets/card-symbols/heart.png" id="5_fmmoy"]
 
 [sub_resource type="Resource" id="Resource_xv604"]
 script = ExtResource("2_p7nbu")
-color = 1
+type = 9
 value = 4
 metadata/_custom_type_script = "uid://cqusp4ug0a2ee"
 
@@ -207,7 +207,7 @@ theme_override_constants/margin_bottom = 14
 
 [node name="center_num" type="Label" parent="button/Content"]
 unique_name_in_owner = true
-modulate = Color(0.047058824, 0.64705884, 0, 1)
+visible = false
 layout_mode = 2
 size_flags_horizontal = 4
 theme_override_colors/font_color = Color(0.6784314, 0, 0, 1)
@@ -219,13 +219,12 @@ unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 8
 size_flags_vertical = 0
-text = "4"
+text = "+4"
 label_settings = SubResource("LabelSettings_1kj0g")
 
 [node name="symbol" type="TextureRect" parent="button/Content"]
 unique_name_in_owner = true
-visible = false
-modulate = Color(0.047058824, 0.64705884, 0, 1)
+modulate = Color(0.6784314, 0, 0, 1)
 custom_minimum_size = Vector2(0, 100)
 layout_mode = 2
 size_flags_vertical = 4
@@ -235,7 +234,6 @@ stretch_mode = 5
 
 [node name="shadow_symbol" type="TextureRect" parent="button/Content/symbol"]
 unique_name_in_owner = true
-visible = false
 modulate = Color(0, 0, 0, 1)
 show_behind_parent = true
 custom_minimum_size = Vector2(43, 110)
@@ -310,7 +308,6 @@ stretch_mode = 5
 libraries = {
 &"": SubResource("AnimationLibrary_xv604")
 }
-autoplay = "appear"
 
 [connection signal="mouse_entered" from="." to="." method="_on_mouse_entered"]
 [connection signal="mouse_exited" from="." to="." method="_on_mouse_exited"]

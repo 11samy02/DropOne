@@ -46,7 +46,7 @@ func align_cards(delta: float) -> void:
 
 ## Returns the appropriate card separation based on how many cards are in the hand
 func _get_target_separation(count: int) -> int:
-	if is_bot: return -153
+	if is_bot: return -162
 	if count <= 7: return 0
 	if count <= 10: return -25
 	if count <= 15: return -50
@@ -110,17 +110,20 @@ func _get_insert_index(card_res: CardResource) -> int:
 ## Adds a card to this holder and places it directly into the correct sorted position
 func add_card(card_res: CardResource) -> void:
 	var card_view: CardView = CARD_VIEW.instantiate()
+	card_view.in_hand_card = true
 	card_view.hand_card_holder = self
 	card_view.visible = false
+
 	add_child(card_view)
 
 	card_view.card_res = card_res
 	card_view.show_front = !is_bot
 
-	var insert_index := _get_insert_index(card_res)
-	move_child(card_view, insert_index)
+	var idx := _get_insert_index(card_res)
+	move_child(card_view, idx)
 
 	call_deferred("_finalize_spawned_card", card_view)
+
 
 ## Finalizes a newly added card after layout settles and plays an appear animation if available
 func _finalize_spawned_card(card_view: CardView) -> void:
@@ -165,12 +168,16 @@ func set_card(card_view: CardView) -> void:
 
 	var played_card_res := card_view.card_res
 
-	if queue_manager.place_all_active and queue_manager.place_all_owner == self:
+	if played_card_res.type == CardResource.CardType.PLACE_ALL:
 		card_view.set_clickable(false, true)
-		queue_manager.resolve_place_all(card_view)
-		_busy = false
-		refresh_playable_cards()
+
+		_busy = true
+		_queued = null
+
+		queue_manager.start_place_all(self, played_card_res.color, played_card_res, card_view)
+
 		return
+
 
 	card_view.set_clickable(false, true)
 	var animation_duration := 0.3
@@ -191,15 +198,12 @@ func set_card(card_view: CardView) -> void:
 
 	card_manager.set_top_card_runtime(played_card_res)
 
-	if played_card_res.type == CardResource.CardType.PLACE_ALL:
-		queue_manager.start_place_all(self, played_card_res.color, played_card_res)
-
 	_busy = false
 	refresh_playable_cards()
 
 	if card_manager.waiting_for_color:
 		_waiting_color_turn_end = true
-	elif played_card_res.type != CardResource.CardType.PLACE_ALL:
+	else:
 		queue_manager.register_card_play(played_card_res)
 
 	if _queued != null and is_instance_valid(_queued):

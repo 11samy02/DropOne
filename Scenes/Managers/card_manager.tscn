@@ -1,4 +1,4 @@
-[gd_scene load_steps=20 format=3 uid="uid://b3cbm8norl5h7"]
+[gd_scene load_steps=16 format=3 uid="uid://b3cbm8norl5h7"]
 
 [ext_resource type="Script" uid="uid://dr0t8llnaw7ml" path="res://Scripts/Managers/CardManager.gd" id="1_4bhoy"]
 [ext_resource type="PackedScene" uid="uid://0lhp5dikyv3u" path="res://Scenes/Managers/queue_manager.tscn" id="2_1vgeo"]
@@ -14,36 +14,19 @@
 
 [sub_resource type="Resource" id="Resource_abt31"]
 script = ExtResource("3_c0tlk")
-difficulty = 5
+difficulty = 4
+personality = 5
 metadata/_custom_type_script = "uid://duq6tdn31q054"
 
 [sub_resource type="Resource" id="Resource_xhqx2"]
 script = ExtResource("3_c0tlk")
-difficulty = 5
-personality = 2
+difficulty = 4
+personality = 3
 metadata/_custom_type_script = "uid://duq6tdn31q054"
 
 [sub_resource type="Resource" id="Resource_nk0dp"]
 script = ExtResource("3_c0tlk")
 difficulty = 5
-personality = 5
-metadata/_custom_type_script = "uid://duq6tdn31q054"
-
-[sub_resource type="Resource" id="Resource_gheuh"]
-script = ExtResource("3_c0tlk")
-metadata/_custom_type_script = "uid://duq6tdn31q054"
-
-[sub_resource type="Resource" id="Resource_fywh3"]
-script = ExtResource("3_c0tlk")
-difficulty = 4
-metadata/_custom_type_script = "uid://duq6tdn31q054"
-
-[sub_resource type="Resource" id="Resource_w73s3"]
-script = ExtResource("3_c0tlk")
-metadata/_custom_type_script = "uid://duq6tdn31q054"
-
-[sub_resource type="Resource" id="Resource_ojwxi"]
-script = ExtResource("3_c0tlk")
 metadata/_custom_type_script = "uid://duq6tdn31q054"
 
 [sub_resource type="LabelSettings" id="LabelSettings_aqhs8"]
@@ -70,7 +53,7 @@ queue_manager = NodePath("../../QueueManager")
 player_container = NodePath("../MarginContainer/MainPlayerContainer")
 other_player_containers = [NodePath("../player2_container"), NodePath("../player2_container2"), NodePath("../player2_container4"), NodePath("../player2_container7"), NodePath("../player2_container6"), NodePath("../player2_container3"), NodePath("../player2_container5")]
 card_manager = NodePath("..")
-bot_profiles = Array[ExtResource("3_c0tlk")]([SubResource("Resource_abt31"), SubResource("Resource_xhqx2"), SubResource("Resource_nk0dp"), SubResource("Resource_gheuh"), SubResource("Resource_fywh3"), SubResource("Resource_w73s3"), SubResource("Resource_ojwxi")])
+bot_profiles = Array[ExtResource("3_c0tlk")]([SubResource("Resource_abt31"), SubResource("Resource_xhqx2"), SubResource("Resource_nk0dp")])
 
 [node name="Background" type="Control" parent="."]
 layout_mode = 3

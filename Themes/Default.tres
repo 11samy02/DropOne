@@ -17,6 +17,8 @@ corner_radius_bottom_left = 10
 [resource]
 default_font = ExtResource("1_hymkg")
 default_font_size = 0
-Label/font_sizes/font_size = 20
+Button/font_sizes/font_size = 32
+Label/font_sizes/font_size = 32
 Label/fonts/font = ExtResource("1_hymkg")
+LineEdit/font_sizes/font_size = 32
 Panel/styles/panel = SubResource("StyleBoxFlat_hymkg")

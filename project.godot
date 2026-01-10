@@ -11,11 +11,14 @@ config_version=5
 [application]
 
 config/name="DropOne"
+run/main_scene="uid://b3cbm8norl5h7"
 config/features=PackedStringArray("4.5", "Forward Plus")
 config/icon="res://icon.svg"
 
 [autoload]
 
+SupabaseManager="*res://Scripts/Supabase/SupabaseManager.gd"
+NetworkManager="*res://Scripts/Server/NetworkManager.gd"
 Signals="*res://Scripts/Globals/Signals.gd"
 
 [display]

@@ -1,0 +1,50 @@
+[gd_scene load_steps=3 format=3 uid="uid://dtsg1oiojy1wj"]
+
+[ext_resource type="Script" uid="uid://d4kn0m3kl6s33" path="res://Scripts/UI/connect_panel.gd" id="1_y3r2c"]
+
+[sub_resource type="LabelSettings" id="LabelSettings_y3r2c"]
+font_size = 95
+
+[node name="ConnectPanel" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_y3r2c")
+
+[node name="status_label" type="Label" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -145.0
+offset_top = 122.0
+offset_right = 168.0
+offset_bottom = 238.0
+grow_horizontal = 2
+grow_vertical = 2
+text = "status"
+label_settings = SubResource("LabelSettings_y3r2c")
+
+[node name="create_game_button" type="Button" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -97.5
+offset_top = -24.0
+offset_right = 97.5
+offset_bottom = 24.0
+grow_horizontal = 2
+grow_vertical = 2
+text = "Host Game"
+
+[connection signal="pressed" from="create_game_button" to="." method="_on_create_game_button_pressed"]

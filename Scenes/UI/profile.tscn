@@ -1,0 +1,93 @@
+[gd_scene load_steps=6 format=3 uid="uid://crvqb58s2klmu"]
+
+[ext_resource type="Shader" uid="uid://bn03ctropjiyc" path="res://Shaders/ciryle_clip.gdshader" id="1_gpyrb"]
+[ext_resource type="Texture2D" uid="uid://ct3qfthnrw6y" path="res://Assets/ProfilePictures/32.png" id="2_gpyrb"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_m84x2"]
+bg_color = Color(0.1764706, 0.1764706, 0.29803923, 1)
+border_width_left = 8
+border_width_top = 8
+border_width_right = 8
+border_width_bottom = 8
+border_color = Color(1, 0.9098039, 0.6627451, 1)
+border_blend = true
+corner_radius_top_left = 250
+corner_radius_top_right = 250
+corner_radius_bottom_right = 250
+corner_radius_bottom_left = 250
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_vbdrx"]
+shader = ExtResource("1_gpyrb")
+shader_parameter/radius = 0.5
+shader_parameter/center = Vector2(0.5, 0.5)
+shader_parameter/softness = 0.0
+shader_parameter/breakout_y = 0.35
+shader_parameter/texture_scale = 1.0
+shader_parameter/texture_offset = Vector2(0, 0)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_ogg60"]
+bg_color = Color(0.1764706, 0.1764706, 0.29803923, 1)
+border_width_left = 8
+border_width_top = 8
+border_width_right = 8
+border_width_bottom = 8
+border_color = Color(1, 0.9098039, 0.6627451, 1)
+border_blend = true
+corner_radius_top_right = 50
+corner_radius_bottom_right = 50
+
+[node name="Profile" type="HBoxContainer"]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -200.0
+offset_bottom = 200.0
+grow_horizontal = 0
+theme_override_constants/separation = -100
+
+[node name="picture" type="PanelContainer" parent="."]
+custom_minimum_size = Vector2(200, 200)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_m84x2")
+
+[node name="texture" type="TextureRect" parent="picture"]
+material = SubResource("ShaderMaterial_vbdrx")
+layout_mode = 2
+texture = ExtResource("2_gpyrb")
+expand_mode = 1
+
+[node name="infos" type="PanelContainer" parent="."]
+show_behind_parent = true
+custom_minimum_size = Vector2(500, 150)
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_styles/panel = SubResource("StyleBoxFlat_ogg60")
+
+[node name="MarginContainer" type="MarginContainer" parent="infos"]
+layout_mode = 2
+theme_override_constants/margin_left = 100
+theme_override_constants/margin_top = 0
+theme_override_constants/margin_right = 25
+theme_override_constants/margin_bottom = 0
+
+[node name="VBoxContainer" type="VBoxContainer" parent="infos/MarginContainer"]
+layout_mode = 2
+
+[node name="data" type="HBoxContainer" parent="infos/MarginContainer/VBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="player_name" type="Label" parent="infos/MarginContainer/VBoxContainer/data"]
+layout_mode = 2
+text = "Jimmy"
+
+[node name="ColorRect" type="ColorRect" parent="infos/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(0, 3)
+layout_mode = 2
+
+[node name="HBoxContainer2" type="HBoxContainer" parent="infos/MarginContainer/VBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="Label" type="Label" parent="infos/MarginContainer/VBoxContainer/HBoxContainer2"]
+layout_mode = 2

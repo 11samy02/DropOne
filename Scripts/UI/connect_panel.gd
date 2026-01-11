@@ -14,3 +14,4 @@ func _on_status_changed(msg: String) -> void:
 
 func _on_create_game_button_pressed() -> void:
 	SupabaseManager.create_lobby("My Lobby")
+	print("yes")

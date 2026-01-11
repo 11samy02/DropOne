@@ -175,6 +175,12 @@ func update_draw_button_state() -> void:
 ## React to turn changes for draw button state
 func _on_turn_changed(_holder: HandCardHolder) -> void:
 	update_draw_button_state()
+	
+	if queue_manager != null and queue_manager.is_human_turn():
+		_smooth_modulate(draw_button, Color.WHITE, 0.25)
+	else:
+		_smooth_modulate(draw_button, Color(0.35, 0.35, 0.35, 1.0), 0.25)
+
 
 ## Builds the full card list based on the DeckResource definition
 func create_cards_from_deck(deck_res: DeckResource) -> Array[CardResource]:
@@ -289,3 +295,11 @@ func get_deck_size() -> int:
 ## Returns discard pile size
 func get_discard_size() -> int:
 	return discard_pile.size()
+
+func _smooth_modulate(node: CanvasItem, target: Color, duration: float = 0.2) -> void:
+	if node == null:
+		return
+	var tween := create_tween()
+	tween.tween_property(node, "modulate", target, duration)\
+		.set_trans(Tween.TRANS_SINE)\
+		.set_ease(Tween.EASE_OUT)

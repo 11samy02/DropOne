@@ -58,6 +58,7 @@ var _override_color: CardResource.CardColor = CardResource.CardColor.RED
 @onready var right_shadow_symbol: TextureRect = %right_shadow_symbol
 @onready var animation_player: AnimationPlayer = $AnimationPlayer
 @onready var button: Button = %button
+@onready var visuells: Control = %visuells
 
 const COLOR_BLUE := Color("#0027da")
 const COLOR_YELLOW := Color("#c39f00")
@@ -257,24 +258,30 @@ func smooth_move_button_to_top_card_juicy(duration: float = 0.35, overshoot: flo
 		return
 	if current_top_card == self:
 		return
-	if button == null or !is_instance_valid(button):
+	if visuells == null or !is_instance_valid(visuells):
+		return
+	if current_top_card.visuells == null or !is_instance_valid(current_top_card.visuells):
 		return
 
 	show_front = true
 
-	var parent_control := button.get_parent() as Control
+	var parent_control := visuells.get_parent() as Control
 	if parent_control == null:
 		return
 
-	var target_global_pos: Vector2 = current_top_card.button.global_position
+	# Ziel: visuells-Position der Top-Karte
+	var target_global_pos: Vector2 = current_top_card.visuells.global_position
 	var target_local_pos: Vector2 = parent_control.get_global_transform().affine_inverse() * target_global_pos
 
-	var dir := (target_local_pos - button.position)
+	var dir := (target_local_pos - visuells.position)
 	if dir.length() < 0.001:
 		return
 
 	var overshoot_pos := target_local_pos + dir.normalized() * overshoot
 
 	var tween := create_tween()
-	tween.tween_property(button, "position", overshoot_pos, duration * 0.75).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	tween.tween_property(button, "position", target_local_pos, duration * 0.25).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tween.tween_property(visuells, "position", overshoot_pos, duration * 0.75)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+
+	tween.tween_property(visuells, "position", target_local_pos, duration * 0.25)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)

@@ -418,7 +418,14 @@ func next_turn(skip_next: bool = false) -> void:
 
 func update_turn_state() -> void:
 	for holder in turn_order:
-		holder.set_turn_active(is_players_turn(holder))
+		var active := is_players_turn(holder)
+		holder.set_turn_active(active)
+		
+		var ui_container := get_container_for_holder(holder)
+		if ui_container != null:
+			var target_color := Color.WHITE if active else Color(0.35, 0.35, 0.35, 1.0)
+			_smooth_modulate(ui_container, target_color, 0.25)
+		
 	Signals.TURN_changed.emit(get_current_holder())
 
 
@@ -960,3 +967,19 @@ func _apply_roulette_color_to_top_card(color: CardResource.CardColor) -> void:
 
 	if card_manager.top_card_view != null and is_instance_valid(card_manager.top_card_view):
 		card_manager.top_card_view.load_card()
+
+func _smooth_modulate(node: CanvasItem, target: Color, duration: float = 0.2) -> void:
+	if node == null:
+		return
+
+	if node.has_meta("modulate_tween"):
+		var old_tween = node.get_meta("modulate_tween")
+		if old_tween and old_tween.is_running():
+			old_tween.kill()
+
+	var tween := create_tween()
+	tween.tween_property(node, "modulate", target, duration)\
+		.set_trans(Tween.TRANS_SINE)\
+		.set_ease(Tween.EASE_OUT)
+
+	node.set_meta("modulate_tween", tween)

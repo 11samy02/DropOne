@@ -1,7 +1,7 @@
 [gd_scene load_steps=6 format=3 uid="uid://crvqb58s2klmu"]
 
 [ext_resource type="Shader" uid="uid://bn03ctropjiyc" path="res://Shaders/ciryle_clip.gdshader" id="1_gpyrb"]
-[ext_resource type="Texture2D" uid="uid://ct3qfthnrw6y" path="res://Assets/ProfilePictures/32.png" id="2_gpyrb"]
+[ext_resource type="Texture2D" uid="uid://bff6a2q1ynpas" path="res://Assets/ProfilePictures/35.png" id="2_gpyrb"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_m84x2"]
 bg_color = Color(0.1764706, 0.1764706, 0.29803923, 1)

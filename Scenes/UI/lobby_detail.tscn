@@ -1,0 +1,97 @@
+[gd_scene load_steps=7 format=3 uid="uid://cw6no3dl40h5p"]
+
+[ext_resource type="Script" uid="uid://bix386pgusofu" path="res://Scripts/UI/lobby_detail.gd" id="1_cm4a1"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_6jdaf"]
+bg_color = Color(0.10947073, 0.3744524, 0.47051376, 0.30588236)
+border_width_left = 5
+border_width_top = 5
+border_width_right = 5
+border_width_bottom = 5
+border_color = Color(0.7802099, 0.7513736, 1, 1)
+corner_radius_top_left = 25
+corner_radius_top_right = 25
+corner_radius_bottom_right = 25
+corner_radius_bottom_left = 25
+
+[sub_resource type="LabelSettings" id="LabelSettings_cm4a1"]
+font_size = 48
+
+[sub_resource type="LabelSettings" id="LabelSettings_4a2go"]
+font_size = 38
+
+[sub_resource type="LabelSettings" id="LabelSettings_t0vdt"]
+font_size = 38
+font_color = Color(1, 1, 1, 0.47058824)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_4a2go"]
+bg_color = Color(0.17870986, 0.407772, 9.62615e-08, 0.5803922)
+border_width_left = 5
+border_width_top = 5
+border_width_right = 5
+border_width_bottom = 5
+border_color = Color(0.5640934, 0.89721084, 0.15752971, 1)
+corner_radius_top_left = 25
+corner_radius_top_right = 25
+corner_radius_bottom_right = 25
+corner_radius_bottom_left = 25
+
+[node name="Lobby_detail" type="Panel"]
+custom_minimum_size = Vector2(0, 150)
+theme_override_styles/panel = SubResource("StyleBoxFlat_6jdaf")
+script = ExtResource("1_cm4a1")
+
+[node name="MarginContainer" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 40
+theme_override_constants/margin_top = 15
+theme_override_constants/margin_right = 30
+theme_override_constants/margin_bottom = 15
+
+[node name="HBoxContainer" type="HBoxContainer" parent="MarginContainer"]
+layout_mode = 2
+
+[node name="lobby_name" type="Label" parent="MarginContainer/HBoxContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 2
+text = "Samy´s Lobby"
+label_settings = SubResource("LabelSettings_cm4a1")
+
+[node name="HBoxContainer" type="HBoxContainer" parent="MarginContainer/HBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 100
+alignment = 2
+
+[node name="current_playeres" type="Label" parent="MarginContainer/HBoxContainer/HBoxContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 0
+text = "0/8"
+label_settings = SubResource("LabelSettings_4a2go")
+horizontal_alignment = 2
+
+[node name="version" type="Label" parent="MarginContainer/HBoxContainer/HBoxContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 0
+text = "v0.1.0"
+label_settings = SubResource("LabelSettings_t0vdt")
+horizontal_alignment = 2
+
+[node name="join" type="Button" parent="MarginContainer/HBoxContainer/HBoxContainer"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(200, 100)
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_font_sizes/font_size = 48
+theme_override_styles/normal = SubResource("StyleBoxFlat_4a2go")
+text = "Join"
+
+[connection signal="pressed" from="MarginContainer/HBoxContainer/HBoxContainer/join" to="." method="_on_join_pressed"]

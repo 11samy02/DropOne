@@ -1,15 +1,15 @@
-[gd_scene load_steps=15 format=3 uid="uid://deat7hguf61ur"]
+[gd_scene load_steps=17 format=3 uid="uid://deat7hguf61ur"]
 
 [ext_resource type="Script" uid="uid://dwcx18si3di77" path="res://Scripts/View/card_view.gd" id="1_cy6ll"]
 [ext_resource type="Script" uid="uid://cqusp4ug0a2ee" path="res://Scripts/Globals/CardResource.gd" id="2_p7nbu"]
+[ext_resource type="Texture2D" uid="uid://khc0k7ws2b0g" path="res://Assets/card-theme/default/red.png" id="3_onqwp"]
 [ext_resource type="Texture2D" uid="uid://xspumfxdwrqn" path="res://Assets/card-theme/default/black.png" id="3_xv604"]
-[ext_resource type="Texture2D" uid="uid://boyrnbacyt0pk" path="res://Assets/card-symbols/Color_roulette.png" id="4_onqwp"]
+[ext_resource type="Texture2D" uid="uid://dg7ale62lsylk" path="res://Assets/card-symbols/target.png" id="4_fmmoy"]
 [ext_resource type="Texture2D" uid="uid://8p7uyuv60l14" path="res://Assets/card-symbols/heart.png" id="5_fmmoy"]
 
 [sub_resource type="Resource" id="Resource_xv604"]
 script = ExtResource("2_p7nbu")
-color = 4
-type = 10
+type = 9
 value = 1
 metadata/_custom_type_script = "uid://cqusp4ug0a2ee"
 
@@ -31,74 +31,76 @@ shadow_size = 5
 shadow_color = Color(0, 0, 0, 1)
 shadow_offset = Vector2(2, 2)
 
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_xv604"]
+
 [sub_resource type="Animation" id="Animation_onqwp"]
 length = 0.001
 tracks/0/type = "value"
 tracks/0/imported = false
 tracks/0/enabled = true
-tracks/0/path = NodePath("button:position")
+tracks/0/path = NodePath("visuells:scale")
 tracks/0/interp = 1
 tracks/0/loop_wrap = true
 tracks/0/keys = {
 "times": PackedFloat32Array(0),
 "transitions": PackedFloat32Array(1),
 "update": 0,
-"values": [Vector2(0, 0)]
+"values": [Vector2(1, 1)]
 }
 tracks/1/type = "value"
 tracks/1/imported = false
 tracks/1/enabled = true
-tracks/1/path = NodePath("button:z_index")
+tracks/1/path = NodePath("visuells:position")
 tracks/1/interp = 1
 tracks/1/loop_wrap = true
 tracks/1/keys = {
 "times": PackedFloat32Array(0),
 "transitions": PackedFloat32Array(1),
-"update": 1,
-"values": [0]
+"update": 0,
+"values": [Vector2(0, 0)]
 }
 tracks/2/type = "value"
 tracks/2/imported = false
 tracks/2/enabled = true
-tracks/2/path = NodePath("button:modulate")
+tracks/2/path = NodePath("visuells:z_index")
 tracks/2/interp = 1
 tracks/2/loop_wrap = true
 tracks/2/keys = {
 "times": PackedFloat32Array(0),
 "transitions": PackedFloat32Array(1),
-"update": 0,
-"values": [Color(1, 1, 1, 1)]
+"update": 1,
+"values": [0]
 }
 
 [sub_resource type="Animation" id="Animation_p7nbu"]
 resource_name = "appear"
 length = 0.5
 step = 0.1
-tracks/0/type = "value"
+tracks/0/type = "method"
 tracks/0/imported = false
 tracks/0/enabled = true
-tracks/0/path = NodePath("button:position")
+tracks/0/path = NodePath(".")
 tracks/0/interp = 1
 tracks/0/loop_wrap = true
 tracks/0/keys = {
-"times": PackedFloat32Array(0, 0.033333335, 0.06666667, 0.1, 0.13333334, 0.16666667, 0.2, 0.23333333, 0.26666668, 0.3, 0.33333334, 0.36666667, 0.4, 0.43333334, 0.46666667, 0.5),
-"transitions": PackedFloat32Array(1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
-"update": 0,
-"values": [Vector2(0, 300), Vector2(0, 296.72214), Vector2(0, 287.03183), Vector2(0, 271.35254), Vector2(0, 250.36958), Vector2(0, 225), Vector2(0, 196.35254), Vector2(0, 165.67928), Vector2(0, 134.32072), Vector2(0, 103.647446), Vector2(0, 75), Vector2(0, 49.6304), Vector2(0, 28.64743), Vector2(0, 12.96817), Vector2(0, 3.2778625), Vector2(0, 0)]
-}
-tracks/1/type = "method"
-tracks/1/imported = false
-tracks/1/enabled = true
-tracks/1/path = NodePath(".")
-tracks/1/interp = 1
-tracks/1/loop_wrap = true
-tracks/1/keys = {
 "times": PackedFloat32Array(0.5),
 "transitions": PackedFloat32Array(1),
 "values": [{
 "args": [],
 "method": &"can_be_clicked"
 }]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("visuells:position")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0, 0.033333335, 0.06666667, 0.1, 0.13333334, 0.16666667, 0.2, 0.23333333, 0.26666668, 0.3, 0.33333334, 0.36666667, 0.4, 0.43333334, 0.46666667, 0.5),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+"update": 0,
+"values": [Vector2(0, 300), Vector2(0, 296.72214), Vector2(0, 287.03183), Vector2(0, 271.35254), Vector2(0, 250.36958), Vector2(0, 225), Vector2(0, 196.35254), Vector2(0, 165.67928), Vector2(0, 134.32072), Vector2(0, 103.647446), Vector2(0, 75), Vector2(0, 49.6304), Vector2(0, 28.64743), Vector2(0, 12.96817), Vector2(0, 3.2778625), Vector2(0, 0)]
 }
 
 [sub_resource type="Animation" id="Animation_xv604"]
@@ -113,35 +115,35 @@ step = 0.01
 tracks/0/type = "value"
 tracks/0/imported = false
 tracks/0/enabled = true
-tracks/0/path = NodePath("button:scale")
+tracks/0/path = NodePath("visuells:scale")
 tracks/0/interp = 1
 tracks/0/loop_wrap = true
 tracks/0/keys = {
-"times": PackedFloat32Array(0, 0.016666668, 0.033333335, 0.05, 0.06666667, 0.083333336, 0.1, 0.11666667, 0.13333334, 0.15),
-"transitions": PackedFloat32Array(1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+"times": PackedFloat32Array(0, 0.033333335, 0.06666667, 0.1, 0.13333334, 0.15),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1, 1),
 "update": 0,
-"values": [Vector2(1, 1), Vector2(1.0060308, 1.0060308), Vector2(1.0233955, 1.0233955), Vector2(1.05, 1.05), Vector2(1.0826352, 1.0826352), Vector2(1.1173649, 1.1173649), Vector2(1.1500001, 1.1500001), Vector2(1.1766045, 1.1766045), Vector2(1.1939692, 1.1939692), Vector2(1.2, 1.2)]
+"values": [Vector2(1, 1), Vector2(1.0233955, 1.0233955), Vector2(1.0826352, 1.0826352), Vector2(1.1500001, 1.1500001), Vector2(1.1939692, 1.1939692), Vector2(1.2, 1.2)]
 }
 tracks/1/type = "value"
 tracks/1/imported = false
 tracks/1/enabled = true
-tracks/1/path = NodePath("button:position")
+tracks/1/path = NodePath("visuells:position")
 tracks/1/interp = 1
 tracks/1/loop_wrap = true
 tracks/1/keys = {
-"times": PackedFloat32Array(0, 0.016666668, 0.033333335, 0.05, 0.06666667, 0.083333336, 0.1, 0.11666667, 0.13333334, 0.15),
-"transitions": PackedFloat32Array(1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+"times": PackedFloat32Array(0, 0.033333335, 0.06666667, 0.1, 0.13333334, 0.15),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1, 1),
 "update": 0,
-"values": [Vector2(0, 0), Vector2(0, -3.015369), Vector2(0, -11.697778), Vector2(0, -24.999998), Vector2(0, -41.317593), Vector2(0, -58.682407), Vector2(0, -75), Vector2(0, -88.302216), Vector2(0, -96.984634), Vector2(0, -100)]
+"values": [Vector2(0, 0), Vector2(0, -11.697778), Vector2(0, -41.317593), Vector2(0, -75), Vector2(0, -96.984634), Vector2(0, -100)]
 }
 tracks/2/type = "value"
 tracks/2/imported = false
 tracks/2/enabled = true
-tracks/2/path = NodePath("button:z_index")
+tracks/2/path = NodePath("visuells:z_index")
 tracks/2/interp = 1
 tracks/2/loop_wrap = true
 tracks/2/keys = {
-"times": PackedFloat32Array(0, 0.02),
+"times": PackedFloat32Array(0, 0.022381788),
 "transitions": PackedFloat32Array(1, 1),
 "update": 1,
 "values": [0, 100]
@@ -169,33 +171,34 @@ card_size = "Large"
 card_res = SubResource("Resource_xv604")
 metadata/_edit_use_anchors_ = true
 
-[node name="button" type="Button" parent="."]
+[node name="visuells" type="Control" parent="."]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_bottom = 6.1035156e-05
+offset_bottom = 0.00015258789
 grow_horizontal = 2
 grow_vertical = 2
-pivot_offset = Vector2(112, 315)
-disabled = true
-flat = true
+pivot_offset = Vector2(84.375, 236.25)
+mouse_filter = 2
 
-[node name="background" type="TextureRect" parent="button"]
+[node name="background" type="TextureRect" parent="visuells"]
 unique_name_in_owner = true
 material = SubResource("ShaderMaterial_p7nbu")
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+offset_left = -0.2434082
+offset_right = -0.2434082
 grow_horizontal = 2
 grow_vertical = 2
-texture = ExtResource("3_xv604")
+texture = ExtResource("3_onqwp")
 expand_mode = 3
 stretch_mode = 5
 
-[node name="Content" type="MarginContainer" parent="button"]
+[node name="Content" type="MarginContainer" parent="visuells"]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -207,7 +210,7 @@ theme_override_constants/margin_top = 14
 theme_override_constants/margin_right = 22
 theme_override_constants/margin_bottom = 14
 
-[node name="center_num" type="Label" parent="button/Content"]
+[node name="center_num" type="Label" parent="visuells/Content"]
 unique_name_in_owner = true
 visible = false
 layout_mode = 2
@@ -216,28 +219,27 @@ theme_override_colors/font_color = Color(0.6784314, 0, 0, 1)
 text = "+2"
 label_settings = SubResource("LabelSettings_cy6ll")
 
-[node name="corner_num" type="Label" parent="button/Content"]
+[node name="corner_num" type="Label" parent="visuells/Content"]
 unique_name_in_owner = true
-visible = false
 layout_mode = 2
 size_flags_horizontal = 8
 size_flags_vertical = 0
 text = "+1"
 label_settings = SubResource("LabelSettings_1kj0g")
 
-[node name="symbol" type="TextureRect" parent="button/Content"]
+[node name="symbol" type="TextureRect" parent="visuells/Content"]
 unique_name_in_owner = true
+modulate = Color(0.6784314, 0, 0, 1)
 custom_minimum_size = Vector2(0, 100)
 layout_mode = 2
 size_flags_vertical = 4
-texture = ExtResource("4_onqwp")
+texture = ExtResource("4_fmmoy")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="shadow_symbol" type="TextureRect" parent="button/Content/symbol"]
+[node name="shadow_symbol" type="TextureRect" parent="visuells/Content/symbol"]
 unique_name_in_owner = true
-visible = false
-modulate = Color(0, 0, 0, 1)
+modulate = Color(0, 0, 0, 0.9843137)
 show_behind_parent = true
 custom_minimum_size = Vector2(43, 110)
 layout_mode = 1
@@ -248,21 +250,22 @@ offset_bottom = 10.0
 grow_horizontal = 2
 grow_vertical = 2
 size_flags_vertical = 4
-texture = ExtResource("4_onqwp")
+texture = ExtResource("4_fmmoy")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="corner_symbol2" type="TextureRect" parent="button/Content"]
+[node name="corner_symbol2" type="TextureRect" parent="visuells/Content"]
 unique_name_in_owner = true
+visible = false
 custom_minimum_size = Vector2(40, 40)
 layout_mode = 2
 size_flags_horizontal = 8
 size_flags_vertical = 0
-texture = ExtResource("4_onqwp")
+texture = ExtResource("4_fmmoy")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="left_shadow_symbol" type="TextureRect" parent="button/Content/corner_symbol2"]
+[node name="left_shadow_symbol" type="TextureRect" parent="visuells/Content/corner_symbol2"]
 unique_name_in_owner = true
 visible = false
 modulate = Color(0, 0, 0, 1)
@@ -275,13 +278,12 @@ offset_right = 42.0
 offset_bottom = 44.0
 size_flags_horizontal = 0
 size_flags_vertical = 0
-texture = ExtResource("4_onqwp")
+texture = ExtResource("4_fmmoy")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="corner_color_blind_symbol" type="TextureRect" parent="button/Content"]
+[node name="corner_color_blind_symbol" type="TextureRect" parent="visuells/Content"]
 unique_name_in_owner = true
-visible = false
 custom_minimum_size = Vector2(30, 30)
 layout_mode = 2
 size_flags_horizontal = 0
@@ -290,7 +292,7 @@ texture = ExtResource("5_fmmoy")
 expand_mode = 1
 stretch_mode = 4
 
-[node name="right_shadow_symbol" type="TextureRect" parent="button/Content/corner_color_blind_symbol"]
+[node name="right_shadow_symbol" type="TextureRect" parent="visuells/Content/corner_color_blind_symbol"]
 unique_name_in_owner = true
 visible = false
 modulate = Color(0, 0, 0, 1)
@@ -303,9 +305,56 @@ offset_right = 42.0
 offset_bottom = 44.0
 size_flags_horizontal = 0
 size_flags_vertical = 0
-texture = ExtResource("4_onqwp")
+texture = ExtResource("4_fmmoy")
 expand_mode = 1
 stretch_mode = 5
+
+[node name="shadow" type="TextureRect" parent="visuells"]
+unique_name_in_owner = true
+modulate = Color(0, 0, 0, 0.19607843)
+show_behind_parent = true
+material = SubResource("ShaderMaterial_p7nbu")
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 10.0
+offset_top = 10.0
+offset_right = 10.487061
+offset_bottom = 10.00032
+grow_horizontal = 2
+grow_vertical = 2
+texture = ExtResource("3_xv604")
+expand_mode = 3
+stretch_mode = 5
+
+[node name="button" type="Button" parent="."]
+unique_name_in_owner = true
+z_index = 125
+custom_minimum_size = Vector2(0, 300)
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -236.25
+offset_bottom = 63.75006
+grow_horizontal = 2
+grow_vertical = 0
+pivot_offset = Vector2(84.375, 236.75)
+theme_override_styles/normal = SubResource("StyleBoxEmpty_xv604")
+theme_override_styles/normal_mirrored = SubResource("StyleBoxEmpty_xv604")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_xv604")
+theme_override_styles/pressed_mirrored = SubResource("StyleBoxEmpty_xv604")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_xv604")
+theme_override_styles/hover_mirrored = SubResource("StyleBoxEmpty_xv604")
+theme_override_styles/hover_pressed = SubResource("StyleBoxEmpty_xv604")
+theme_override_styles/hover_pressed_mirrored = SubResource("StyleBoxEmpty_xv604")
+theme_override_styles/disabled = SubResource("StyleBoxEmpty_xv604")
+theme_override_styles/disabled_mirrored = SubResource("StyleBoxEmpty_xv604")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_xv604")
+disabled = true
+flat = true
 
 [node name="AnimationPlayer" type="AnimationPlayer" parent="."]
 libraries = {

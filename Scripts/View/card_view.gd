@@ -18,7 +18,7 @@ var _show_front := true
 	set(value):
 		_show_front = value
 		if is_inside_tree():
-			load_card()
+			_queue_load_card()
 
 var _card_res: CardResource = null
 @export var card_res: CardResource:
@@ -27,7 +27,7 @@ var _card_res: CardResource = null
 	set(value):
 		_card_res = value
 		if is_inside_tree():
-			load_card()
+			_queue_load_card()
 
 var _override_color_enabled := false
 @export var override_color_enabled := false:
@@ -36,7 +36,7 @@ var _override_color_enabled := false
 	set(value):
 		_override_color_enabled = value
 		if is_inside_tree():
-			load_card()
+			_queue_load_card()
 
 var _override_color: CardResource.CardColor = CardResource.CardColor.RED
 @export var override_color: CardResource.CardColor = CardResource.CardColor.RED:
@@ -45,7 +45,7 @@ var _override_color: CardResource.CardColor = CardResource.CardColor.RED
 	set(value):
 		_override_color = value
 		if is_inside_tree():
-			load_card()
+			_queue_load_card()
 
 @onready var background: TextureRect = %background
 @onready var center_num: Label = %center_num
@@ -59,6 +59,7 @@ var _override_color: CardResource.CardColor = CardResource.CardColor.RED
 @onready var animation_player: AnimationPlayer = $AnimationPlayer
 @onready var button: Button = %button
 @onready var visuells: Control = %visuells
+var _is_ready := false
 
 const COLOR_BLUE := Color("#0027da")
 const COLOR_YELLOW := Color("#c39f00")
@@ -69,6 +70,7 @@ const COLOR_BLACK_TEXT := Color.WHITE
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	button.mouse_filter = Control.MOUSE_FILTER_STOP
+	_is_ready = true
 
 	modulate = Color(1, 1, 1, 1)
 	self_modulate = Color(1, 1, 1, 1)
@@ -102,6 +104,8 @@ func _process(_delta: float) -> void:
 func load_card() -> void:
 	if _card_res == null:
 		return
+	if !_ui_ready():
+		return
 
 	if !_show_front:
 		background.texture = _card_res.get_background_texture(true)
@@ -133,6 +137,8 @@ func load_card() -> void:
 		shadow_symbol.texture = sym
 		left_shadow_symbol.texture = sym
 		right_shadow_symbol.texture = sym
+		
+		
 
 		center_num.hide()
 
@@ -173,6 +179,30 @@ func load_card() -> void:
 		corner_num.text = text
 		center_num.modulate = c
 
+	update_playable_visuals()
+
+func _ui_ready() -> bool:
+	return background != null \
+		and center_num != null \
+		and corner_num != null \
+		and symbol != null \
+		and shadow_symbol != null \
+		and corner_symbol != null \
+		and left_shadow_symbol != null \
+		and corner_color_blind_symbol != null \
+		and right_shadow_symbol != null
+
+func _queue_load_card() -> void:
+	if _is_ready:
+		load_card()
+	else:
+		call_deferred("_deferred_load_card")
+
+func _deferred_load_card() -> void:
+	if _is_ready:
+		load_card()
+
+func can_be_clicked() -> void:
 	update_playable_visuals()
 
 ## Hide front UI elements for back-side display
@@ -220,6 +250,8 @@ func _mouse_exit() -> void:
 
 ## Enable/disable click behavior for this card
 func set_clickable(active: bool, stop_hover: bool = false) -> void:
+	if button == null:
+		return
 	button.disabled = !active
 	button.mouse_filter = Control.MOUSE_FILTER_STOP
 	if stop_hover:

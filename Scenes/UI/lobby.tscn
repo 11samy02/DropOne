@@ -1,0 +1,83 @@
+[gd_scene load_steps=6 format=3 uid="uid://clkueh0c2udr3"]
+
+[ext_resource type="Script" uid="uid://bb2t3ukgmj35n" path="res://Scripts/UI/lobby.gd" id="1_l6154"]
+[ext_resource type="PackedScene" uid="uid://b3cbm8norl5h7" path="res://Scenes/Managers/card_manager.tscn" id="2_o66dd"]
+[ext_resource type="Shader" uid="uid://corv0pvqk7gru" path="res://Shaders/Background.gdshader" id="2_qx5k3"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_o66dd"]
+shader = ExtResource("2_qx5k3")
+shader_parameter/speed = 0.2
+shader_parameter/scale = 8.0
+shader_parameter/warp_strength = 0.47
+shader_parameter/glow_strength = 1.0
+shader_parameter/vignette_strength = 1.3
+shader_parameter/detail_strength = 0.335
+shader_parameter/dithering = 0.0
+shader_parameter/col_dark = Color(0, 0, 0, 1)
+shader_parameter/col_mid = Color(0.036908284, 0.13531986, 0.27183843, 1)
+shader_parameter/col_glow = Color(0.16, 0.52, 0.82, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_rm6pd"]
+bg_color = Color(0, 0, 0.08627451, 0.5803922)
+border_width_left = 5
+border_width_top = 5
+border_width_right = 5
+border_width_bottom = 5
+border_color = Color(0.7802099, 0.7513736, 1, 1)
+corner_radius_top_left = 25
+corner_radius_top_right = 25
+corner_radius_bottom_right = 25
+corner_radius_bottom_left = 25
+expand_margin_top = 10.0
+expand_margin_bottom = 10.0
+
+[node name="CurrentLobby" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_l6154")
+Game_Scene = ExtResource("2_o66dd")
+
+[node name="ColorRect" type="ColorRect" parent="."]
+material = SubResource("ShaderMaterial_o66dd")
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBoxContainer" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -200.0
+offset_top = -76.5
+offset_right = 200.0
+offset_bottom = 76.5
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 99
+
+[node name="Ready_button" type="Button" parent="VBoxContainer"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(400, 75)
+layout_mode = 2
+size_flags_horizontal = 6
+theme_override_font_sizes/font_size = 80
+theme_override_styles/normal = SubResource("StyleBoxFlat_rm6pd")
+text = "Ready"
+icon_alignment = 1
+expand_icon = true
+
+[node name="players_in_lobby" type="Label" parent="VBoxContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[connection signal="pressed" from="VBoxContainer/Ready_button" to="." method="_on_ready_button_pressed"]

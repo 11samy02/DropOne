@@ -8,3 +8,5 @@ signal TARGET_target_selected(target_holder: HandCardHolder)
 
 signal DECK_draw_pressed
 signal TURN_changed(holder)
+
+signal PROFILE_set_picture(texture: Texture2D, id: int)

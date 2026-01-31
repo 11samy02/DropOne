@@ -39,6 +39,7 @@ static var avatar_pool: Array[Texture2D] = [
 	preload("uid://rim45p6urbc4"),
 	preload("uid://nc51mng31p6t"),
 	preload("uid://bff6a2q1ynpas"),
+	preload("uid://daohxr8j1kw5r"),
 ]
 
 @export var player_name: String = "Player"

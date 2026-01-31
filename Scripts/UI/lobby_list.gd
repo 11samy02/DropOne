@@ -7,35 +7,36 @@ class_name LobbyList
 @onready var lobby_container: VBoxContainer = %LobbyContainer
 
 @export var limit: int = 50
-
-var _supabase: Node
+@export var Lobby_scene: PackedScene
 
 var _items_by_id: Dictionary = {}
 var _lobby_meta_cache: Dictionary = {}
 var _count_cache: Dictionary = {}
 
 func _ready() -> void:
-	_supabase = get_node("/root/SupabaseManager")
+	SupabaseManager.lobby_list_loaded.connect(_on_lobby_list_loaded)
+	SupabaseManager.lobby_created.connect(func(_lobby: Dictionary) -> void: refresh_list())
+	SupabaseManager.lobby_deleted.connect(func(_id: String) -> void: refresh_list())
 
-	_supabase.lobby_list_loaded.connect(_on_lobby_list_loaded)
-	_supabase.lobby_created.connect(func(_lobby: Dictionary) -> void: refresh_list())
-	_supabase.lobby_deleted.connect(func(_id: String) -> void: refresh_list())
+	SupabaseManager.lobby_player_counts_loaded.connect(_on_lobby_player_counts_loaded)
 
-	_supabase.lobby_player_counts_loaded.connect(_on_lobby_player_counts_loaded)
+	SupabaseManager.lobby_joined.connect(_on_lobby_joined)
+	SupabaseManager.lobby_left.connect(func(_id: String) -> void: refresh_counts())
 
-	_supabase.lobby_joined.connect(func(_id: String) -> void: refresh_counts())
-	_supabase.lobby_left.connect(func(_id: String) -> void: refresh_counts())
+	SupabaseManager.request_failed.connect(func(error: String, details: String) -> void:
+		print(error, " | ", details)
+	)
 
 	refresh_list()
 
 func refresh_list() -> void:
-	_supabase.load_lobbies(limit)
+	SupabaseManager.load_lobbies(limit)
 
 func refresh_counts() -> void:
 	var ids: Array[String] = []
 	for id in _items_by_id.keys():
 		ids.append(str(id))
-	_supabase.load_lobby_player_counts(ids)
+	SupabaseManager.load_lobby_player_counts(ids)
 
 func _on_lobby_list_loaded(lobbies: Array) -> void:
 	var new_ids: Dictionary = {}
@@ -85,7 +86,7 @@ func _on_lobby_list_loaded(lobbies: Array) -> void:
 		_lobby_meta_cache.erase(rid)
 		_count_cache.erase(rid)
 
-	_supabase.load_lobby_player_counts(ids)
+	SupabaseManager.load_lobby_player_counts(ids)
 
 func _on_lobby_player_counts_loaded(counts: Dictionary) -> void:
 	for lobby_id in _items_by_id.keys():
@@ -100,7 +101,19 @@ func _on_lobby_player_counts_loaded(counts: Dictionary) -> void:
 				item.set_player_count(new_count)
 
 func _on_join_requested(lobby_id: String) -> void:
-	_supabase.switch_lobby(lobby_id)
+	SupabaseManager.switch_lobby(lobby_id)
+
+func _on_lobby_joined(_id: String) -> void:
+	if Lobby_scene != null:
+		get_tree().change_scene_to_packed(Lobby_scene)
 
 func _on_createe_pressed() -> void:
-	SupabaseManager.create_lobby("test")
+	SupabaseManager.lobby_created.connect(_on_lobby_created_once, CONNECT_ONE_SHOT)
+	SupabaseManager.create_lobby("New Lobby")
+
+func _on_lobby_created_once(_lobby: Dictionary) -> void:
+	refresh_list()
+
+
+func _on_refresh_list_timer_timeout() -> void:
+	refresh_list()

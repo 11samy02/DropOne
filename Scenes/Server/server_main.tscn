@@ -2,12 +2,13 @@
 
 [ext_resource type="Script" uid="uid://btmmx86if2ot" path="res://Scripts/Server/ServerMain.gd" id="1_qby2c"]
 
-[node name="ServerMain" type="Node" node_paths=PackedStringArray("_clean_players_timer")]
+[node name="ServerMain" type="Node"]
 script = ExtResource("1_qby2c")
-_clean_players_timer = NodePath("clean_players_timer")
+stale_timeout_seconds = 60.0
+clean_interval_seconds = 30.0
 
 [node name="clean_players_timer" type="Timer" parent="."]
-wait_time = 10.0
+wait_time = 30.0
 autostart = true
 
 [connection signal="timeout" from="clean_players_timer" to="." method="_on_clean_players_timer_timeout"]

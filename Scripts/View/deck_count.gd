@@ -1,14 +1,17 @@
 extends Label
 class_name DeckCount
 
-@export var card_manager : CardManager
+@export var queue_manager: QueueManager
 
+var _deck_count: int = 0
 
 func _ready() -> void:
-	set_count()
+	NetworkManager.counts_received.connect(_on_counts)
+	_set_text()
 
-func set_count() -> void:
-	set_text(str(card_manager.deck.size()))
+func _on_counts(_hand_counts: Array, deck_count: int) -> void:
+	_deck_count = int(deck_count)
+	_set_text()
 
-func _process(delta: float) -> void:
-	set_count()
+func _set_text() -> void:
+	set_text(str(_deck_count))

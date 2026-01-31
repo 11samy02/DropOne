@@ -1,6 +1,18 @@
-[gd_resource type="Theme" load_steps=4 format=3 uid="uid://c4dcsowe1220v"]
+[gd_resource type="Theme" load_steps=5 format=3 uid="uid://c4dcsowe1220v"]
 
 [ext_resource type="FontFile" uid="uid://c5hom8rufx0x4" path="res://Assets/Fonts/Montserrat-ExtraBold.ttf" id="1_hymkg"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_11isl"]
+bg_color = Color(0.06555709, 0.27681145, 0.47136915, 1)
+border_width_left = 5
+border_width_top = 5
+border_width_right = 5
+border_width_bottom = 5
+border_color = Color(0.78039217, 0.7529412, 1, 1)
+corner_radius_top_left = 15
+corner_radius_top_right = 15
+corner_radius_bottom_right = 15
+corner_radius_bottom_left = 15
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hymkg"]
 bg_color = Color(0, 0, 0, 1)
@@ -22,6 +34,9 @@ default_font_size = 0
 Button/font_sizes/font_size = 32
 Label/font_sizes/font_size = 32
 Label/fonts/font = ExtResource("1_hymkg")
-LineEdit/font_sizes/font_size = 32
+LineEdit/colors/font_color = Color(0.78039217, 0.7529412, 1, 1)
+LineEdit/colors/font_placeholder_color = Color(0.7372549, 0.7254902, 0.96862745, 0.39215687)
+LineEdit/font_sizes/font_size = 50
+LineEdit/styles/normal = SubResource("StyleBoxFlat_11isl")
 Panel/styles/panel = SubResource("StyleBoxFlat_hymkg")
 VScrollBar/styles/scroll = SubResource("StyleBoxFlat_5w0b6")

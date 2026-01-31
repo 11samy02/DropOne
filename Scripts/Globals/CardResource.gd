@@ -45,6 +45,7 @@ const SPADE: Texture2D = preload("uid://b7a4n3o1ildc7")
 @export var color: CardColor = CardColor.RED
 @export var type: CardType = CardType.NUMBER
 @export var value: int = 0
+@export var uid: int = 0
 
 ## Get background texture (or back side if hidden)
 func get_background_texture(hidden_card: bool = false) -> Texture2D:

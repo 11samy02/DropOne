@@ -8,6 +8,7 @@ const HAND_CARD_HOLDER = preload("uid://bpglgdslmw461")
 @export var card_manager: CardManager
 @export var queue_manager: QueueManager
 @export var is_bot := false
+@export var compact_view := false
 @export var profile: PlayerProfile
 
 
@@ -46,7 +47,7 @@ func align_cards(delta: float) -> void:
 
 ## Returns the appropriate card separation based on how many cards are in the hand
 func _get_target_separation(count: int) -> int:
-	if is_bot: return -162
+	if is_bot or compact_view: return -162
 	if count <= 7: return 0
 	if count <= 10: return -25
 	if count <= 15: return -50
@@ -108,17 +109,21 @@ func _get_insert_index(card_res: CardResource) -> int:
 	return children.size()
 
 ## Adds a card to this holder and places it directly into the correct sorted position
-func add_card(card_res: CardResource) -> void:
+func add_card(card_res: CardResource, play_appear: bool = false) -> void:
 	var card_view: CardView = CARD_VIEW.instantiate()
 	card_view.in_hand_card = true
 	card_view.hand_card_holder = self
 	card_view.visible = false
+	card_view.set_meta("play_appear", play_appear)
 
 	add_child(card_view)
 
 	card_view.card_res = card_res
 	card_view.show_front = !is_bot
-
+	
+	if card_view.has_method("load_card"):
+		card_view.load_card()
+	
 	var idx := _get_insert_index(card_res)
 	move_child(card_view, idx)
 
@@ -130,18 +135,27 @@ func _finalize_spawned_card(card_view: CardView) -> void:
 	if card_view == null or !is_instance_valid(card_view):
 		return
 
-	await get_tree().process_frame
-	await get_tree().process_frame
+	if !is_inside_tree():
+		return
+	var tree := get_tree()
+	if tree == null:
+		return
+
+	await tree.process_frame
+	await tree.process_frame
 
 	if card_view == null or !is_instance_valid(card_view):
+		return
+	if !is_inside_tree():
 		return
 
 	card_view.visible = true
 
-	if card_view.has_node("AnimationPlayer"):
-		var ap := card_view.get_node("AnimationPlayer") as AnimationPlayer
-		if ap != null and ap.has_animation("appear"):
-			ap.play("appear")
+	if card_view.get_meta("play_appear", false):
+		if card_view.has_node("AnimationPlayer"):
+			var ap := card_view.get_node("AnimationPlayer") as AnimationPlayer
+			if ap != null and ap.has_animation("appear"):
+				ap.play("appear")
 
 	refresh_playable_cards()
 
@@ -149,63 +163,62 @@ func _finalize_spawned_card(card_view: CardView) -> void:
 func set_card(card_view: CardView) -> void:
 	if card_view == null or !is_instance_valid(card_view) or card_view.card_res == null:
 		return
-
 	if _busy:
 		_queued = card_view
 		return
-
 	if queue_manager == null:
 		return
-
 	if !queue_manager.can_play_now(self):
 		return
-
 	if !can_play_card(card_view.card_res):
 		return
-
-	_busy = true
-	_queued = null
-
-	var played_card_res := card_view.card_res
-
-	if played_card_res.type == CardResource.CardType.PLACE_ALL:
-		card_view.set_clickable(false, true)
-
+	
+	if multiplayer.has_multiplayer_peer() and !multiplayer.is_server():
 		_busy = true
 		_queued = null
-
-		queue_manager.start_place_all(self, played_card_res.color, played_card_res, card_view)
-
+		NetworkManager.request_play(int(card_view.card_res.uid))
+		await get_tree().create_timer(0.15).timeout
+		_busy = false
 		return
-
-
+	
+	_busy = true
+	_queued = null
+	
+	var played_card_res := card_view.card_res
+	
+	if played_card_res.type == CardResource.CardType.PLACE_ALL:
+		card_view.set_clickable(false, true)
+		_busy = true
+		_queued = null
+		queue_manager.start_place_all(self, played_card_res.color, played_card_res, card_view)
+		return
+	
 	card_view.set_clickable(false, true)
 	var animation_duration := 0.3
 	card_view.smooth_move_button_to_top_card_juicy(animation_duration)
 	await get_tree().create_timer(animation_duration).timeout
-
+	
 	if is_instance_valid(card_view):
 		remove_child(card_view)
 		card_view.queue_free()
-
+	
 	if queue_manager != null:
 		match played_card_res.type:
 			CardResource.CardType.WILD, \
 			CardResource.CardType.WILD_DRAW, \
-			CardResource.CardType.WILD_DRAW_REVERSE, \
-			CardResource.CardType.SWAP_HANDS:
+			CardResource.CardType.WILD_DRAW_REVERSE:
 				queue_manager.set_wild_color_owner(self)
-
+	
 	card_manager.set_top_card_runtime(played_card_res)
-
+	
 	_busy = false
 	refresh_playable_cards()
-
+	
 	if card_manager.waiting_for_color:
 		_waiting_color_turn_end = true
 	else:
 		queue_manager.register_card_play(played_card_res)
-
+	
 	if _queued != null and is_instance_valid(_queued):
 		var next := _queued
 		_queued = null
@@ -230,7 +243,11 @@ func can_play_card(card_res: CardResource) -> bool:
 
 	if queue_manager != null and queue_manager.draw_stack_amount > 0:
 		if queue_manager.draw_stack_is_wild:
-			return false
+			if card_res.type != CardResource.CardType.WILD_DRAW and card_res.type != CardResource.CardType.WILD_DRAW_REVERSE:
+				return false
+			if card_res.value < queue_manager.draw_stack_min_value:
+				return false
+			return true
 		if card_res.type != CardResource.CardType.DRAW:
 			return false
 
@@ -318,6 +335,11 @@ func _on_color_selected(_color: CardResource.CardColor) -> void:
 ## Finalizes wild play and turn flow after color selection
 func _after_color_selected() -> void:
 	refresh_playable_cards()
+	if multiplayer.has_multiplayer_peer() and !multiplayer.is_server():
+		_waiting_color_turn_end = false
+		if queue_manager != null:
+			queue_manager.clear_wild_owner()
+		return
 	if _waiting_color_turn_end:
 		_waiting_color_turn_end = false
 		queue_manager.register_card_play(card_manager.top_card)

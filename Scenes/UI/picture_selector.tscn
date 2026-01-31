@@ -1,0 +1,73 @@
+[gd_scene load_steps=42 format=3 uid="uid://dxoj7bubo232y"]
+
+[ext_resource type="Texture2D" uid="uid://dgrk00dtyul6j" path="res://Assets/Ui/frame_normal.png" id="1_krjna"]
+[ext_resource type="Texture2D" uid="uid://bl2iccylomxbu" path="res://Assets/Ui/frame_pressed.png" id="2_ufh0r"]
+[ext_resource type="Texture2D" uid="uid://4fmh3b2uwr56" path="res://Assets/Ui/frame_hover.png" id="3_s6aej"]
+[ext_resource type="Texture2D" uid="uid://ledgycrhxqfd" path="res://Assets/Ui/frame_focus.png" id="4_sq30j"]
+[ext_resource type="Texture2D" uid="uid://bsury0f65afv" path="res://Assets/ProfilePictures/1.png" id="5_qm3tp"]
+[ext_resource type="Script" uid="uid://c7cj2eo2fcuhg" path="res://Scripts/UI/picture_selector.gd" id="5_ufh0r"]
+[ext_resource type="Texture2D" uid="uid://bt18evinn5aq8" path="res://Assets/ProfilePictures/2.png" id="7_uiovr"]
+[ext_resource type="Texture2D" uid="uid://4fm5gi0gbhd6" path="res://Assets/ProfilePictures/3.png" id="8_qjnly"]
+[ext_resource type="Texture2D" uid="uid://8c236sumsbxc" path="res://Assets/ProfilePictures/4.png" id="9_b85bu"]
+[ext_resource type="Texture2D" uid="uid://b6xawt615iww0" path="res://Assets/ProfilePictures/5.png" id="10_tdfsw"]
+[ext_resource type="Texture2D" uid="uid://862os6wejet0" path="res://Assets/ProfilePictures/6.png" id="11_gektv"]
+[ext_resource type="Texture2D" uid="uid://b6mufjby2k2c6" path="res://Assets/ProfilePictures/7.png" id="12_p5ry7"]
+[ext_resource type="Texture2D" uid="uid://bmf2x4xruqveh" path="res://Assets/ProfilePictures/8.png" id="13_aapcg"]
+[ext_resource type="Texture2D" uid="uid://b8l8s70j5tq5c" path="res://Assets/ProfilePictures/9.png" id="14_62xmw"]
+[ext_resource type="Texture2D" uid="uid://srloclsw868q" path="res://Assets/ProfilePictures/10.png" id="15_b3p37"]
+[ext_resource type="Texture2D" uid="uid://cipdt3gaq8vqc" path="res://Assets/ProfilePictures/11.png" id="16_o7dhk"]
+[ext_resource type="Texture2D" uid="uid://cna7axqr6ncgv" path="res://Assets/ProfilePictures/12.png" id="17_04vpp"]
+[ext_resource type="Texture2D" uid="uid://clm80epdxb6bw" path="res://Assets/ProfilePictures/13.png" id="18_8e07l"]
+[ext_resource type="Texture2D" uid="uid://kidbi2uoo4b3" path="res://Assets/ProfilePictures/14.png" id="19_3a0g0"]
+[ext_resource type="Texture2D" uid="uid://c5wo3w438h1xx" path="res://Assets/ProfilePictures/15.png" id="20_1r6na"]
+[ext_resource type="Texture2D" uid="uid://cv62esdo6rp3o" path="res://Assets/ProfilePictures/16.png" id="21_d2oui"]
+[ext_resource type="Texture2D" uid="uid://c2iom2lhtov6" path="res://Assets/ProfilePictures/17.png" id="22_wi8s0"]
+[ext_resource type="Texture2D" uid="uid://cqcjy2cgfo5s8" path="res://Assets/ProfilePictures/18.png" id="23_pp1ui"]
+[ext_resource type="Texture2D" uid="uid://dxchkrbj8wlso" path="res://Assets/ProfilePictures/19.png" id="24_st1cf"]
+[ext_resource type="Texture2D" uid="uid://dy1qio7s8kyqk" path="res://Assets/ProfilePictures/20.png" id="25_c2bn1"]
+[ext_resource type="Texture2D" uid="uid://bkqf7fwn8wmfu" path="res://Assets/ProfilePictures/21.png" id="26_bxaus"]
+[ext_resource type="Texture2D" uid="uid://bg8nnfle87btw" path="res://Assets/ProfilePictures/22.png" id="27_pejxg"]
+[ext_resource type="Texture2D" uid="uid://cmpis20w2y7xb" path="res://Assets/ProfilePictures/23.png" id="28_ftr0a"]
+[ext_resource type="Texture2D" uid="uid://hyx58bmhig5p" path="res://Assets/ProfilePictures/24.png" id="29_etbv4"]
+[ext_resource type="Texture2D" uid="uid://cq2arbjsdgtw8" path="res://Assets/ProfilePictures/25.png" id="30_fvdhq"]
+[ext_resource type="Texture2D" uid="uid://b7agr18yakxp4" path="res://Assets/ProfilePictures/26.png" id="31_o18pk"]
+[ext_resource type="Texture2D" uid="uid://cslq8sikoojbi" path="res://Assets/ProfilePictures/27.png" id="32_3qwv2"]
+[ext_resource type="Texture2D" uid="uid://boa0ms5dfacvf" path="res://Assets/ProfilePictures/28.png" id="33_a1npg"]
+[ext_resource type="Texture2D" uid="uid://csb0dmv6nmrxd" path="res://Assets/ProfilePictures/29.png" id="34_6466n"]
+[ext_resource type="Texture2D" uid="uid://b044jlgv4xyc8" path="res://Assets/ProfilePictures/30.png" id="35_bxde4"]
+[ext_resource type="Texture2D" uid="uid://ulpt1stwbh3h" path="res://Assets/ProfilePictures/31.png" id="36_i5obd"]
+[ext_resource type="Texture2D" uid="uid://ct3qfthnrw6y" path="res://Assets/ProfilePictures/32.png" id="37_omxc6"]
+[ext_resource type="Texture2D" uid="uid://rim45p6urbc4" path="res://Assets/ProfilePictures/33.png" id="38_kpd4k"]
+[ext_resource type="Texture2D" uid="uid://nc51mng31p6t" path="res://Assets/ProfilePictures/34.png" id="39_f3jgm"]
+[ext_resource type="Texture2D" uid="uid://bff6a2q1ynpas" path="res://Assets/ProfilePictures/35.png" id="40_f5ddk"]
+[ext_resource type="Texture2D" uid="uid://daohxr8j1kw5r" path="res://Assets/ProfilePictures/36.png" id="41_qjnly"]
+
+[node name="picture_selector" type="TextureButton"]
+custom_minimum_size = Vector2(120, 120)
+texture_normal = ExtResource("1_krjna")
+texture_pressed = ExtResource("2_ufh0r")
+texture_hover = ExtResource("3_s6aej")
+texture_focused = ExtResource("4_sq30j")
+ignore_texture_size = true
+stretch_mode = 0
+script = ExtResource("5_ufh0r")
+picture_list = Array[Texture2D]([ExtResource("5_qm3tp"), ExtResource("7_uiovr"), ExtResource("8_qjnly"), ExtResource("9_b85bu"), ExtResource("10_tdfsw"), ExtResource("11_gektv"), ExtResource("12_p5ry7"), ExtResource("13_aapcg"), ExtResource("14_62xmw"), ExtResource("15_b3p37"), ExtResource("16_o7dhk"), ExtResource("17_04vpp"), ExtResource("18_8e07l"), ExtResource("19_3a0g0"), ExtResource("20_1r6na"), ExtResource("21_d2oui"), ExtResource("22_wi8s0"), ExtResource("23_pp1ui"), ExtResource("24_st1cf"), ExtResource("25_c2bn1"), ExtResource("26_bxaus"), ExtResource("27_pejxg"), ExtResource("28_ftr0a"), ExtResource("29_etbv4"), ExtResource("30_fvdhq"), ExtResource("31_o18pk"), ExtResource("32_3qwv2"), ExtResource("33_a1npg"), ExtResource("34_6466n"), ExtResource("35_bxde4"), ExtResource("36_i5obd"), ExtResource("37_omxc6"), ExtResource("38_kpd4k"), ExtResource("39_f3jgm"), ExtResource("40_f5ddk"), ExtResource("41_qjnly")])
+
+[node name="MarginContainer" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 5
+theme_override_constants/margin_top = 5
+theme_override_constants/margin_bottom = 2
+
+[node name="picture" type="TextureRect" parent="MarginContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+texture = ExtResource("5_qm3tp")
+expand_mode = 1
+
+[connection signal="pressed" from="." to="." method="_on_pressed"]

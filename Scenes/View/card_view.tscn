@@ -2,14 +2,15 @@
 
 [ext_resource type="Script" uid="uid://dwcx18si3di77" path="res://Scripts/View/card_view.gd" id="1_cy6ll"]
 [ext_resource type="Script" uid="uid://cqusp4ug0a2ee" path="res://Scripts/Globals/CardResource.gd" id="2_p7nbu"]
-[ext_resource type="Texture2D" uid="uid://khc0k7ws2b0g" path="res://Assets/card-theme/default/red.png" id="3_onqwp"]
+[ext_resource type="Texture2D" uid="uid://bu7wu3q2mvxsn" path="res://Assets/card-theme/default/yellow.png" id="3_onqwp"]
 [ext_resource type="Texture2D" uid="uid://xspumfxdwrqn" path="res://Assets/card-theme/default/black.png" id="3_xv604"]
-[ext_resource type="Texture2D" uid="uid://dg7ale62lsylk" path="res://Assets/card-symbols/target.png" id="4_fmmoy"]
-[ext_resource type="Texture2D" uid="uid://8p7uyuv60l14" path="res://Assets/card-symbols/heart.png" id="5_fmmoy"]
+[ext_resource type="Texture2D" uid="uid://b7ru1auff4bah" path="res://Assets/card-symbols/Multi_target.png" id="4_fmmoy"]
+[ext_resource type="Texture2D" uid="uid://d0buk1j22pbu1" path="res://Assets/card-symbols/raute.png" id="5_gijg1"]
 
 [sub_resource type="Resource" id="Resource_xv604"]
 script = ExtResource("2_p7nbu")
-type = 9
+color = 3
+type = 11
 value = 1
 metadata/_custom_type_script = "uid://cqusp4ug0a2ee"
 
@@ -177,7 +178,7 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_bottom = 0.00015258789
+offset_bottom = 0.00016784668
 grow_horizontal = 2
 grow_vertical = 2
 pivot_offset = Vector2(84.375, 236.25)
@@ -216,7 +217,7 @@ visible = false
 layout_mode = 2
 size_flags_horizontal = 4
 theme_override_colors/font_color = Color(0.6784314, 0, 0, 1)
-text = "+2"
+text = "+1"
 label_settings = SubResource("LabelSettings_cy6ll")
 
 [node name="corner_num" type="Label" parent="visuells/Content"]
@@ -229,7 +230,7 @@ label_settings = SubResource("LabelSettings_1kj0g")
 
 [node name="symbol" type="TextureRect" parent="visuells/Content"]
 unique_name_in_owner = true
-modulate = Color(0.6784314, 0, 0, 1)
+modulate = Color(0.7647059, 0.62352943, 0, 1)
 custom_minimum_size = Vector2(0, 100)
 layout_mode = 2
 size_flags_vertical = 4
@@ -246,7 +247,7 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_bottom = 10.0
+offset_bottom = 10.000038
 grow_horizontal = 2
 grow_vertical = 2
 size_flags_vertical = 4
@@ -288,7 +289,7 @@ custom_minimum_size = Vector2(30, 30)
 layout_mode = 2
 size_flags_horizontal = 0
 size_flags_vertical = 8
-texture = ExtResource("5_fmmoy")
+texture = ExtResource("5_gijg1")
 expand_mode = 1
 stretch_mode = 4
 

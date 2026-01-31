@@ -32,19 +32,35 @@ func _can_human_pick() -> bool:
 func _on_red_pressed() -> void:
 	if !_can_human_pick():
 		return
+	if multiplayer.has_multiplayer_peer() and !multiplayer.is_server():
+		NetworkManager.request_wild_color(int(CardResource.CardColor.RED))
+		Signals.COLOR_color_selected.emit(CardResource.CardColor.RED)
+		return
 	Signals.COLOR_color_selected.emit(CardResource.CardColor.RED)
 
 func _on_yellow_pressed() -> void:
 	if !_can_human_pick():
+		return
+	if multiplayer.has_multiplayer_peer() and !multiplayer.is_server():
+		NetworkManager.request_wild_color(int(CardResource.CardColor.YELLOW))
+		Signals.COLOR_color_selected.emit(CardResource.CardColor.YELLOW)
 		return
 	Signals.COLOR_color_selected.emit(CardResource.CardColor.YELLOW)
 
 func _on_green_pressed() -> void:
 	if !_can_human_pick():
 		return
+	if multiplayer.has_multiplayer_peer() and !multiplayer.is_server():
+		NetworkManager.request_wild_color(int(CardResource.CardColor.GREEN))
+		Signals.COLOR_color_selected.emit(CardResource.CardColor.GREEN)
+		return
 	Signals.COLOR_color_selected.emit(CardResource.CardColor.GREEN)
 
 func _on_blue_pressed() -> void:
 	if !_can_human_pick():
+		return
+	if multiplayer.has_multiplayer_peer() and !multiplayer.is_server():
+		NetworkManager.request_wild_color(int(CardResource.CardColor.BLUE))
+		Signals.COLOR_color_selected.emit(CardResource.CardColor.BLUE)
 		return
 	Signals.COLOR_color_selected.emit(CardResource.CardColor.BLUE)

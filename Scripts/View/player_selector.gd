@@ -77,5 +77,7 @@ func _on_target_clicked(holder: HandCardHolder) -> void:
 
 	_active = false
 	hide()
-
+	if multiplayer.has_multiplayer_peer() and !multiplayer.is_server():
+		NetworkManager.request_target_select(int(holder.player_index))
+		return
 	Signals.TARGET_target_selected.emit(holder)

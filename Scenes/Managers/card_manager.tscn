@@ -1,10 +1,10 @@
-[gd_scene load_steps=19 format=3 uid="uid://b3cbm8norl5h7"]
+[gd_scene load_steps=17 format=3 uid="uid://b3cbm8norl5h7"]
 
 [ext_resource type="Script" uid="uid://dr0t8llnaw7ml" path="res://Scripts/Managers/CardManager.gd" id="1_4bhoy"]
 [ext_resource type="PackedScene" uid="uid://0lhp5dikyv3u" path="res://Scenes/Managers/queue_manager.tscn" id="2_1vgeo"]
 [ext_resource type="PackedScene" uid="uid://deat7hguf61ur" path="res://Scenes/View/card_view.tscn" id="2_6eb2d"]
-[ext_resource type="Resource" uid="uid://2oysao7idqwy" path="res://Resources/Decks/DefaultPlus.tres" id="2_abt31"]
 [ext_resource type="PackedScene" uid="uid://p4ppil0si11i" path="res://Scenes/View/draw_deck.tscn" id="2_jamtu"]
+[ext_resource type="Resource" uid="uid://mlcbuxl1b4dp" path="res://Resources/Decks/Classic.tres" id="2_xhqx2"]
 [ext_resource type="Script" uid="uid://duq6tdn31q054" path="res://Scripts/Globals/BotProfile.gd" id="3_c0tlk"]
 [ext_resource type="PackedScene" uid="uid://ckshnidv1ms8k" path="res://Scenes/View/color_selector.tscn" id="4_2uwj3"]
 [ext_resource type="PackedScene" uid="uid://bokx8t5dn6t6" path="res://Scenes/View/player_selector.tscn" id="5_abt31"]
@@ -13,19 +13,7 @@
 [ext_resource type="Script" uid="uid://da686y68ol6iv" path="res://Scripts/View/plus_stack_label.gd" id="7_luibc"]
 [ext_resource type="Texture2D" uid="uid://xspumfxdwrqn" path="res://Assets/card-theme/default/black.png" id="9_xhqx2"]
 
-[sub_resource type="Resource" id="Resource_abt31"]
-script = ExtResource("3_c0tlk")
-difficulty = 4
-personality = 5
-metadata/_custom_type_script = "uid://duq6tdn31q054"
-
 [sub_resource type="Resource" id="Resource_xhqx2"]
-script = ExtResource("3_c0tlk")
-difficulty = 4
-personality = 3
-metadata/_custom_type_script = "uid://duq6tdn31q054"
-
-[sub_resource type="Resource" id="Resource_nk0dp"]
 script = ExtResource("3_c0tlk")
 difficulty = 5
 metadata/_custom_type_script = "uid://duq6tdn31q054"
@@ -56,7 +44,7 @@ script = ExtResource("1_4bhoy")
 top_card_view = NodePath("MarginContainer/CenterContainer/MarginContainer/HBoxContainer/TopCard")
 queue_manager = NodePath("QueueManager")
 draw_button = NodePath("MarginContainer/CenterContainer/MarginContainer/HBoxContainer/DrawDeck")
-loaded_deck = ExtResource("2_abt31")
+loaded_deck = ExtResource("2_xhqx2")
 
 [node name="CanvasLayer" type="CanvasLayer" parent="."]
 layer = 31
@@ -69,7 +57,7 @@ queue_manager = NodePath("../../QueueManager")
 player_container = NodePath("../MarginContainer/MainPlayerContainer")
 other_player_containers = [NodePath("../player2_container"), NodePath("../player2_container2"), NodePath("../player2_container4"), NodePath("../player2_container7"), NodePath("../player2_container6"), NodePath("../player2_container3"), NodePath("../player2_container5")]
 card_manager = NodePath("..")
-bot_profiles = Array[ExtResource("3_c0tlk")]([SubResource("Resource_abt31"), SubResource("Resource_xhqx2"), SubResource("Resource_nk0dp")])
+bot_profiles = Array[ExtResource("3_c0tlk")]([SubResource("Resource_xhqx2")])
 
 [node name="Background" type="Control" parent="."]
 layout_mode = 3
@@ -138,7 +126,7 @@ offset_bottom = 22.0
 grow_horizontal = 2
 mouse_filter = 2
 
-[node name="deck count" type="Label" parent="MarginContainer/CenterContainer/MarginContainer/HBoxContainer/DrawDeck/Panel" node_paths=PackedStringArray("card_manager")]
+[node name="deck count" type="Label" parent="MarginContainer/CenterContainer/MarginContainer/HBoxContainer/DrawDeck/Panel"]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
@@ -150,7 +138,6 @@ text = "142"
 horizontal_alignment = 1
 vertical_alignment = 1
 script = ExtResource("5_aqhs8")
-card_manager = NodePath("../../../../../../..")
 
 [node name="shadow" type="TextureRect" parent="MarginContainer/CenterContainer/MarginContainer/HBoxContainer/DrawDeck"]
 unique_name_in_owner = true

@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="DeckResource" load_steps=10 format=3 uid="uid://mlcbuxl1b4dp"]
+[gd_resource type="Resource" script_class="DeckResource" format=3 uid="uid://mlcbuxl1b4dp"]
 
 [ext_resource type="Script" uid="uid://c40nbsxolq1km" path="res://Scripts/Globals/DeckEntryResource.gd" id="1_41iuw"]
 [ext_resource type="Script" uid="uid://7ntgiiwhye0n" path="res://Scripts/Globals/DeckNumberRuleResource.gd" id="2_41iuw"]
@@ -33,6 +33,7 @@ metadata/_custom_type_script = "uid://c40nbsxolq1km"
 script = ExtResource("1_41iuw")
 color = 4
 type = 5
+value = 4
 count = 8
 metadata/_custom_type_script = "uid://c40nbsxolq1km"
 

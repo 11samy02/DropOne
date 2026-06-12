@@ -133,6 +133,9 @@ func select_color(color: CardResource.CardColor) -> void:
 	current_color = color
 	waiting_for_color = false
 
+	if top_card != null:
+		top_card.color = color
+
 	top_card_view.override_color_enabled = true
 	top_card_view.override_color = color
 	top_card_view.load_card()
@@ -326,3 +329,12 @@ func _on_match_state_received(state: Dictionary) -> void:
 		r.value = int(top.get("v", 0))
 		r.uid = int(top.get("id", 0))
 		set_top_card_runtime(r)
+
+	if state.has("current_color"):
+		current_color = int(state.get("current_color", current_color))
+	if state.has("waiting_for_color"):
+		var waiting := bool(state.get("waiting_for_color", waiting_for_color))
+		if waiting and !waiting_for_color:
+			waiting_for_color = true
+		elif !waiting and waiting_for_color:
+			select_color(current_color)

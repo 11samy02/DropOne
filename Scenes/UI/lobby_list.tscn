@@ -1,8 +1,8 @@
-[gd_scene load_steps=11 format=3 uid="uid://dndxvjepbfk0g"]
+[gd_scene format=3 uid="uid://clto8gg8p42qw"]
 
 [ext_resource type="Shader" uid="uid://corv0pvqk7gru" path="res://Shaders/Background.gdshader" id="1_6ep1p"]
-[ext_resource type="Script" uid="uid://dtgxouvtg0dty" path="res://Scripts/UI/lobby_list.gd" id="1_kylcb"]
-[ext_resource type="PackedScene" uid="uid://clkueh0c2udr3" path="res://Scenes/UI/lobby.tscn" id="2_g23g8"]
+[ext_resource type="Script" path="res://Scripts/UI/lobby_list.gd" id="1_kylcb"]
+[ext_resource type="PackedScene" path="res://Scenes/UI/lobby.tscn" id="2_g23g8"]
 [ext_resource type="Texture2D" uid="uid://3nkukhpnmr17" path="res://Assets/Ui/back.png" id="2_kylcb"]
 [ext_resource type="Texture2D" uid="uid://c50tcwbujokxo" path="res://Assets/Ui/add.png" id="3_g23g8"]
 
@@ -62,7 +62,7 @@ corner_radius_top_right = 25
 corner_radius_bottom_right = 25
 corner_radius_bottom_left = 25
 
-[node name="LobbyList" type="Control"]
+[node name="LobbyList" type="Control" unique_id=1913442225]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -72,7 +72,7 @@ grow_vertical = 2
 script = ExtResource("1_kylcb")
 Lobby_scene = ExtResource("2_g23g8")
 
-[node name="ColorRect" type="ColorRect" parent="."]
+[node name="ColorRect" type="ColorRect" parent="." unique_id=1104474388]
 material = SubResource("ShaderMaterial_e8qkb")
 layout_mode = 1
 anchors_preset = 15
@@ -81,7 +81,7 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="MarginContainer" type="MarginContainer" parent="."]
+[node name="MarginContainer" type="MarginContainer" parent="." unique_id=684999051]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -93,16 +93,16 @@ theme_override_constants/margin_top = 100
 theme_override_constants/margin_right = 300
 theme_override_constants/margin_bottom = 100
 
-[node name="VBoxContainer" type="VBoxContainer" parent="MarginContainer"]
+[node name="VBoxContainer" type="VBoxContainer" parent="MarginContainer" unique_id=1255679836]
 layout_mode = 2
 theme_override_constants/separation = 100
 
-[node name="HBoxContainer" type="HBoxContainer" parent="MarginContainer/VBoxContainer"]
+[node name="HBoxContainer" type="HBoxContainer" parent="MarginContainer/VBoxContainer" unique_id=630228255]
 layout_mode = 2
 theme_override_constants/separation = 125
 alignment = 1
 
-[node name="Back" type="Button" parent="MarginContainer/VBoxContainer/HBoxContainer"]
+[node name="Back" type="Button" parent="MarginContainer/VBoxContainer/HBoxContainer" unique_id=885122543]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -111,7 +111,7 @@ icon = ExtResource("2_kylcb")
 icon_alignment = 1
 expand_icon = true
 
-[node name="Titel" type="Label" parent="MarginContainer/VBoxContainer/HBoxContainer"]
+[node name="Titel" type="Label" parent="MarginContainer/VBoxContainer/HBoxContainer" unique_id=164715507]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 6
@@ -119,7 +119,7 @@ size_flags_vertical = 0
 text = "Lobbies"
 label_settings = SubResource("LabelSettings_e8qkb")
 
-[node name="Createe" type="Button" parent="MarginContainer/VBoxContainer/HBoxContainer"]
+[node name="Createe" type="Button" parent="MarginContainer/VBoxContainer/HBoxContainer" unique_id=381709646]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -128,13 +128,13 @@ icon = ExtResource("3_g23g8")
 icon_alignment = 1
 expand_icon = true
 
-[node name="Panel" type="Panel" parent="MarginContainer/VBoxContainer"]
+[node name="Panel" type="Panel" parent="MarginContainer/VBoxContainer" unique_id=1136825159]
 layout_mode = 2
 size_flags_vertical = 3
 mouse_filter = 1
 theme_override_styles/panel = SubResource("StyleBoxFlat_cv21g")
 
-[node name="MarginContainer" type="MarginContainer" parent="MarginContainer/VBoxContainer/Panel"]
+[node name="MarginContainer" type="MarginContainer" parent="MarginContainer/VBoxContainer/Panel" unique_id=1103981702]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -146,18 +146,17 @@ theme_override_constants/margin_top = 30
 theme_override_constants/margin_right = 30
 theme_override_constants/margin_bottom = 30
 
-[node name="ScrollContainer" type="ScrollContainer" parent="MarginContainer/VBoxContainer/Panel/MarginContainer"]
+[node name="ScrollContainer" type="ScrollContainer" parent="MarginContainer/VBoxContainer/Panel/MarginContainer" unique_id=233435686]
 layout_mode = 2
 
-[node name="LobbyContainer" type="VBoxContainer" parent="MarginContainer/VBoxContainer/Panel/MarginContainer/ScrollContainer"]
+[node name="LobbyContainer" type="VBoxContainer" parent="MarginContainer/VBoxContainer/Panel/MarginContainer/ScrollContainer" unique_id=936489289]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 theme_override_constants/separation = 25
 
-[node name="refresh_list_timer" type="Timer" parent="."]
-wait_time = 3.0
+[node name="refresh_list_timer" type="Timer" parent="." unique_id=785063879]
 autostart = true
 
 [connection signal="pressed" from="MarginContainer/VBoxContainer/HBoxContainer/Createe" to="." method="_on_createe_pressed"]

@@ -1,7 +1,5 @@
-[gd_scene load_steps=6 format=3 uid="uid://clkueh0c2udr3"]
+[gd_scene format=3 uid="uid://rfu5lg5asy1b"]
 
-[ext_resource type="Script" uid="uid://bb2t3ukgmj35n" path="res://Scripts/UI/lobby.gd" id="1_l6154"]
-[ext_resource type="PackedScene" uid="uid://b3cbm8norl5h7" path="res://Scenes/Managers/card_manager.tscn" id="2_o66dd"]
 [ext_resource type="Shader" uid="uid://corv0pvqk7gru" path="res://Shaders/Background.gdshader" id="2_qx5k3"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_o66dd"]
@@ -31,17 +29,15 @@ corner_radius_bottom_left = 25
 expand_margin_top = 10.0
 expand_margin_bottom = 10.0
 
-[node name="CurrentLobby" type="Control"]
+[node name="CurrentLobby" type="Control" unique_id=837190060]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-script = ExtResource("1_l6154")
-Game_Scene = ExtResource("2_o66dd")
 
-[node name="ColorRect" type="ColorRect" parent="."]
+[node name="ColorRect" type="ColorRect" parent="." unique_id=803896344]
 material = SubResource("ShaderMaterial_o66dd")
 layout_mode = 1
 anchors_preset = 15
@@ -50,7 +46,7 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="VBoxContainer" type="VBoxContainer" parent="."]
+[node name="VBoxContainer" type="VBoxContainer" parent="." unique_id=293434525]
 layout_mode = 1
 anchors_preset = 8
 anchor_left = 0.5
@@ -65,7 +61,7 @@ grow_horizontal = 2
 grow_vertical = 2
 theme_override_constants/separation = 99
 
-[node name="Ready_button" type="Button" parent="VBoxContainer"]
+[node name="Ready_button" type="Button" parent="VBoxContainer" unique_id=177898527]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(400, 75)
 layout_mode = 2
@@ -76,7 +72,7 @@ text = "Ready"
 icon_alignment = 1
 expand_icon = true
 
-[node name="players_in_lobby" type="Label" parent="VBoxContainer"]
+[node name="players_in_lobby" type="Label" parent="VBoxContainer" unique_id=2079085187]
 unique_name_in_owner = true
 layout_mode = 2
 

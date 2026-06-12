@@ -8,19 +8,22 @@
 
 config_version=5
 
+[animation]
+
+compatibility/default_parent_skeleton_in_mesh_instance_3d=true
+
 [application]
 
 config/name="DropOne"
-config/version="v0.1.0"
-run/main_scene="uid://bo6wfw2k8kjy2"
-config/features=PackedStringArray("4.5", "Forward Plus")
+config/version="v0.1.1"
+run/main_scene="res://Scenes/UI/start_screen.tscn"
+config/features=PackedStringArray("4.6", "Forward Plus")
 config/icon="res://icon.svg"
 
 [autoload]
 
 Globals="*res://Scripts/Globals/Globals.gd"
-SupabaseManager="*res://Scripts/Supabase/SupabaseManager.gd"
-SupabaseCleanupServer="*res://Scripts/Supabase/SupabaseCleanupServer.gd"
+SteamManager="*res://Scripts/Steam/SteamManager.gd"
 NetworkManager="*res://Scripts/Server/NetworkManager.gd"
 Signals="*res://Scripts/Globals/Signals.gd"
 
@@ -41,3 +44,10 @@ anti_aliasing/quality/msaa_2d=3
 textures/decals/filter=5
 textures/light_projectors/filter=5
 2d/snap/snap_2d_transforms_to_pixel=true
+
+[steam]
+
+multiplayer_peer/max_channels=4
+initialization/initialize_on_startup=true
+initialization/app_id=0
+initialization/embed_callbacks=false

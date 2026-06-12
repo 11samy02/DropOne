@@ -64,6 +64,8 @@ var _server_match_starting := false
 var _client_has_hand := false
 var _client_has_state := false
 var _client_match_started := false
+var _game_over_handled := false
+var _winner_overlay: CanvasLayer = null
 var _server_last_players_change_ms := 0
 var _server_start_delay_active := false
 const SERVER_START_DELAY_MS := 300
@@ -77,6 +79,8 @@ func _ready() -> void:
 	NetworkManager.match_state_received.connect(_on_match_state_received)
 	NetworkManager.counts_received.connect(_on_counts_received)
 	NetworkManager.play_event_received.connect(_on_play_event_received)
+	NetworkManager.game_won.connect(_on_game_won)
+	NetworkManager.return_to_lobby.connect(_on_return_to_lobby)
 
 	var buffered_players := NetworkManager.get_last_players()
 	if buffered_players.size() > 0:
@@ -126,14 +130,16 @@ func get_opponent_index(holder: HandCardHolder) -> int:
 	if holder == null:
 		return -1
 
-	if holder.is_bot:
-		return max(0, player_count - 1) + holder.bot_index
-
 	var my_slot := int(NetworkManager.my_slot)
+
+	# Offline (kein Netzwerk-Slot): Menschen zuerst, danach Bots.
 	if my_slot < 0:
+		if holder.is_bot:
+			return max(0, player_count - 1) + holder.bot_index
 		return holder.player_index - 1
 
-	if holder.player_index == my_slot:
+	# Multiplayer: rein slot-basiert, Bots eingeschlossen.
+	if !holder.is_bot and holder.player_index == my_slot:
 		return -1
 
 	var idx := holder.player_index
@@ -349,8 +355,9 @@ func register_card_play(played_card: CardResource) -> void:
 func _after_holder_finished() -> void:
 	has_played_this_turn = false
 	has_drawn_this_turn = false
-	if turn_order.size() == 1:
-		call_deferred("_restart_match")
+	if winners.size() > 0:
+		if multiplayer.is_server():
+			_server_handle_game_over()
 		return
 	if current_turn_index >= turn_order.size():
 		current_turn_index = 0
@@ -361,6 +368,86 @@ func _after_holder_finished() -> void:
 func _restart_match() -> void:
 	await get_tree().create_timer(1.0).timeout
 	get_tree().reload_current_scene()
+
+## Server: Spielende behandeln – Gewinner ansagen, dann zurück in die Lobby
+func _server_handle_game_over() -> void:
+	if not multiplayer.is_server():
+		return
+	if _game_over_handled:
+		return
+	_game_over_handled = true
+
+	var winner_name := "Spieler"
+	if winners.size() > 0 and winners[0] != null and is_instance_valid(winners[0]):
+		if winners[0].profile != null:
+			winner_name = str(winners[0].profile.player_name)
+
+	NetworkManager.server_announce_winner(winner_name)
+
+	# Gewinner kurz anzeigen, dann alle zurück in die Lobby holen.
+	await get_tree().create_timer(4.5).timeout
+	NetworkManager.server_return_to_lobby()
+
+## Gewinner-Overlay anzeigen + Spiel pausieren (Client + Server)
+func _on_game_won(winner_name: String) -> void:
+	_show_winner_overlay(winner_name)
+	get_tree().paused = true
+
+## Zurück in die Lobby (Verbindung bleibt bestehen)
+func _on_return_to_lobby() -> void:
+	get_tree().paused = false
+	_hide_winner_overlay()
+	Globals.change_scene_file("res://Scenes/UI/steam_lobby_room.tscn")
+
+func _show_winner_overlay(winner_name: String) -> void:
+	_hide_winner_overlay()
+
+	var layer := CanvasLayer.new()
+	layer.layer = 128
+	layer.process_mode = Node.PROCESS_MODE_ALWAYS
+
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.7)
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dim.mouse_filter = Control.MOUSE_FILTER_STOP
+	layer.add_child(dim)
+
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	layer.add_child(center)
+
+	var vbox := VBoxContainer.new()
+	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	vbox.add_theme_constant_override("separation", 24)
+	center.add_child(vbox)
+
+	var crown := Label.new()
+	crown.text = "🏆 GEWONNEN 🏆"
+	crown.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	crown.add_theme_font_size_override("font_size", 48)
+	crown.modulate = Color(1.0, 0.85, 0.3)
+	vbox.add_child(crown)
+
+	var name_label := Label.new()
+	name_label.text = winner_name
+	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name_label.add_theme_font_size_override("font_size", 80)
+	vbox.add_child(name_label)
+
+	var hint := Label.new()
+	hint.text = "Zurück zur Lobby..."
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint.add_theme_font_size_override("font_size", 28)
+	hint.modulate = Color(0.8, 0.8, 0.8)
+	vbox.add_child(hint)
+
+	get_tree().root.add_child(layer)
+	_winner_overlay = layer
+
+func _hide_winner_overlay() -> void:
+	if _winner_overlay != null and is_instance_valid(_winner_overlay):
+		_winner_overlay.queue_free()
+	_winner_overlay = null
 
 ## Reverse direction
 func apply_reverse() -> void:
@@ -408,6 +495,17 @@ func _apply_wild_draw_effect(value: int, reverse: bool) -> void:
 	target.sort_cards_full()
 	target.refresh_playable_cards()
 
+	# Send updated hand to the drawn player in multiplayer
+	if multiplayer.is_server() and target != null and !target.is_bot:
+		var peer_id := _slot_to_peer_id(target.player_index)
+		if peer_id != 0:
+			var hand: Array = []
+			for ch in target.get_children():
+				if ch is CardView and ch.card_res != null:
+					hand.append(_serialize_card(ch.card_res))
+			NetworkManager.rpc_id(peer_id, "client_set_hand", hand)
+
+	# Target keeps the turn after drawing
 	if target != owner:
 		current_turn_index = turn_order.find(target)
 	has_played_this_turn = false
@@ -1280,8 +1378,11 @@ func _on_players_received(players_in: Array) -> void:
 	if multiplayer.is_server():
 		_server_last_players_change_ms = Time.get_ticks_msec()
 		if _server_match_started:
-			_update_peer_slots_from_players(_players_meta)
-			return
+			if _should_reset_server_match(players_in):
+				_reset_server_match_state()
+			else:
+				_update_peer_slots_from_players(_players_meta)
+				return
 
 	_build_holders_from_players(_players_meta)
 	_ensure_holder_containers()
@@ -1315,6 +1416,11 @@ func _build_holders_from_players(players_meta: Array) -> void:
 		if h != null and is_instance_valid(h):
 			h.queue_free()
 
+	# Alte Bot-KI-Controller entfernen, damit keine Duplikate entstehen.
+	for child in get_children():
+		if child is KIController:
+			child.queue_free()
+
 	players.clear()
 	bots.clear()
 	turn_order.clear()
@@ -1324,16 +1430,23 @@ func _build_holders_from_players(players_meta: Array) -> void:
 	player_count = max(1, players_meta.size())
 
 	var my_slot := int(NetworkManager.my_slot)
+	var bot_counter := 0
 
 	for i in range(players_meta.size()):
 		var row: Variant = players_meta[i]
 
+		var is_bot_row := false
+		if row is Dictionary:
+			is_bot_row = bool(row.get("is_bot", false))
+
 		var holder: HandCardHolder = HandCardHolder.create()
-		holder.is_bot = false
-		holder.compact_view = (my_slot < 0) or (i != my_slot)
+		holder.is_bot = is_bot_row
+		holder.compact_view = is_bot_row or (my_slot < 0) or (i != my_slot)
 		holder.player_index = i
 		holder.queue_manager = self
 		holder.card_manager = card_manager
+		if is_bot_row:
+			holder.bot_index = bot_counter
 
 		if holder.profile == null:
 			holder.profile = PlayerProfile.new()
@@ -1345,7 +1458,7 @@ func _build_holders_from_players(players_meta: Array) -> void:
 			pic_id = int(row.get("picture_id", 0))
 
 		holder.profile.player_index = i
-		holder.profile.is_bot = false
+		holder.profile.is_bot = is_bot_row
 		holder.profile.player_name = nm
 		holder.profile.holder = holder
 		holder.profile.ensure_picture()
@@ -1366,7 +1479,21 @@ func _build_holders_from_players(players_meta: Array) -> void:
 		else:
 			add_child(holder)
 
-		players.append(holder)
+		if is_bot_row:
+			bots.append(holder)
+			bot_counter += 1
+			# KI nur auf dem Server (autoritativ).
+			if multiplayer.is_server() and row is Dictionary:
+				var ki: KIController = KIController.new()
+				ki.hand_card_holder = holder
+				ki.queue_manager = self
+				ki.card_manager = card_manager
+				ki.difficulty = int(row.get("difficulty", KIController.AIDifficulty.SMART))
+				ki.personality = int(row.get("personality", KIController.AIPersonality.BALANCED))
+				add_child(ki)
+		else:
+			players.append(holder)
+
 		turn_order.append(holder)
 		_slot_to_holder[i] = holder
 
@@ -1435,6 +1562,52 @@ func _refresh_holder_layouts() -> void:
 			if h.get_parent() != null:
 				h.get_parent().remove_child(h)
 			target.add_child(h)
+
+func _should_reset_server_match(players_in: Array) -> bool:
+	# Zähle alle Teilnehmer (Menschen + Bots). Unter 2 -> Match zurücksetzen.
+	var participants := 0
+	for p in players_in:
+		if p is Dictionary:
+			if bool(p.get("is_bot", false)) or int(p.get("peer_id", 0)) != 0:
+				participants += 1
+	return participants < 2
+
+func _reset_server_match_state() -> void:
+	_server_match_started = false
+	_server_match_starting = false
+	_client_match_started = false
+	current_turn_index = 0
+	has_played_this_turn = false
+	has_drawn_this_turn = false
+	winners.clear()
+	draw_stack_amount = 0
+	draw_stack_min_value = 0
+	draw_stack_is_wild = false
+	draw_stack_color = CardResource.CardColor.BLACK
+	wild_color_owner = null
+	target_draw_active = false
+	target_draw_value = 0
+	target_draw_is_multi = false
+	target_draw_color = CardResource.CardColor.BLACK
+	pending_target_draw_owner = null
+	place_all_active = false
+	place_all_owner = null
+	place_all_color = CardResource.CardColor.RED
+	place_all_resolving = false
+	place_all_card = null
+	_place_all_sequence_running = false
+	roulette_active = false
+	roulette_waiting_for_color = false
+	roulette_owner = null
+	roulette_target = null
+	roulette_chosen_color = CardResource.CardColor.BLACK
+	roulette_step_running = false
+	pending_swap_owner = null
+	swap_color_pending = false
+	if card_manager != null:
+		card_manager.waiting_for_color = false
+		card_manager.pending_wild_card = null
+		card_manager.current_color = CardResource.CardColor.BLACK
 
 ## Buffer incoming match state
 func _on_match_state_received(state: Dictionary) -> void:
@@ -1563,6 +1736,7 @@ func _server_start_match() -> void:
 	print("QueueManager: Starting match with %d players" % turn_order.size())
 	_server_match_started = true
 	_server_match_starting = false
+	_game_over_handled = false
 
 	randomize()
 	current_turn_index = randi() % turn_order.size()
@@ -1903,9 +2077,14 @@ func _apply_wild_color(color: int, owner_slot: int) -> void:
 		if card_manager.top_card != null:
 			card_manager.top_card.color = color
 		if card_manager.top_card_view != null and is_instance_valid(card_manager.top_card_view):
+			card_manager.top_card_view.override_color_enabled = true
+			card_manager.top_card_view.override_color = color
 			card_manager.top_card_view.load_card()
 	Signals.COLOR_color_selected.emit(color)
 	if multiplayer.is_server():
+		if wild_color_owner != null and !card_manager.waiting_for_color:
+			register_card_play(card_manager.top_card)
+			clear_wild_owner()
 		NetworkManager.rpc("client_set_wild_color", int(color), int(owner_slot))
 		_server_sync_match_state()
 
@@ -1920,7 +2099,10 @@ func client_apply_wild_color(color: int, owner_slot: int) -> void:
 		if card_manager.top_card != null:
 			card_manager.top_card.color = color
 		if card_manager.top_card_view != null and is_instance_valid(card_manager.top_card_view):
+			card_manager.top_card_view.override_color_enabled = true
+			card_manager.top_card_view.override_color = color
 			card_manager.top_card_view.load_card()
+	Signals.COLOR_color_selected.emit(color)
 	clear_wild_owner()
 
 ## Client request to show color selector for a specific owner slot
@@ -1987,7 +2169,6 @@ func _server_broadcast_counts() -> void:
 		deck_count = int(card_manager.deck.size())
 
 	NetworkManager.rpc("client_set_counts", counts, deck_count)
-	_on_counts_received(counts, deck_count)
 
 ## Client play event for opponents
 func _on_play_event_received(from_slot: int, card: Dictionary) -> void:
@@ -2123,10 +2304,3 @@ func _server_sync_late_joiners(players_in: Array) -> void:
 		NetworkManager.rpc_id(peer_id, "client_set_hand", hand)
 
 	_server_broadcast_counts()
-
-
-
-
-
-
-

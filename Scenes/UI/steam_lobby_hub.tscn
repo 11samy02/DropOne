@@ -1,0 +1,170 @@
+[gd_scene format=3 uid="uid://bj8qwvyrputu3"]
+
+[ext_resource type="Shader" uid="uid://corv0pvqk7gru" path="res://Shaders/Background.gdshader" id="1_shader"]
+[ext_resource type="Script" uid="uid://ddpt7cvy8xxhb" path="res://Scripts/UI/steam_lobby_hub.gd" id="2_script"]
+[ext_resource type="Texture2D" uid="uid://3nkukhpnmr17" path="res://Assets/Ui/back.png" id="4_back"]
+[ext_resource type="Texture2D" uid="uid://c50tcwbujokxo" path="res://Assets/Ui/add.png" id="5_add"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_bg"]
+shader = ExtResource("1_shader")
+shader_parameter/speed = 0.2
+shader_parameter/scale = 8.0
+shader_parameter/warp_strength = 0.47
+shader_parameter/glow_strength = 1.0
+shader_parameter/vignette_strength = 1.3
+shader_parameter/detail_strength = 0.335
+shader_parameter/dithering = 0.0
+shader_parameter/col_dark = Color(0, 0, 0, 1)
+shader_parameter/col_mid = Color(0.036908284, 0.13531986, 0.27183843, 1)
+shader_parameter/col_glow = Color(0.16, 0.52, 0.82, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn"]
+bg_color = Color(0, 0, 0.08627451, 0.5803922)
+border_width_left = 5
+border_width_top = 5
+border_width_right = 5
+border_width_bottom = 5
+border_color = Color(0.7802099, 0.7513736, 1, 1)
+corner_radius_top_left = 25
+corner_radius_top_right = 25
+corner_radius_bottom_right = 25
+corner_radius_bottom_left = 25
+expand_margin_top = 10.0
+expand_margin_bottom = 10.0
+
+[sub_resource type="LabelSettings" id="LabelSettings_title"]
+font_size = 60
+
+[node name="SteamLobbyHub" type="Control" unique_id=477569104]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("2_script")
+
+[node name="ColorRect" type="ColorRect" parent="." unique_id=1627577819]
+material = SubResource("ShaderMaterial_bg")
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="MarginContainer" type="MarginContainer" parent="." unique_id=1901914130]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 80
+theme_override_constants/margin_top = 60
+theme_override_constants/margin_right = 80
+theme_override_constants/margin_bottom = 60
+
+[node name="VBoxContainer" type="VBoxContainer" parent="MarginContainer" unique_id=1375133589]
+layout_mode = 2
+theme_override_constants/separation = 24
+
+[node name="Header" type="HBoxContainer" parent="MarginContainer/VBoxContainer" unique_id=725864058]
+layout_mode = 2
+
+[node name="Back" type="Button" parent="MarginContainer/VBoxContainer/Header" unique_id=822475653]
+custom_minimum_size = Vector2(80, 80)
+layout_mode = 2
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn")
+icon = ExtResource("4_back")
+icon_alignment = 1
+expand_icon = true
+
+[node name="Titel" type="Label" parent="MarginContainer/VBoxContainer/Header" unique_id=43544996]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Steam Lobbies"
+label_settings = SubResource("LabelSettings_title")
+horizontal_alignment = 1
+
+[node name="status_label" type="Label" parent="MarginContainer/VBoxContainer" unique_id=1776220637]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Verbinde mit Steam..."
+horizontal_alignment = 1
+
+[node name="mode_label" type="Label" parent="MarginContainer/VBoxContainer" unique_id=855857295]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Modus: Steam"
+horizontal_alignment = 1
+
+[node name="Actions" type="HBoxContainer" parent="MarginContainer/VBoxContainer" unique_id=1411125136]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="Solo" type="Button" parent="MarginContainer/VBoxContainer/Actions" unique_id=634845999]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(280, 75)
+layout_mode = 2
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn")
+text = "Einzelspieler (Bots)"
+
+[node name="Create" type="Button" parent="MarginContainer/VBoxContainer/Actions" unique_id=634845425]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(280, 75)
+layout_mode = 2
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn")
+text = "Lobby erstellen"
+icon = ExtResource("5_add")
+icon_alignment = 1
+expand_icon = true
+
+[node name="JoinRow" type="HBoxContainer" parent="MarginContainer/VBoxContainer" unique_id=1186906849]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="lobby_id_input" type="LineEdit" parent="MarginContainer/VBoxContainer/JoinRow" unique_id=626235507]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(400, 75)
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "Lobby-ID eingeben"
+alignment = 1
+
+[node name="Paste" type="Button" parent="MarginContainer/VBoxContainer/JoinRow" unique_id=650624705]
+custom_minimum_size = Vector2(160, 75)
+layout_mode = 2
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn")
+text = "Einfügen"
+
+[node name="JoinId" type="Button" parent="MarginContainer/VBoxContainer/JoinRow" unique_id=1079888514]
+custom_minimum_size = Vector2(200, 75)
+layout_mode = 2
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn")
+text = "Beitreten"
+
+[node name="ListTitle" type="Label" parent="MarginContainer/VBoxContainer" unique_id=1955270552]
+layout_mode = 2
+text = "Öffentliche Lobbies"
+horizontal_alignment = 1
+
+[node name="ScrollContainer" type="ScrollContainer" parent="MarginContainer/VBoxContainer" unique_id=879516944]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="lobby_container" type="VBoxContainer" parent="MarginContainer/VBoxContainer/ScrollContainer" unique_id=1992090206]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 12
+
+[node name="refresh_timer" type="Timer" parent="." unique_id=758388564]
+unique_name_in_owner = true
+wait_time = 5.0
+
+[connection signal="pressed" from="MarginContainer/VBoxContainer/Header/Back" to="." method="_on_back_pressed"]
+[connection signal="pressed" from="MarginContainer/VBoxContainer/Actions/Solo" to="." method="_on_solo_pressed"]
+[connection signal="pressed" from="MarginContainer/VBoxContainer/Actions/Create" to="." method="_on_create_pressed"]
+[connection signal="pressed" from="MarginContainer/VBoxContainer/JoinRow/Paste" to="." method="_on_paste_pressed"]
+[connection signal="pressed" from="MarginContainer/VBoxContainer/JoinRow/JoinId" to="." method="_on_join_id_pressed"]

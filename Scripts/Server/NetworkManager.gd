@@ -1,20 +1,17 @@
 extends Node
 
-const DEFAULT_SERVER_IP := "146.52.121.88"
-const DEFAULT_LAN_IP := "192.168.0.4"
 const DEFAULT_PORT := 4242
 const MAX_CLIENTS := 16
+const MAX_PLAYERS := 8
 const DEV_MODE := true
-const NM_VERSION := "0.2.0"
-const BUILD_ID := "SERVER_BUILD_2026-01-13_02"
+const NM_VERSION := "0.3.0"
+const BUILD_ID := "STEAM_BUILD_2026-06-12"
+
+var _local_connecting := false
 
 var is_server := false
 var _signals_connected := false
 var _connected := false
-var _trying_wan := false
-var _trying_lan := false
-var _target_port := DEFAULT_PORT
-var _switch_timer: Timer
 
 # Client-side
 var my_slot: int = -1
@@ -27,6 +24,11 @@ var last_slot: int = -1
 var _server_profiles_by_peer: Dictionary = {} # { peer_id:int : {name, picture_id, peer_id} }
 var _server_slot_order: Array[int] = []
 
+# Lobby layer (persistente Verbindung Lobby -> Spiel)
+var _ready_by_peer: Dictionary = {} # { peer_id:int : bool }
+var last_lobby_players: Array = []   # Cache für Lobby-UI
+var _lobby_bots: Array = []          # [{name, difficulty, personality}] (nur Host)
+
 signal status_changed(message: String)
 signal match_state_received(state: Dictionary)
 signal hand_received(hand: Array)
@@ -34,6 +36,11 @@ signal players_received(players: Array)
 signal connected_ok
 signal counts_received(hand_counts: Array, deck_count: int)
 signal play_event_received(from_slot: int, card: Dictionary)
+signal lobby_state_changed(players: Array)  # [{peer_id, name, is_ready, is_host, is_bot}]
+signal lobby_start_game
+signal lobby_disconnected
+signal game_won(winner_name: String)
+signal return_to_lobby
 
 
 
@@ -44,21 +51,9 @@ func _safe_log(msg: String, sensitive: String = "") -> void:
 		print(msg)
 
 func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	print("NetworkManager version:", NM_VERSION)
 	print("NetworkManager BUILD_ID:", BUILD_ID)
-
-	_switch_timer = Timer.new()
-	_switch_timer.one_shot = true
-	_switch_timer.timeout.connect(_try_lan_after_wan)
-	add_child(_switch_timer)
-
-	print("NM PATH:", get_path())
-	print("NM SCRIPT:", get_script().resource_path)
-	print("NM METHODS:", get_method_list().size())
-
-	# Server should also clean up on disconnect and rebroadcast.
-	# (Client won't have peer_connected signals fired anyway; only server does.)
-	# Connections for client are in _connect_to()
 
 
 func _reset_peer() -> void:
@@ -68,8 +63,428 @@ func _reset_peer() -> void:
 		multiplayer.multiplayer_peer = null
 
 
+func _connect_multiplayer_signals() -> void:
+	if _signals_connected:
+		return
+	_signals_connected = true
+	multiplayer.connected_to_server.connect(_on_connected_to_server)
+	multiplayer.connection_failed.connect(_on_connection_failed)
+	multiplayer.server_disconnected.connect(_on_server_disconnected)
+
+
+func _connect_server_signals() -> void:
+	if multiplayer.peer_connected.is_connected(_on_peer_connected):
+		return
+	multiplayer.peer_connected.connect(_on_peer_connected)
+	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
+
+
 # -------------------------------------------------------------------
-# SERVER
+# LOBBY (persistente Verbindung: Lobby-Sync UND Spiel über einen Peer)
+# -------------------------------------------------------------------
+func enter_lobby_host(use_steam: bool, lobby_id: int = 0) -> bool:
+	_reset_peer()
+	_server_slot_order.clear()
+	_server_profiles_by_peer.clear()
+	_ready_by_peer.clear()
+	is_server = true
+
+	var peer: MultiplayerPeer = null
+	if use_steam:
+		var sp := SteamMultiplayerPeer.new()
+		var err := sp.host_with_lobby(lobby_id)
+		if err != OK:
+			_emit_status("Steam-Host konnte nicht starten.")
+			_safe_log("host_with_lobby failed:", str(err))
+			return false
+		peer = sp
+	else:
+		var ep := ENetMultiplayerPeer.new()
+		var err := ep.create_server(DEFAULT_PORT, MAX_CLIENTS)
+		if err != OK:
+			_emit_status("Server-Port belegt – läuft schon eine Host-Instanz?")
+			_safe_log("create_server failed:", str(err))
+			return false
+		peer = ep
+
+	multiplayer.multiplayer_peer = peer
+	_connect_server_signals()
+	_connected = true
+
+	_ensure_server_profile()
+	_ready_by_peer[1] = false
+	_broadcast_lobby_state()
+	_emit_status("Lobby-Host bereit.")
+	return true
+
+
+## Lokal: als Host starten. Prüft zuerst per kurzem Verbindungsversuch, ob bereits
+## ein Host auf 127.0.0.1:4242 läuft – falls ja, wird automatisch als Client verbunden
+## (verhindert mehrere isolierte Hosts). Sonst startet diese Instanz den Server.
+func enter_local_as_host() -> bool:
+	if await _local_host_exists():
+		_safe_log("LOCAL: Host existiert bereits -> verbinde als Client")
+		return await enter_local_as_client(8.0)
+	_safe_log("LOCAL: Host startet auf 127.0.0.1:", str(DEFAULT_PORT))
+	return enter_lobby_host(false)
+
+
+func _local_host_exists() -> bool:
+	var probe := ENetMultiplayerPeer.new()
+	if probe.create_client("127.0.0.1", DEFAULT_PORT) != OK:
+		return false
+	var deadline := Time.get_ticks_msec() + 700
+	var found := false
+	while Time.get_ticks_msec() < deadline:
+		probe.poll()
+		var st := probe.get_connection_status()
+		if st == MultiplayerPeer.CONNECTION_CONNECTED:
+			found = true
+			break
+		if st == MultiplayerPeer.CONNECTION_DISCONNECTED:
+			break
+		await get_tree().process_frame
+	probe.close()
+	return found
+
+
+## Lokal: explizit als Client verbinden (Instanz 2+ – Button "Client beitreten").
+## Wiederholt den Verbindungsversuch, falls der Host noch startet.
+func enter_local_as_client(max_wait_sec: float = 20.0) -> bool:
+	_emit_status("Verbinde mit Host 127.0.0.1:%d..." % DEFAULT_PORT)
+	is_server = false
+	_connect_multiplayer_signals()
+	_local_connecting = true
+
+	var deadline := Time.get_ticks_msec() + int(max_wait_sec * 1000.0)
+	while Time.get_ticks_msec() < deadline:
+		_reset_peer()
+		var peer := ENetMultiplayerPeer.new()
+		if peer.create_client("127.0.0.1", DEFAULT_PORT) != OK:
+			await get_tree().create_timer(0.5).timeout
+			continue
+		multiplayer.multiplayer_peer = peer
+
+		var attempt_deadline := Time.get_ticks_msec() + 1500
+		while Time.get_ticks_msec() < attempt_deadline:
+			await get_tree().process_frame
+			var st := peer.get_connection_status()
+			if st == MultiplayerPeer.CONNECTION_CONNECTED:
+				_local_connecting = false
+				_connected = true
+				send_profile_to_server()
+				_emit_status("Mit Host verbunden.")
+				_safe_log("LOCAL: Client verbunden, peer_id=", str(multiplayer.get_unique_id()))
+				return true
+			if st == MultiplayerPeer.CONNECTION_DISCONNECTED:
+				break
+
+		_reset_peer()
+		await get_tree().create_timer(0.4).timeout
+
+	_local_connecting = false
+	_emit_status("Kein Host gefunden. Starte zuerst 'Host starten' in Instanz 1.")
+	return false
+
+
+func enter_lobby_client(use_steam: bool, lobby_id: int = 0, host_steam_id: int = 0) -> bool:
+	is_server = false
+	_reset_peer()
+	_connect_multiplayer_signals()
+	_emit_status("Verbinde mit Lobby...")
+
+	var peer: MultiplayerPeer = null
+	if use_steam:
+		var sp := SteamMultiplayerPeer.new()
+		var err := OK
+		if lobby_id != 0:
+			err = sp.connect_to_lobby(lobby_id)
+		else:
+			err = sp.create_client(host_steam_id)
+		if err != OK:
+			_emit_status("Lobby-Verbindung fehlgeschlagen.")
+			_safe_log("connect_to_lobby failed:", str(err))
+			return false
+		peer = sp
+	else:
+		var ep := ENetMultiplayerPeer.new()
+		var err := ep.create_client("127.0.0.1", DEFAULT_PORT)
+		if err != OK:
+			_emit_status("Lokale Verbindung fehlgeschlagen.")
+			_safe_log("create_client failed:", str(err))
+			return false
+		peer = ep
+
+	multiplayer.multiplayer_peer = peer
+	return true
+
+
+func leave_lobby() -> void:
+	_ready_by_peer.clear()
+	last_lobby_players = []
+	_server_profiles_by_peer.clear()
+	_server_slot_order.clear()
+	_lobby_bots.clear()
+	is_server = false
+	my_slot = -1
+	last_slot = -1
+	last_players = []
+	_reset_peer()
+
+
+func _exit_tree() -> void:
+	if _local_connecting:
+		_local_connecting = false
+
+
+func set_lobby_ready(ready: bool) -> void:
+	if multiplayer.multiplayer_peer == null:
+		return
+	if multiplayer.is_server():
+		_ready_by_peer[1] = ready
+		_broadcast_lobby_state()
+	else:
+		rpc_id(1, "server_set_lobby_ready", ready)
+
+
+# -------------------------------------------------------------------
+# BOTS (nur Host verwaltet die Lobby-Bots)
+# -------------------------------------------------------------------
+func add_lobby_bot(difficulty: int, personality: int) -> bool:
+	if not multiplayer.is_server():
+		return false
+	if participant_count() >= MAX_PLAYERS:
+		return false
+	var idx := _lobby_bots.size() + 1
+	_lobby_bots.append({
+		"name": "Bot %d" % idx,
+		"difficulty": int(difficulty),
+		"personality": int(personality),
+	})
+	_broadcast_lobby_state()
+	return true
+
+
+func remove_lobby_bot() -> void:
+	if not multiplayer.is_server():
+		return
+	if _lobby_bots.is_empty():
+		return
+	_lobby_bots.pop_back()
+	_broadcast_lobby_state()
+
+
+func get_bot_count() -> int:
+	return _lobby_bots.size()
+
+
+func human_count() -> int:
+	return _get_connected_peer_ids_including_server().size()
+
+
+func participant_count() -> int:
+	return human_count() + _lobby_bots.size()
+
+
+func request_start_game() -> void:
+	if not multiplayer.is_server():
+		return
+	if not all_lobby_ready():
+		return
+	for pid in multiplayer.get_peers():
+		rpc_id(int(pid), "client_start_game")
+	client_start_game()
+
+
+func all_lobby_ready() -> bool:
+	if participant_count() < 2:
+		return false
+	# Bots sind immer ready – nur Menschen müssen bestätigen.
+	var connected := _get_connected_peer_ids_including_server()
+	for id in connected:
+		if not bool(_ready_by_peer.get(id, false)):
+			return false
+	return true
+
+
+func get_lobby_players() -> Array:
+	return last_lobby_players.duplicate(true)
+
+
+func _build_lobby_player_array() -> Array:
+	var connected := _get_connected_peer_ids_including_server()
+	var arr: Array = []
+	for id in connected:
+		var prof: Dictionary = _server_profiles_by_peer.get(id, {})
+		arr.append({
+			"peer_id": id,
+			"name": str(prof.get("name", "Player")),
+			"is_ready": bool(_ready_by_peer.get(id, false)),
+			"is_host": id == 1,
+			"is_bot": false,
+		})
+	for bot in _lobby_bots:
+		arr.append({
+			"peer_id": 0,
+			"name": str(bot.get("name", "Bot")),
+			"is_ready": true,
+			"is_host": false,
+			"is_bot": true,
+			"difficulty": int(bot.get("difficulty", 0)),
+			"personality": int(bot.get("personality", 0)),
+		})
+	return arr
+
+
+func _broadcast_lobby_state() -> void:
+	if not multiplayer.is_server():
+		return
+	_prune_ready_to_connected()
+	var arr := _build_lobby_player_array()
+	for pid in multiplayer.get_peers():
+		rpc_id(int(pid), "client_lobby_state", arr)
+	client_lobby_state(arr)
+
+
+func _prune_ready_to_connected() -> void:
+	var connected := _get_connected_peer_ids_including_server()
+	for key in _ready_by_peer.keys():
+		if not connected.has(int(key)):
+			_ready_by_peer.erase(key)
+
+
+@rpc("any_peer", "reliable")
+func server_set_lobby_ready(ready: bool) -> void:
+	if not multiplayer.is_server():
+		return
+	var sender := multiplayer.get_remote_sender_id()
+	_ready_by_peer[sender] = ready
+	_broadcast_lobby_state()
+
+
+@rpc("authority", "reliable")
+func client_lobby_state(players: Array) -> void:
+	last_lobby_players = players
+	lobby_state_changed.emit(players)
+
+
+@rpc("authority", "reliable", "call_local")
+func client_start_game() -> void:
+	lobby_start_game.emit()
+
+
+# -------------------------------------------------------------------
+# WIN / RÜCKKEHR ZUR LOBBY (Verbindung bleibt bestehen)
+# -------------------------------------------------------------------
+func has_active_connection() -> bool:
+	return multiplayer.multiplayer_peer != null and _is_peer_connected()
+
+
+func server_announce_winner(winner_name: String) -> void:
+	if not multiplayer.is_server():
+		return
+	for pid in multiplayer.get_peers():
+		rpc_id(int(pid), "client_on_winner", winner_name)
+	client_on_winner(winner_name)
+
+
+func server_return_to_lobby() -> void:
+	if not multiplayer.is_server():
+		return
+	# Ready-States für die neue Runde zurücksetzen (Bots bleiben ready).
+	for key in _ready_by_peer.keys():
+		_ready_by_peer[key] = false
+	for pid in multiplayer.get_peers():
+		rpc_id(int(pid), "client_return_to_lobby")
+	client_return_to_lobby()
+
+
+## Wird vom Lobby-Raum aufgerufen, wenn nach einem Spiel die Verbindung
+## wiederverwendet wird. Setzt Spiel-State zurück, behält den Peer.
+func reset_for_lobby_return() -> void:
+	my_slot = -1
+	last_slot = -1
+	last_players = []
+	last_hand = []
+	last_match_state = {}
+	if multiplayer.is_server():
+		for key in _ready_by_peer.keys():
+			_ready_by_peer[key] = false
+		_ready_by_peer[1] = false
+		_broadcast_lobby_state()
+
+
+@rpc("authority", "reliable", "call_local")
+func client_on_winner(winner_name: String) -> void:
+	game_won.emit(winner_name)
+
+
+@rpc("authority", "reliable", "call_local")
+func client_return_to_lobby() -> void:
+	return_to_lobby.emit()
+
+
+# -------------------------------------------------------------------
+# STEAM P2P
+# -------------------------------------------------------------------
+func start_steam_host(lobby_id: int) -> void:
+	_server_slot_order.clear()
+	is_server = true
+	_reset_peer()
+	_emit_status("Starte Steam-Host...")
+
+	var peer := SteamMultiplayerPeer.new()
+	var err := peer.host_with_lobby(lobby_id)
+	if err != OK:
+		_emit_status("Host-Start fehlgeschlagen.")
+		_safe_log("host_with_lobby failed:", str(err))
+		return
+
+	multiplayer.multiplayer_peer = peer
+	_connect_server_signals()
+
+	_ensure_server_profile()
+	_broadcast_players_to_all()
+
+	_connected = true
+	_emit_status("Steam-Host bereit.")
+	emit_signal("connected_ok")
+
+
+func connect_steam_lobby(lobby_id: int) -> void:
+	is_server = false
+	_reset_peer()
+	_emit_status("Verbinde mit Lobby...")
+	_connect_multiplayer_signals()
+
+	var peer := SteamMultiplayerPeer.new()
+	var err := peer.connect_to_lobby(lobby_id)
+	if err != OK:
+		_emit_status("Lobby-Verbindung fehlgeschlagen.")
+		_safe_log("connect_to_lobby failed:", str(err))
+		return
+
+	multiplayer.multiplayer_peer = peer
+
+
+func connect_steam_client(host_steam_id: int) -> void:
+	is_server = false
+	_reset_peer()
+	_emit_status("Verbinde mit Host...")
+	_connect_multiplayer_signals()
+
+	var peer := SteamMultiplayerPeer.new()
+	var err := peer.create_client(host_steam_id)
+	if err != OK:
+		_emit_status("Client-Verbindung fehlgeschlagen.")
+		_safe_log("create_client failed:", str(err))
+		return
+
+	multiplayer.multiplayer_peer = peer
+
+
+# -------------------------------------------------------------------
+# DEDICATED SERVER (optional, headless)
 # -------------------------------------------------------------------
 func start_server(port: int = DEFAULT_PORT) -> void:
 	_server_slot_order.clear()
@@ -78,39 +493,57 @@ func start_server(port: int = DEFAULT_PORT) -> void:
 	var peer := ENetMultiplayerPeer.new()
 	var err := peer.create_server(port, MAX_CLIENTS)
 	if err != OK:
-		_emit_status("❌ Failed to start server.")
-		_safe_log("❌ Failed to start server. Error:", str(err))
+		_emit_status("Server-Start fehlgeschlagen.")
+		_safe_log("create_server failed:", str(err))
 		return
 
 	multiplayer.multiplayer_peer = peer
-	multiplayer.peer_connected.connect(_on_peer_connected)
-	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
+	_connect_server_signals()
 
-	# Ensure server itself exists as slot 0 always.
 	_ensure_server_profile()
 	_broadcast_players_to_all()
 
-	_emit_status("✅ Server started!")
-	_safe_log("✅ SERVER STARTED on port", str(port))
+	_emit_status("Server gestartet.")
+	_safe_log("SERVER STARTED on port", str(port))
+	_connected = true
+	emit_signal("connected_ok")
+
+
+func connect_local(host: String = "127.0.0.1", port: int = DEFAULT_PORT) -> void:
+	is_server = false
+	_reset_peer()
+	_emit_status("Verbinde lokal...")
+	_connect_multiplayer_signals()
+
+	var peer := ENetMultiplayerPeer.new()
+	var err := peer.create_client(host, port)
+	if err != OK:
+		_emit_status("Lokale Verbindung fehlgeschlagen.")
+		return
+	multiplayer.multiplayer_peer = peer
 
 
 func _on_peer_connected(id: int) -> void:
-	_emit_status("👤 A player joined.")
-	_safe_log("👤 Client connected (id)", str(id))
+	_emit_status("Ein Spieler ist beigetreten.")
+	_safe_log("Client connected (id)", str(id))
+	if not _ready_by_peer.has(id):
+		_ready_by_peer[id] = false
 	rpc_id(id, "client_receive_message", "Welcome!")
-	# NOTE: We do NOT broadcast here yet; we broadcast when we actually have a profile (server_register_player).
+	# Profil kommt per server_register_player; danach broadcast.
 
 
 func _on_peer_disconnected(id: int) -> void:
-	_emit_status("👋 A player left.")
-	_safe_log("👋 Client disconnected (id)", str(id))
+	_emit_status("Ein Spieler hat die Lobby verlassen.")
+	_safe_log("Client disconnected (id)", str(id))
 
 	if multiplayer.is_server():
-		# Remove stale profile so we never rpc to an old peer id again.
 		if _server_profiles_by_peer.has(id):
 			_server_profiles_by_peer.erase(id)
+		if _ready_by_peer.has(id):
+			_ready_by_peer.erase(id)
 		_prune_profiles_to_connected()
 		_broadcast_players_to_all()
+		_broadcast_lobby_state()
 
 
 func _ensure_server_profile() -> void:
@@ -119,17 +552,20 @@ func _ensure_server_profile() -> void:
 	if _server_profiles_by_peer.has(1):
 		return
 
-	var nm := "Server"
-	if Globals != null and Globals.client_profile != null and str(Globals.client_profile.player_name).strip_edges() != "":
-		nm = str(Globals.client_profile.player_name).strip_edges()
-	elif SupabaseManager != null and str(SupabaseManager.display_name).strip_edges() != "":
-		nm = str(SupabaseManager.display_name).strip_edges()
-
+	var nm := _get_local_player_name()
 	_server_profiles_by_peer[1] = {
 		"name": nm,
 		"picture_id": 0,
 		"peer_id": 1
 	}
+
+
+func _get_local_player_name() -> String:
+	if Globals != null and Globals.client_profile != null and str(Globals.client_profile.player_name).strip_edges() != "":
+		return str(Globals.client_profile.player_name).strip_edges()
+	if SteamManager != null and SteamManager.steam_ready:
+		return SteamManager.get_persona_name()
+	return "Player"
 
 
 func _get_connected_peer_ids_including_server() -> Array[int]:
@@ -171,11 +607,22 @@ func _broadcast_players_to_all() -> void:
 	for id in connected:
 		var p: Dictionary = {}
 		if _server_profiles_by_peer.has(id):
-			p = _server_profiles_by_peer[id]
+			p = _server_profiles_by_peer[id].duplicate(true)
 		else:
 			p = {"name": "Player", "picture_id": 0, "peer_id": id}
 		p["peer_id"] = id
+		p["is_bot"] = false
 		players.append(p)
+	
+	for bot in _lobby_bots:
+		players.append({
+			"name": str(bot.get("name", "Bot")),
+			"picture_id": 0,
+			"peer_id": 0,
+			"is_bot": true,
+			"difficulty": int(bot.get("difficulty", 0)),
+			"personality": int(bot.get("personality", 0)),
+		})
 	
 	for id in multiplayer.get_peers():
 		var pid := int(id)
@@ -197,106 +644,53 @@ func server_rebroadcast_players() -> void:
 
 
 # -------------------------------------------------------------------
-# CLIENT
+# CLIENT CONNECTION
 # -------------------------------------------------------------------
-func connect_auto(port: int = DEFAULT_PORT) -> void:
-	is_server = false
-	_target_port = port
-	_trying_wan = true
-	_trying_lan = false
-	_reset_peer()
-	_emit_status("🔄 Connecting...")
-	_safe_log("🔄 Trying WAN first")
-	_connect_to(DEFAULT_SERVER_IP, _target_port)
-	_switch_timer.start(1.2)
-
-
-func _try_lan_after_wan() -> void:
-	if _connected:
-		return
-	if not _trying_wan:
-		return
-	_trying_wan = false
-	_trying_lan = true
-	_reset_peer()
-	_emit_status("🔄 Connecting...")
-	_safe_log("🔄 WAN not ready, trying LAN")
-	_connect_to(DEFAULT_LAN_IP, _target_port)
-
-
-func _connect_to(ip: String, port: int) -> void:
-	var peer := ENetMultiplayerPeer.new()
-	var err := peer.create_client(ip, port)
-	if err != OK:
-		_emit_status("❌ Connection failed.")
-		_safe_log("❌ create_client failed. Error:", str(err))
-		return
-
-	multiplayer.multiplayer_peer = peer
-
-	if not _signals_connected:
-		_signals_connected = true
-		multiplayer.connected_to_server.connect(_on_connected_to_server)
-		multiplayer.connection_failed.connect(_on_connection_failed)
-		multiplayer.server_disconnected.connect(_on_server_disconnected)
-
-
 func _on_connected_to_server() -> void:
 	_connected = true
-	_switch_timer.stop()
-	_emit_status("✅ Connected!")
-	_safe_log("✅ CONNECTED TO SERVER!")
+	_emit_status("Verbunden!")
+	_safe_log("CONNECTED TO HOST!")
 	emit_signal("connected_ok")
-
-	# Safe to RPC now.
-	rpc_id(1, "server_receive_ping", "Hello Server! I am connected.")
 	send_profile_to_server()
 
 
 func _on_connection_failed() -> void:
-	_safe_log("❌ CONNECTION FAILED")
-
-	if _trying_wan and not _connected:
-		_trying_wan = false
-		_trying_lan = true
-		_reset_peer()
-		_emit_status("🔄 Connecting...")
-		_safe_log("🔄 WAN failed, trying LAN")
-		_connect_to(DEFAULT_LAN_IP, _target_port)
+	_safe_log("CONNECTION FAILED")
+	if _local_connecting:
 		return
-
-	_emit_status("❌ Connection failed.")
+	_emit_status("Verbindung fehlgeschlagen.")
+	lobby_disconnected.emit()
 
 
 func _on_server_disconnected() -> void:
-	_emit_status("⚠️ Disconnected.")
-	_safe_log("⚠️ DISCONNECTED FROM SERVER")
+	if _local_connecting:
+		return
+	_emit_status("Verbindung getrennt.")
+	_safe_log("DISCONNECTED FROM HOST")
+	_connected = false
+	lobby_disconnected.emit()
 
 
 func _is_peer_connected() -> bool:
 	if multiplayer.multiplayer_peer == null:
 		return false
-	if multiplayer.multiplayer_peer is ENetMultiplayerPeer:
-		var p := multiplayer.multiplayer_peer as ENetMultiplayerPeer
+	var peer := multiplayer.multiplayer_peer
+	if peer is ENetMultiplayerPeer:
+		var p := peer as ENetMultiplayerPeer
 		return p.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED
-	# fallback
+	if peer is SteamMultiplayerPeer:
+		var sp := peer as SteamMultiplayerPeer
+		return sp.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED
 	return true
 
 
 func send_profile_to_server() -> void:
-	# Prevent the classic: "Trying to call an RPC via a peer which is not connected"
 	if not _is_peer_connected():
-		_safe_log("⚠️ send_profile_to_server() called while not connected - skipped")
+		_safe_log("send_profile_to_server() skipped - not connected")
 		return
 
-	var name_value := "Player"
-	if Globals != null and Globals.client_profile != null and str(Globals.client_profile.player_name).strip_edges() != "":
-		name_value = str(Globals.client_profile.player_name).strip_edges()
-	elif SupabaseManager != null and str(SupabaseManager.display_name).strip_edges() != "":
-		name_value = str(SupabaseManager.display_name).strip_edges()
-
 	var profile := {
-		"name": name_value,
+		"name": _get_local_player_name(),
 		"picture_id": 0
 	}
 
@@ -312,13 +706,13 @@ func _emit_status(msg: String) -> void:
 @rpc("any_peer", "reliable")
 func server_receive_ping(text: String) -> void:
 	var sender_id := multiplayer.get_remote_sender_id()
-	_safe_log("📩 Ping received (from id)", str(sender_id))
-	_safe_log("📩 Message:", text)
+	_safe_log("Ping received (from id)", str(sender_id))
+	_safe_log("Message:", text)
 
 @rpc("authority", "reliable")
 func client_receive_message(text: String) -> void:
-	_safe_log("📩 Message from server:", text)
-	_emit_status("📩 " + text)
+	_safe_log("Message from server:", text)
+	_emit_status(text)
 
 @rpc("any_peer", "reliable")
 func server_register_player(profile: Dictionary) -> void:
@@ -327,12 +721,14 @@ func server_register_player(profile: Dictionary) -> void:
 
 	var sender := multiplayer.get_remote_sender_id()
 
-	# Store profile under the real peer id (sender).
 	profile["peer_id"] = sender
 	_server_profiles_by_peer[sender] = profile
+	if not _ready_by_peer.has(sender):
+		_ready_by_peer[sender] = false
 
 	_prune_profiles_to_connected()
 	_broadcast_players_to_all()
+	_broadcast_lobby_state()
 
 @rpc("authority", "reliable")
 func client_set_players(players: Array, your_slot: int) -> void:
@@ -345,7 +741,7 @@ func client_set_players(players: Array, your_slot: int) -> void:
 func client_set_hand(hand: Array) -> void:
 	last_hand = hand
 	hand_received.emit(hand)
-	print("🃏 HAND RECEIVED size=", hand.size(), " first_type=", typeof(hand[0]) if hand.size() > 0 else -1)
+	print("HAND RECEIVED size=", hand.size(), " first_type=", typeof(hand[0]) if hand.size() > 0 else -1)
 
 
 @rpc("authority", "reliable")
@@ -375,7 +771,7 @@ func server_request_draw() -> void:
 func client_play_event(from_slot: int, card: Dictionary) -> void:
 	play_event_received.emit(int(from_slot), card)
 
-@rpc("authority", "reliable")
+@rpc("authority", "reliable", "call_local")
 func client_set_counts(hand_counts: Array, deck_count: int) -> void:
 	counts_received.emit(hand_counts, int(deck_count))
 
@@ -471,21 +867,6 @@ func server_build_slots(peer_ids: Array[int]) -> void:
 	if not multiplayer.is_server():
 		return
 	
-	# Ensure server profile exists
 	_ensure_server_profile()
 	_prune_profiles_to_connected()
-	
-	# Get all connected peer IDs including server
-	var connected := _get_connected_peer_ids_including_server()
-	
-	# Filter peer_ids to only include connected peers
-	var valid_peer_ids: Array[int] = []
-	for pid in peer_ids:
-		if connected.has(pid):
-			valid_peer_ids.append(pid)
-	
-	# Sort to ensure consistent slot assignment
-	valid_peer_ids.sort()
-	
-	# Broadcast players with updated slot mapping
 	_broadcast_players_to_all()

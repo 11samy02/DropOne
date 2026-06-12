@@ -1,13 +1,13 @@
 [gd_scene load_steps=9 format=3 uid="uid://dm075bdgr5a04"]
 
-[ext_resource type="Shader" uid="uid://corv0pvqk7gru" path="res://Shaders/Background.gdshader" id="1_1l6uk"]
-[ext_resource type="Script" uid="uid://c57jre1tlsmxg" path="res://Scripts/UI/create_profile.gd" id="1_bctc0"]
-[ext_resource type="PackedScene" uid="uid://dndxvjepbfk0g" path="res://Scenes/UI/lobby_list.tscn" id="2_1ehlc"]
-[ext_resource type="Texture2D" uid="uid://c50tcwbujokxo" path="res://Assets/Ui/add.png" id="3_j3fbf"]
-[ext_resource type="Texture2D" uid="uid://bsury0f65afv" path="res://Assets/ProfilePictures/1.png" id="8_yka3x"]
+[ext_resource type="Shader" uid="uid://corv0pvqk7gru" path="res://Shaders/Background.gdshader" id="1_shader"]
+[ext_resource type="Script" uid="uid://c57jre1tlsmxg" path="res://Scripts/UI/create_profile.gd" id="2_script"]
+[ext_resource type="Texture2D" uid="uid://3nkukhpnmr17" path="res://Assets/Ui/back.png" id="3_back"]
+[ext_resource type="Texture2D" uid="uid://c50tcwbujokxo" path="res://Assets/Ui/add.png" id="4_save"]
+[ext_resource type="Texture2D" uid="uid://bsury0f65afv" path="res://Assets/ProfilePictures/1.png" id="5_avatar"]
 
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_0nxcj"]
-shader = ExtResource("1_1l6uk")
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_bg"]
+shader = ExtResource("1_shader")
 shader_parameter/speed = 0.2
 shader_parameter/scale = 8.0
 shader_parameter/warp_strength = 0.47
@@ -19,7 +19,7 @@ shader_parameter/col_dark = Color(0, 0, 0, 1)
 shader_parameter/col_mid = Color(0.036908284, 0.13531986, 0.27183843, 1)
 shader_parameter/col_glow = Color(0.16, 0.52, 0.82, 1)
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_paipt"]
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
 bg_color = Color(0, 0, 0.08627451, 0.5803922)
 border_width_left = 5
 border_width_top = 5
@@ -31,7 +31,7 @@ corner_radius_top_right = 25
 corner_radius_bottom_right = 25
 corner_radius_bottom_left = 25
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_xlbvm"]
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn"]
 bg_color = Color(0, 0, 0.08627451, 0.5803922)
 border_width_left = 5
 border_width_top = 5
@@ -52,11 +52,10 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-script = ExtResource("1_bctc0")
-Lobby_list_scene = ExtResource("2_1ehlc")
+script = ExtResource("2_script")
 
 [node name="ColorRect" type="ColorRect" parent="."]
-material = SubResource("ShaderMaterial_0nxcj")
+material = SubResource("ShaderMaterial_bg")
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -84,15 +83,33 @@ theme_override_constants/margin_bottom = 100
 layout_mode = 2
 size_flags_horizontal = 4
 size_flags_vertical = 4
-theme_override_constants/separation = 40
+theme_override_constants/separation = 24
 alignment = 1
+
+[node name="Header" type="HBoxContainer" parent="HBoxContainer/MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="Back" type="Button" parent="HBoxContainer/MarginContainer/VBoxContainer/Header"]
+custom_minimum_size = Vector2(80, 80)
+layout_mode = 2
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn")
+icon = ExtResource("3_back")
+icon_alignment = 1
+expand_icon = true
+
+[node name="Title" type="Label" parent="HBoxContainer/MarginContainer/VBoxContainer/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 48
+text = "Profil anpassen"
+horizontal_alignment = 1
 
 [node name="Panel" type="Panel" parent="HBoxContainer/MarginContainer/VBoxContainer"]
 custom_minimum_size = Vector2(600, 640)
 layout_mode = 2
 size_flags_vertical = 3
 mouse_filter = 1
-theme_override_styles/panel = SubResource("StyleBoxFlat_paipt")
+theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
 
 [node name="MarginContainer" type="MarginContainer" parent="HBoxContainer/MarginContainer/VBoxContainer/Panel"]
 layout_mode = 1
@@ -109,39 +126,39 @@ theme_override_constants/margin_bottom = 30
 [node name="ScrollContainer" type="ScrollContainer" parent="HBoxContainer/MarginContainer/VBoxContainer/Panel/MarginContainer"]
 layout_mode = 2
 
-[node name="LobbyContainer" type="VBoxContainer" parent="HBoxContainer/MarginContainer/VBoxContainer/Panel/MarginContainer/ScrollContainer"]
-unique_name_in_owner = true
+[node name="ProfileContainer" type="VBoxContainer" parent="HBoxContainer/MarginContainer/VBoxContainer/Panel/MarginContainer/ScrollContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 
-[node name="HBoxContainer" type="HBoxContainer" parent="HBoxContainer/MarginContainer/VBoxContainer/Panel/MarginContainer/ScrollContainer/LobbyContainer"]
+[node name="PictureRow" type="HBoxContainer" parent="HBoxContainer/MarginContainer/VBoxContainer/Panel/MarginContainer/ScrollContainer/ProfileContainer"]
 layout_mode = 2
 size_flags_vertical = 3
 alignment = 1
 
-[node name="picture" type="TextureRect" parent="HBoxContainer/MarginContainer/VBoxContainer/Panel/MarginContainer/ScrollContainer/LobbyContainer/HBoxContainer"]
+[node name="picture" type="TextureRect" parent="HBoxContainer/MarginContainer/VBoxContainer/Panel/MarginContainer/ScrollContainer/ProfileContainer/PictureRow"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-texture = ExtResource("8_yka3x")
+texture = ExtResource("5_avatar")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="player_name" type="LineEdit" parent="HBoxContainer/MarginContainer/VBoxContainer/Panel/MarginContainer/ScrollContainer/LobbyContainer"]
+[node name="player_name" type="LineEdit" parent="HBoxContainer/MarginContainer/VBoxContainer/Panel/MarginContainer/ScrollContainer/ProfileContainer"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 100)
 layout_mode = 2
 placeholder_text = "Nickname"
 alignment = 1
 
-[node name="Create" type="Button" parent="HBoxContainer/MarginContainer/VBoxContainer"]
+[node name="Save" type="Button" parent="HBoxContainer/MarginContainer/VBoxContainer"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(400, 75)
 layout_mode = 2
 size_flags_horizontal = 6
-theme_override_styles/normal = SubResource("StyleBoxFlat_xlbvm")
-icon = ExtResource("3_j3fbf")
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn")
+text = "Speichern"
+icon = ExtResource("4_save")
 icon_alignment = 1
 expand_icon = true
 
@@ -161,4 +178,5 @@ theme_override_constants/h_separation = 0
 theme_override_constants/v_separation = 0
 columns = 6
 
-[connection signal="pressed" from="HBoxContainer/MarginContainer/VBoxContainer/Create" to="." method="_on_create_pressed"]
+[connection signal="pressed" from="HBoxContainer/MarginContainer/VBoxContainer/Header/Back" to="." method="_on_back_pressed"]
+[connection signal="pressed" from="HBoxContainer/MarginContainer/VBoxContainer/Save" to="." method="_on_save_pressed"]

@@ -1,0 +1,85 @@
+[gd_scene format=3 uid="uid://do6m8fccxco0h"]
+
+[ext_resource type="Texture2D" uid="uid://bff6a2q1ynpas" path="res://Assets/ProfilePictures/35.png" id="1_t3flm"]
+[ext_resource type="PackedScene" uid="uid://bpglgdslmw461" path="res://Scenes/View/hand_card_holder.tscn" id="2_8n2hl"]
+[ext_resource type="PackedScene" uid="uid://deat7hguf61ur" path="res://Scenes/View/card_view.tscn" id="3_c4arg"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_deklj"]
+bg_color = Color(0, 0, 0.08627451, 0.5803922)
+border_width_left = 5
+border_width_top = 5
+border_width_right = 5
+border_width_bottom = 5
+border_color = Color(0.7802099, 0.7513736, 1, 1)
+corner_radius_top_left = 150
+corner_radius_top_right = 150
+corner_radius_bottom_right = 150
+corner_radius_bottom_left = 150
+expand_margin_left = 100.0
+expand_margin_right = 100.0
+
+[node name="PlayerUi" type="VBoxContainer" unique_id=907444659]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+size_flags_vertical = 10
+theme_override_constants/separation = 30
+
+[node name="Panel" type="PanelContainer" parent="." unique_id=748988567]
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_styles/panel = SubResource("StyleBoxFlat_deklj")
+
+[node name="HBoxContainer" type="HBoxContainer" parent="Panel" unique_id=1911905196]
+layout_mode = 2
+alignment = 1
+
+[node name="profile_picture" type="TextureRect" parent="Panel/HBoxContainer" unique_id=334281431]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 150)
+layout_mode = 2
+texture = ExtResource("1_t3flm")
+expand_mode = 1
+
+[node name="VBoxContainer" type="VBoxContainer" parent="Panel/HBoxContainer" unique_id=1337666427]
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 4
+
+[node name="playere_name" type="Label" parent="Panel/HBoxContainer/VBoxContainer" unique_id=240893512]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.8392157, 0, 1)
+text = "Samy"
+
+[node name="tag" type="Label" parent="Panel/HBoxContainer/VBoxContainer" unique_id=254280565]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 0.627451)
+theme_override_font_sizes/font_size = 22
+text = "Samy"
+
+[node name="HandCardHolder" parent="." unique_id=864647634 instance=ExtResource("2_8n2hl")]
+layout_mode = 2
+
+[node name="CardView" parent="HandCardHolder" unique_id=638049615 instance=ExtResource("3_c4arg")]
+layout_mode = 2
+
+[node name="CardView2" parent="HandCardHolder" unique_id=1239846525 instance=ExtResource("3_c4arg")]
+layout_mode = 2
+
+[node name="CardView3" parent="HandCardHolder" unique_id=1018276265 instance=ExtResource("3_c4arg")]
+layout_mode = 2
+
+[node name="CardView4" parent="HandCardHolder" unique_id=1274513857 instance=ExtResource("3_c4arg")]
+layout_mode = 2
+
+[node name="CardView5" parent="HandCardHolder" unique_id=1060652444 instance=ExtResource("3_c4arg")]
+layout_mode = 2
+
+[node name="CardView6" parent="HandCardHolder" unique_id=882498448 instance=ExtResource("3_c4arg")]
+layout_mode = 2
+
+[node name="CardView7" parent="HandCardHolder" unique_id=1262648547 instance=ExtResource("3_c4arg")]
+layout_mode = 2

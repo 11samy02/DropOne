@@ -71,5 +71,5 @@ func _load_game_scene() -> void:
 	_loading_scene = false
 
 func _on_clean_players_timer_timeout() -> void:
-	# Timer is disabled; cleanup handled by SupabaseCleanupServer.
+	# Timer is disabled; dedicated server uses ENet directly.
 	pass

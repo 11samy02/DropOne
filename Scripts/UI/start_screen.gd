@@ -1,0 +1,43 @@
+extends Control
+
+const START_SCREEN := "res://Scenes/UI/start_screen.tscn"
+const LOBBY_HUB := "res://Scenes/UI/steam_lobby_hub.tscn"
+
+@onready var customize_button: Button = %CustomizeButton
+@onready var play_button: Button = %PlayButton
+@onready var profile_panel: Panel = %ProfilePanel
+@onready var profile_name: Label = %ProfileName
+@onready var profile_picture: TextureRect = %ProfilePicture
+@onready var hint_label: Label = %HintLabel
+
+
+func _ready() -> void:
+	_update_ui()
+
+
+func _update_ui() -> void:
+	var ready := Globals.has_customized_profile()
+	play_button.disabled = not ready
+
+	if ready:
+		hint_label.text = ""
+		profile_panel.visible = true
+		profile_name.text = Globals.client_profile.player_name
+		if Globals.client_profile.picture != null:
+			profile_picture.texture = Globals.client_profile.picture
+		else:
+			profile_picture.texture = PlayerProfile.avatar_pool[0]
+	else:
+		hint_label.text = "Passe zuerst dein Profil an, bevor du eine Lobby erstellst."
+		profile_panel.visible = false
+
+
+func _on_customize_pressed() -> void:
+	Globals.change_scene_file("res://Scenes/UI/create_profile.tscn")
+
+
+func _on_play_pressed() -> void:
+	if not Globals.has_customized_profile():
+		hint_label.text = "Bitte zuerst dein Profil anpassen."
+		return
+	Globals.change_scene_file(LOBBY_HUB)

@@ -310,6 +310,11 @@ func refresh_playable_cards() -> void:
 	if !is_bot:
 		for c in get_children():
 			if c is CardView:
+				if !c.show_front:
+					c.set_clickable(false, true)
+					smooth_modulate(c, Color.WHITE, 0.3)
+					continue
+
 				var playable := can_play_card(c.card_res)
 				var allowed = turn_active and !is_bot and c.show_front and playable
 				c.set_clickable(allowed)
@@ -344,6 +349,10 @@ func _after_color_selected() -> void:
 		_waiting_color_turn_end = false
 		queue_manager.register_card_play(card_manager.top_card)
 		queue_manager.clear_wild_owner()
+
+	# Keep target turn UI in sync after wild color selection
+	if queue_manager != null and multiplayer.is_server():
+		queue_manager.update_turn_state()
 
 ## Returns all card resources currently inside this hand
 func get_all_card_resources() -> Array[CardResource]:

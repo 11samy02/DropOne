@@ -83,6 +83,10 @@ func _init_steam() -> void:
 		var verbal := str(init_result.get("verbal", "Unbekannter Fehler"))
 		steam_init_failed.emit("Steam konnte nicht initialisiert werden: %s" % verbal)
 		return
+	# ZWINGEND für P2P: ohne Relay-Netzwerkzugang können sich Host und Client
+	# über SteamMultiplayerPeer nicht verbinden (Client bleibt auf "Connecting",
+	# der Host sieht den Beitritt nie).
+	Steam.initRelayNetworkAccess()
 	steam_ready = true
 	steam_ready_signal.emit()
 	print("Steam initialisiert. Steam ID: ", Steam.getSteamID())

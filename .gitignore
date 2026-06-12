@@ -1,3 +1,7 @@
 # Godot 4+ specific ignores
 .godot/
 /android/
+
+# GodotSteam / GDExtension hot-reload temp files
+*~RF*.TMP
+addons/godotsteam/**/~*

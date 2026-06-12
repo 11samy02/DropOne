@@ -9,7 +9,7 @@ var picture_id: int = 0
 
 
 func _ready() -> void:
-	for i in range(PlayerProfile.avatar_pool.size()):
+	for i in range(PlayerProfile.get_avatar_pool().size()):
 		picture_container.add_child(PictureSelector.create(i))
 
 	Signals.PROFILE_set_picture.connect(change_picture)

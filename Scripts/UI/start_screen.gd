@@ -26,7 +26,9 @@ func _update_ui() -> void:
 		if Globals.client_profile.picture != null:
 			profile_picture.texture = Globals.client_profile.picture
 		else:
-			profile_picture.texture = PlayerProfile.avatar_pool[0]
+			var pool := PlayerProfile.get_avatar_pool()
+			if not pool.is_empty():
+				profile_picture.texture = pool[0]
 	else:
 		hint_label.text = "Passe zuerst dein Profil an, bevor du eine Lobby erstellst."
 		profile_panel.visible = false

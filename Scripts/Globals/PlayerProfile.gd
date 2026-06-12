@@ -2,45 +2,29 @@
 extends Resource
 class_name PlayerProfile
 
-## Global avatar pool (loaded once)
-static var avatar_pool: Array[Texture2D] = [
-	preload("uid://bsury0f65afv"),
-	preload("uid://bt18evinn5aq8"),
-	preload("uid://4fm5gi0gbhd6"),
-	preload("uid://8c236sumsbxc"),
-	preload("uid://b6xawt615iww0"),
-	preload("uid://862os6wejet0"),
-	preload("uid://b6mufjby2k2c6"),
-	preload("uid://bmf2x4xruqveh"),
-	preload("uid://b8l8s70j5tq5c"),
-	preload("uid://srloclsw868q"),
-	preload("uid://cipdt3gaq8vqc"),
-	preload("uid://cna7axqr6ncgv"),
-	preload("uid://clm80epdxb6bw"),
-	preload("uid://kidbi2uoo4b3"),
-	preload("uid://c5wo3w438h1xx"),
-	preload("uid://cv62esdo6rp3o"),
-	preload("uid://c2iom2lhtov6"),
-	preload("uid://cqcjy2cgfo5s8"),
-	preload("uid://dxchkrbj8wlso"),
-	preload("uid://dy1qio7s8kyqk"),
-	preload("uid://bkqf7fwn8wmfu"),
-	preload("uid://bg8nnfle87btw"),
-	preload("uid://cmpis20w2y7xb"),
-	preload("uid://hyx58bmhig5p"),
-	preload("uid://cq2arbjsdgtw8"),
-	preload("uid://b7agr18yakxp4"),
-	preload("uid://cslq8sikoojbi"),
-	preload("uid://boa0ms5dfacvf"),
-	preload("uid://csb0dmv6nmrxd"),
-	preload("uid://b044jlgv4xyc8"),
-	preload("uid://ulpt1stwbh3h"),
-	preload("uid://ct3qfthnrw6y"),
-	preload("uid://rim45p6urbc4"),
-	preload("uid://nc51mng31p6t"),
-	preload("uid://bff6a2q1ynpas"),
-	preload("uid://daohxr8j1kw5r"),
-]
+## Avatar source. Loaded lazily at runtime via res:// paths so the textures are
+## resolved from the exported PCK reliably. Static `preload(...)` initializers can
+## end up empty in exported builds, which left the picture grid blank.
+const AVATAR_DIR := "res://Assets/ProfilePictures/"
+const AVATAR_COUNT := 36
+
+## Global avatar pool (built on first access)
+static var _avatar_pool: Array[Texture2D] = []
+
+static func get_avatar_pool() -> Array[Texture2D]:
+	if _avatar_pool.is_empty():
+		_build_avatar_pool()
+	return _avatar_pool
+
+static func _build_avatar_pool() -> void:
+	_avatar_pool.clear()
+	for i in range(1, AVATAR_COUNT + 1):
+		var path := AVATAR_DIR + str(i) + ".png"
+		if not ResourceLoader.exists(path):
+			continue
+		var tex := load(path) as Texture2D
+		if tex != null:
+			_avatar_pool.append(tex)
 
 @export var player_name: String = "Player"
 @export var picture: Texture2D
@@ -54,6 +38,7 @@ var holder: HandCardHolder = null
 func ensure_picture() -> void:
 	if picture != null:
 		return
-	if avatar_pool.is_empty():
+	var pool := get_avatar_pool()
+	if pool.is_empty():
 		return
-	picture = avatar_pool[randi() % avatar_pool.size()]
+	picture = pool[randi() % pool.size()]

@@ -970,16 +970,35 @@ func get_valid_target_holders(exclude: HandCardHolder) -> Array[HandCardHolder]:
 		res.append(h)
 	return res
 
-## Threat target by smallest hand
-func get_most_threatening_target(exclude: HandCardHolder) -> HandCardHolder:
-	var best: HandCardHolder = null
+## Count CardView nodes in a holder (ignores UI / animation children).
+func _count_cards_in_holder(holder: HandCardHolder) -> int:
+	if holder == null:
+		return 0
+	var n := 0
+	for c in holder.get_children():
+		if c is CardView:
+			n += 1
+	return n
+
+## Pick a target with the fewest cards; random among ties.
+func get_least_hand_target(exclude: HandCardHolder) -> HandCardHolder:
+	var candidates: Array[HandCardHolder] = []
 	var best_count := 999999
 	for h in get_valid_target_holders(exclude):
-		var c := h.get_child_count()
+		var c := _count_cards_in_holder(h)
 		if c < best_count:
 			best_count = c
-			best = h
-	return best
+			candidates.clear()
+			candidates.append(h)
+		elif c == best_count:
+			candidates.append(h)
+	if candidates.is_empty():
+		return null
+	return candidates[randi() % candidates.size()]
+
+## Threat target = player closest to winning (fewest cards).
+func get_most_threatening_target(exclude: HandCardHolder) -> HandCardHolder:
+	return get_least_hand_target(exclude)
 
 ## Show target selection UI on the card owner's machine (host/solo included).
 func _request_target_select_for_owner(owner: HandCardHolder, allow_self: bool) -> void:
@@ -1034,7 +1053,11 @@ func start_swap_hands(owner: HandCardHolder) -> void:
 	if multiplayer.is_server():
 		_server_sync_match_state()
 	if owner.is_bot:
-		var target := get_most_threatening_target(owner)
+		var target := get_least_hand_target(owner)
+		if target == null:
+			pending_swap_owner = null
+			end_turn()
+			return
 		_resolve_swap_with_target(owner, target)
 		return
 	_request_target_select_for_owner(owner, false)
@@ -1094,12 +1117,10 @@ func resolve_swap_hands(owner: HandCardHolder) -> void:
 
 ## Execute swap between two holders, then request color selection
 func _resolve_swap_with_target(owner: HandCardHolder, target: HandCardHolder) -> void:
-	if _check_and_finish_current_holder():
-		_after_holder_finished()
-		return
-	if owner.get_child_count() == 0:
-		return
+	pending_swap_owner = null
 	if target == null:
+		swap_color_pending = false
+		end_turn()
 		return
 
 	var my_cards := owner.get_all_card_resources()
@@ -1135,15 +1156,44 @@ func _resolve_swap_with_target(owner: HandCardHolder, target: HandCardHolder) ->
 		card_manager.current_color = CardResource.CardColor.BLACK
 		card_manager.waiting_for_color = true
 	swap_color_pending = true
+	owner._waiting_color_turn_end = true
 	set_wild_color_owner(owner)
-	Signals.COLOR_request_color_select.emit()
-	if multiplayer.is_server():
-		var peer_id := _slot_to_peer_id(owner.player_index)
-		if peer_id != 0:
-			NetworkManager.rpc_id(peer_id, "client_request_color", int(owner.player_index))
+	if owner.is_bot:
+		call_deferred("_finish_bot_swap_color", owner)
+	else:
+		Signals.COLOR_request_color_select.emit()
+		if multiplayer.is_server():
+			var peer_id := _slot_to_peer_id(owner.player_index)
+			if peer_id != 0:
+				NetworkManager.rpc_id(peer_id, "client_request_color", int(owner.player_index))
 	if multiplayer.is_server():
 		_server_broadcast_counts()
 		_server_sync_match_state()
+
+## Bot swap follow-up: pick a wild color and end the turn.
+func _finish_bot_swap_color(owner: HandCardHolder) -> void:
+	if card_manager == null or owner == null or !is_instance_valid(owner):
+		return
+	if !swap_color_pending or wild_color_owner != owner:
+		return
+	if !card_manager.waiting_for_color:
+		return
+	await get_tree().create_timer(0.2).timeout
+	if card_manager == null or !is_instance_valid(owner):
+		return
+	if !card_manager.waiting_for_color or !swap_color_pending:
+		return
+	var color := _bot_choose_wild_color(owner)
+	card_manager.select_color(color)
+	owner._waiting_color_turn_end = false
+	register_card_play(card_manager.top_card)
+	clear_wild_owner()
+
+func _bot_choose_wild_color(holder: HandCardHolder) -> CardResource.CardColor:
+	for child in get_children():
+		if child is KIController and child.hand_card_holder == holder:
+			return child.choose_best_wild_color()
+	return choose_color_for_roulette(holder)
 
 ## Color roulette start
 func start_color_roulette(owner: HandCardHolder) -> void:

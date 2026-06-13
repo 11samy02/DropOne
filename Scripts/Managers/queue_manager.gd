@@ -2342,8 +2342,29 @@ func _on_play_event_received(from_slot: int, card: Dictionary) -> void:
 	temp.set_meta("anim_temp", true)
 	holder.add_child(temp)
 
+	# Let the seat container lay the card out so we read its real on-screen
+	# position before flying it.
 	await get_tree().process_frame
-	temp.smooth_move_button_to_top_card_juicy(0.3)
+	await get_tree().process_frame
+
+	var start_pos := temp.global_position
+	var target_pos := start_pos
+	if card_manager != null and card_manager.top_card_view != null and is_instance_valid(card_manager.top_card_view):
+		target_pos = card_manager.top_card_view.global_position
+
+	# Opponent seats use compact/overlapping layouts, so the old local-space fly
+	# (visuells.position relative to the seat) was distorted to near-zero on
+	# clients and the card just "appeared". Detach to top-level and animate in
+	# global space with a high z_index so it visibly flies above all UI from the
+	# seat to the centre on every peer.
+	temp.top_level = true
+	temp.z_index = 4096
+	temp.global_position = start_pos
+
+	var tw := create_tween()
+	tw.tween_property(temp, "global_position", target_pos, 0.3) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+
 	await get_tree().create_timer(0.3).timeout
 
 	if temp != null and is_instance_valid(temp):

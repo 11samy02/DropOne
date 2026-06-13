@@ -78,34 +78,18 @@ func _get_card_count() -> int:
 ## Returns max hand width as a fraction of the viewport
 func _get_max_hand_width() -> float:
 	if is_inside_tree():
-		return get_viewport().get_visible_rect().size.x * 0.88
+		return get_viewport().get_visible_rect().size.x * 0.92
 	return 1200.0
 
-## Minimum overlap separation for a pleasant hand fan (negative = overlap)
-func _aesthetic_separation(count: int) -> int:
-	if count <= 2:
-		return -20
-	if count <= 4:
-		return -40
-	if count <= 7:
-		return -58
-	if count <= 10:
-		return -78
-	if count <= 14:
-		return -98
-	if count <= 20:
-		return -118
-	return -138
-
-## Computes separation so the hand stays within the max width (negative = overlap)
-func _separation_for_count(count: int, max_width: float) -> int:
+## Computes separation to fill target width (negative = overlap, positive = gap)
+func _separation_for_count(count: int, target_width: float) -> int:
 	if count <= 1:
 		return 0
 	var card_w := SCALED_CARD_WIDTH
-	var max_step := (max_width - card_w) / float(count - 1)
-	var sep := int(floor(max_step - card_w))
-	var min_sep := int(-card_w * 0.88)
-	return clampi(sep, min_sep, 0)
+	var ideal_step := (target_width - card_w) / float(count - 1)
+	var sep := int(round(ideal_step - card_w))
+	var min_sep := int(-card_w * 0.58)
+	return maxi(sep, min_sep)
 
 ## Returns the appropriate card separation based on how many cards are in the hand
 func _get_target_separation(count: int) -> int:
@@ -115,10 +99,14 @@ func _get_target_separation(count: int) -> int:
 		return 0
 
 	var max_w := _get_max_hand_width()
-	var width_sep := _separation_for_count(count, max_w)
-	var aesthetic_sep := _aesthetic_separation(count)
-	# Pick the stronger overlap: fit on screen (width_sep) vs. visual fan (aesthetic_sep)
-	return mini(width_sep, aesthetic_sep)
+	var natural_w := SCALED_CARD_WIDTH * float(count)
+
+	# Small hands: keep natural spacing, centered by the HBoxContainer
+	if count <= 6 and natural_w <= max_w:
+		return 0
+
+	# Larger hands: spread across (or squeeze into) the available width
+	return _separation_for_count(count, max_w)
 
 ## Defines ordering rules for sorting cards by color, type, and value
 func _compare_cards(a: CardResource, b: CardResource) -> bool:

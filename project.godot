@@ -15,7 +15,7 @@ compatibility/default_parent_skeleton_in_mesh_instance_3d=true
 [application]
 
 config/name="DropOne"
-config/version="v0.2.0-alpha"
+config/version="v0.2.1-alpha"
 run/main_scene="res://Scenes/UI/start_screen.tscn"
 config/features=PackedStringArray("4.6", "Forward Plus")
 config/icon="res://icon.svg"
@@ -49,5 +49,5 @@ textures/light_projectors/filter=5
 
 multiplayer_peer/max_channels=4
 initialization/initialize_on_startup=true
-initialization/app_id=0
-initialization/embed_callbacks=false
+initialization/app_id=480
+initialization/embed_callbacks=true

@@ -26,7 +26,7 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("2_script")
-use_steam = false
+use_steam = true
 game_scene = ExtResource("3_game")
 
 [node name="ColorRect" type="ColorRect" parent="."]

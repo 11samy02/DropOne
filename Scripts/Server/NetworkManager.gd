@@ -39,7 +39,7 @@ signal play_event_received(from_slot: int, card: Dictionary)
 signal lobby_state_changed(players: Array)  # [{peer_id, name, is_ready, is_host, is_bot}]
 signal lobby_start_game
 signal lobby_disconnected
-signal game_won(winner_name: String)
+signal game_won(winner_name: String, winner_slot: int)
 signal return_to_lobby
 
 
@@ -380,12 +380,12 @@ func has_active_connection() -> bool:
 	return multiplayer.multiplayer_peer != null and _is_peer_connected()
 
 
-func server_announce_winner(winner_name: String) -> void:
+func server_announce_winner(winner_name: String, winner_slot: int = -1) -> void:
 	if not multiplayer.is_server():
 		return
 	for pid in multiplayer.get_peers():
-		rpc_id(int(pid), "client_on_winner", winner_name)
-	client_on_winner(winner_name)
+		rpc_id(int(pid), "client_on_winner", winner_name, int(winner_slot))
+	client_on_winner(winner_name, int(winner_slot))
 
 
 func server_return_to_lobby() -> void:
@@ -415,8 +415,8 @@ func reset_for_lobby_return() -> void:
 
 
 @rpc("authority", "reliable", "call_local")
-func client_on_winner(winner_name: String) -> void:
-	game_won.emit(winner_name)
+func client_on_winner(winner_name: String, winner_slot: int = -1) -> void:
+	game_won.emit(winner_name, int(winner_slot))
 
 
 @rpc("authority", "reliable", "call_local")

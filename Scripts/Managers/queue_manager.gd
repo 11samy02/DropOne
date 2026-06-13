@@ -377,25 +377,42 @@ func _server_handle_game_over() -> void:
 	_game_over_handled = true
 
 	var winner_name := "Player"
+	var winner_slot := -1
 	if winners.size() > 0 and winners[0] != null and is_instance_valid(winners[0]):
+		winner_slot = int(winners[0].player_index)
 		if winners[0].profile != null:
 			winner_name = str(winners[0].profile.player_name)
 
-	NetworkManager.server_announce_winner(winner_name)
+	NetworkManager.server_announce_winner(winner_name, winner_slot)
 
 	# Gewinner kurz anzeigen, dann alle zurück in die Lobby holen.
 	await get_tree().create_timer(4.5).timeout
 	NetworkManager.server_return_to_lobby()
 
 ## Gewinner-Overlay anzeigen + Spiel pausieren (Client + Server)
-func _on_game_won(winner_name: String) -> void:
+func _on_game_won(winner_name: String, winner_slot: int = -1) -> void:
 	# Let the winning card's fly/placement animation finish first. Pausing the
 	# tree immediately froze the in-flight tween and the 0.3s await that removes
 	# the card, so the winner's last card visually stayed in hand and it looked
 	# like they still had a card left.
 	await get_tree().create_timer(0.45).timeout
+	# Guarantee the winner shows an empty hand on EVERY peer, regardless of how
+	# the last card's animation/counts resolved locally.
+	_force_clear_winner_hand(winner_slot)
 	_show_winner_overlay(winner_name)
 	get_tree().paused = true
+
+## Remove every card view from the winner's seat so they visibly have no cards.
+func _force_clear_winner_hand(winner_slot: int) -> void:
+	if winner_slot < 0:
+		return
+	var holder: HandCardHolder = _slot_to_holder.get(int(winner_slot), null)
+	if holder == null or !is_instance_valid(holder):
+		return
+	for c in holder.get_children():
+		if c is CardView:
+			holder.remove_child(c)
+			c.queue_free()
 
 ## Zurück in die Lobby (Verbindung bleibt bestehen)
 func _on_return_to_lobby() -> void:

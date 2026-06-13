@@ -3,7 +3,7 @@
 **DropOne** is a fast-paced, online multiplayer card game built with **Godot 4**. Match colors and numbers, stack draw penalties, play wild cards, and be the first to empty your hand.
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v0.1.9-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-v0.1.10-blue" alt="Version" />
   <img src="https://img.shields.io/badge/engine-Godot%204.6-478CBF?logo=godotengine&logoColor=white" alt="Godot 4.6" />
   <img src="https://img.shields.io/badge/players-2--8-green" alt="2-8 players" />
   <img src="https://img.shields.io/badge/platform-Windows-0078D6?logo=windows&logoColor=white" alt="Windows" />
@@ -28,7 +28,7 @@
 
 Pre-built Windows builds are available on the [**Releases**](https://github.com/11samy02/DropOne/releases) page.
 
-1. Download `DropOne-Windows-v0.1.9.zip`
+1. Download `DropOne-Windows-v0.1.10.zip`
 2. Extract the folder
 3. Launch **`DropOne.exe`**
 4. Keep `steam_appid.txt` and the Steam DLLs next to the executable

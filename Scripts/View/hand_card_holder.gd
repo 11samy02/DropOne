@@ -81,7 +81,7 @@ func _get_max_hand_width() -> float:
 		return get_viewport().get_visible_rect().size.x * 0.92
 	return 1200.0
 
-## Computes separation to fill target width (negative = overlap, positive = gap)
+## Computes separation to fit target width (negative = overlap, 0 = touching).
 func _separation_for_count(count: int, target_width: float) -> int:
 	if count <= 1:
 		return 0
@@ -89,7 +89,7 @@ func _separation_for_count(count: int, target_width: float) -> int:
 	var ideal_step := (target_width - card_w) / float(count - 1)
 	var sep := int(round(ideal_step - card_w))
 	var min_sep := int(-card_w * 0.58)
-	return maxi(sep, min_sep)
+	return clampi(sep, min_sep, 0)
 
 ## Returns the appropriate card separation based on how many cards are in the hand
 func _get_target_separation(count: int) -> int:
@@ -99,13 +99,14 @@ func _get_target_separation(count: int) -> int:
 		return 0
 
 	var max_w := _get_max_hand_width()
-	var natural_w := SCALED_CARD_WIDTH * float(count)
+	var card_w := SCALED_CARD_WIDTH
+	var touching_w := card_w * float(count)
 
-	# Small hands: keep natural spacing, centered by the HBoxContainer
-	if count <= 6 and natural_w <= max_w:
+	# Default: cards touch (separation 0), centered by the HBoxContainer
+	if touching_w <= max_w:
 		return 0
 
-	# Larger hands: spread across (or squeeze into) the available width
+	# Only overlap when the hand would exceed the available width
 	return _separation_for_count(count, max_w)
 
 ## Defines ordering rules for sorting cards by color, type, and value

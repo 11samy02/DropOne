@@ -18,6 +18,12 @@ var pending_wild_card: CardResource = null
 var is_initialized: bool = false
 var _uid_counter: int = 1
 
+## While suppressed, runtime top-card updates are buffered instead of applied,
+## so a card flying from a hand to the discard pile isn't instantly snapped by
+## an incoming match-state sync mid-animation.
+var _top_card_suppressed := false
+var _suppressed_top_card: CardResource = null
+
 
 func _ready() -> void:
 	connect_signals()
@@ -65,8 +71,27 @@ func set_top_card() -> void:
 		set_top_card_runtime(picked)
 
 
+## Begin/end buffering of runtime top-card changes (used around remote card
+## fly animations so the top card only swaps once the card lands).
+func begin_top_card_suppression() -> void:
+	_top_card_suppressed = true
+
+func end_top_card_suppression(fallback: CardResource = null) -> void:
+	_top_card_suppressed = false
+	var buffered := _suppressed_top_card
+	_suppressed_top_card = null
+	if buffered != null:
+		set_top_card_runtime(buffered)
+	elif fallback != null:
+		set_top_card_runtime(fallback)
+
+
 func set_top_card_runtime(card: CardResource) -> void:
 	if card == null:
+		return
+
+	if _top_card_suppressed:
+		_suppressed_top_card = card
 		return
 
 	if top_card != null:

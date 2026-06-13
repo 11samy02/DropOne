@@ -2024,7 +2024,12 @@ func server_apply_draw(peer_id: int) -> void:
 	var holder: HandCardHolder = _slot_to_holder.get(slot, null)
 	if holder == null or not is_instance_valid(holder):
 		return
-	
+
+	# Only the player whose turn it is may draw (prevents drawing on someone
+	# else's turn / other players affecting the game out of turn).
+	if !is_players_turn(holder):
+		return
+
 	# Check if draw is allowed
 	if has_played_this_turn:
 		return
@@ -2135,6 +2140,13 @@ func _apply_wild_color(color: int, owner_slot: int) -> void:
 	Signals.COLOR_color_selected.emit(color)
 	if multiplayer.is_server():
 		if wild_color_owner != null and !card_manager.waiting_for_color:
+			# The COLOR_color_selected emit above already scheduled the owning
+			# holder's _after_color_selected(), which would call register_card_play
+			# a SECOND time. For a +4 that meant the draw effect ran twice and hit
+			# another player too. Clear the holder's flag so the effect resolves
+			# exactly once here.
+			if is_instance_valid(wild_color_owner):
+				wild_color_owner._waiting_color_turn_end = false
 			register_card_play(card_manager.top_card)
 			clear_wild_owner()
 		NetworkManager.rpc("client_set_wild_color", int(color), int(owner_slot))
@@ -2247,6 +2259,11 @@ func _on_play_event_received(from_slot: int, card: Dictionary) -> void:
 		r.value = int(card.get("v", 0))
 		r.uid = int(card.get("id", 0))
 
+		# Fly the played card to the discard pile first, then swap the top card
+		# once it lands (suppress mid-flight match-state snaps).
+		if card_manager != null:
+			card_manager.begin_top_card_suppression()
+
 		if cv != null and is_instance_valid(cv):
 			cv.set_clickable(false, true)
 			cv.smooth_move_button_to_top_card_juicy(0.3)
@@ -2256,7 +2273,7 @@ func _on_play_event_received(from_slot: int, card: Dictionary) -> void:
 				cv.queue_free()
 
 		if card_manager != null:
-			card_manager.set_top_card_runtime(r)
+			card_manager.end_top_card_suppression(r)
 
 		if r.type in [
 			CardResource.CardType.WILD,
@@ -2288,17 +2305,19 @@ func _on_play_event_received(from_slot: int, card: Dictionary) -> void:
 		holder.remove_child(remove_one)
 		remove_one.queue_free()
 
-	# Update top card on client
 	var r := CardResource.new()
 	r.color = int(card.get("c", 0))
 	r.type = int(card.get("t", 0))
 	r.value = int(card.get("v", 0))
 	r.uid = int(card.get("id", 0))
-	
-	if card_manager != null:
-		card_manager.set_top_card_runtime(r)
 
-	# Show card animation
+	# Fly a face-up copy of the played card from the opponent's seat to the
+	# discard pile, and only swap the top card once it lands. The suppression
+	# keeps an incoming match-state sync from snapping the top card mid-flight,
+	# which is why remote plays previously just "appeared" instead of flying.
+	if card_manager != null:
+		card_manager.begin_top_card_suppression()
+
 	var temp: CardView = holder.CARD_VIEW.instantiate()
 	temp.in_hand_card = false
 	temp.hand_card_holder = null
@@ -2313,6 +2332,9 @@ func _on_play_event_received(from_slot: int, card: Dictionary) -> void:
 
 	if temp != null and is_instance_valid(temp):
 		temp.queue_free()
+
+	if card_manager != null:
+		card_manager.end_top_card_suppression(r)
 
 func _server_sync_late_joiners(players_in: Array) -> void:
 	if not _server_match_started:

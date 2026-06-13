@@ -21,12 +21,18 @@ func _can_human_pick() -> bool:
 		return false
 	if !queue_manager.is_human_turn():
 		return false
-	if queue_manager.wild_color_owner == null:
+	var owner: HandCardHolder = queue_manager.wild_color_owner
+	if owner == null:
 		return false
-	if queue_manager.wild_color_owner.is_bot:
+	if owner.is_bot:
 		return false
-	if queue_manager.wild_color_owner != queue_manager.get_current_holder():
+	if owner != queue_manager.get_current_holder():
 		return false
+	# In multiplayer ONLY the peer who actually played the wild may pick its
+	# color. Without this the host could choose colors for clients' cards.
+	if multiplayer.has_multiplayer_peer():
+		if int(owner.player_index) != int(NetworkManager.my_slot):
+			return false
 	return true
 
 func _on_red_pressed() -> void:

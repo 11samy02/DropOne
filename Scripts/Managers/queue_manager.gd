@@ -389,6 +389,11 @@ func _server_handle_game_over() -> void:
 
 ## Gewinner-Overlay anzeigen + Spiel pausieren (Client + Server)
 func _on_game_won(winner_name: String) -> void:
+	# Let the winning card's fly/placement animation finish first. Pausing the
+	# tree immediately froze the in-flight tween and the 0.3s await that removes
+	# the card, so the winner's last card visually stayed in hand and it looked
+	# like they still had a card left.
+	await get_tree().create_timer(0.45).timeout
 	_show_winner_overlay(winner_name)
 	get_tree().paused = true
 

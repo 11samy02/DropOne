@@ -31,7 +31,7 @@ func setup(member: Dictionary) -> void:
 			status_label.text = "%s / %s" % [diff_name, pers_name]
 			status_label.modulate = Color(0.6, 0.8, 1.0)
 		else:
-			status_label.text = "Ready" if is_ready else "Nicht bereit"
+			status_label.text = "Ready" if is_ready else "Not Ready"
 			status_label.modulate = Color(0.4, 1.0, 0.5) if is_ready else Color(0.7, 0.7, 0.7)
 
 	if host_label:

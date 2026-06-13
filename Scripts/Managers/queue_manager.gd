@@ -111,10 +111,6 @@ func get_container_for_holder(holder: HandCardHolder) -> Control:
 		return player_container
 
 	var my_slot := int(NetworkManager.my_slot)
-	if my_slot < 0 or my_slot >= turn_order.size():
-		return
-	if my_slot < 0 or my_slot >= turn_order.size():
-		return
 
 	if my_slot >= 0 and !holder.is_bot and holder.player_index == my_slot:
 		return player_container
@@ -125,27 +121,30 @@ func get_container_for_holder(holder: HandCardHolder) -> Control:
 
 	return player_container
 
-## Compute opponent index for UI
+## Compute opponent seat index for UI.
+## Seats are assigned RELATIVE to the local player so turn order always runs
+## around the table in a circle: the next player after the local one takes the
+## first opponent seat, the one after that the second, etc.
 func get_opponent_index(holder: HandCardHolder) -> int:
 	if holder == null:
 		return -1
 
+	# player_count is the full participant count (set before holders are built),
+	# so it is reliable even while turn_order is still being populated.
+	var total: int = max(player_count, turn_order.size())
+	if total <= 0:
+		total = 1
+
 	var my_slot := int(NetworkManager.my_slot)
-
-	# Offline (kein Netzwerk-Slot): Menschen zuerst, danach Bots.
+	# Offline / kein gültiger Slot: lokalen Spieler als Slot 0 annehmen.
 	if my_slot < 0:
-		if holder.is_bot:
-			return max(0, player_count - 1) + holder.bot_index
-		return holder.player_index - 1
+		my_slot = 0
 
-	# Multiplayer: rein slot-basiert, Bots eingeschlossen.
 	if !holder.is_bot and holder.player_index == my_slot:
 		return -1
 
-	var idx := holder.player_index
-	if idx > my_slot:
-		idx -= 1
-	return idx
+	var rel: int = ((holder.player_index - my_slot) % total + total) % total
+	return rel - 1
 
 ## Offline players
 func create_players() -> void:
@@ -377,7 +376,7 @@ func _server_handle_game_over() -> void:
 		return
 	_game_over_handled = true
 
-	var winner_name := "Spieler"
+	var winner_name := "Player"
 	if winners.size() > 0 and winners[0] != null and is_instance_valid(winners[0]):
 		if winners[0].profile != null:
 			winner_name = str(winners[0].profile.player_name)
@@ -422,7 +421,7 @@ func _show_winner_overlay(winner_name: String) -> void:
 	center.add_child(vbox)
 
 	var crown := Label.new()
-	crown.text = "🏆 GEWONNEN 🏆"
+	crown.text = "🏆 WINNER 🏆"
 	crown.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	crown.add_theme_font_size_override("font_size", 48)
 	crown.modulate = Color(1.0, 0.85, 0.3)
@@ -435,7 +434,7 @@ func _show_winner_overlay(winner_name: String) -> void:
 	vbox.add_child(name_label)
 
 	var hint := Label.new()
-	hint.text = "Zurück zur Lobby..."
+	hint.text = "Returning to lobby..."
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint.add_theme_font_size_override("font_size", 28)
 	hint.modulate = Color(0.8, 0.8, 0.8)
@@ -1562,6 +1561,59 @@ func _refresh_holder_layouts() -> void:
 			if h.get_parent() != null:
 				h.get_parent().remove_child(h)
 			target.add_child(h)
+	_refresh_seat_names()
+
+## ------------------------------------------------------------------
+## Player name labels shown at each seat during a match.
+## ------------------------------------------------------------------
+func _refresh_seat_names() -> void:
+	var used: Dictionary = {}
+	for h in turn_order:
+		if h == null or !is_instance_valid(h):
+			continue
+		var container := get_container_for_holder(h)
+		# Only opponent seats get a name label; the local seat is a full-width
+		# container at the bottom (and the local player knows their own name).
+		if container == null or container == player_container:
+			continue
+		_set_seat_name(container, h)
+		used[container] = true
+
+	if player_container != null:
+		_remove_seat_name(player_container)
+	for c in other_player_containers:
+		if c != null and not used.has(c):
+			_remove_seat_name(c)
+
+func _set_seat_name(container: Control, holder: HandCardHolder) -> void:
+	if container == null or holder == null:
+		return
+
+	var label := container.get_node_or_null("SeatName") as Label
+	if label == null:
+		label = Label.new()
+		label.name = "SeatName"
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		label.z_index = 100
+		label.size = Vector2(300, 44)
+		label.add_theme_font_size_override("font_size", 30)
+		label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.65))
+		label.add_theme_constant_override("shadow_offset_x", 3)
+		label.add_theme_constant_override("shadow_offset_y", 3)
+		container.add_child(label)
+
+	label.text = holder.profile.player_name if holder.profile != null else ""
+	# Centered horizontally on the seat point, just above the card stack.
+	label.position = Vector2(-150, -290)
+
+func _remove_seat_name(container: Control) -> void:
+	if container == null:
+		return
+	var lbl := container.get_node_or_null("SeatName")
+	if lbl != null:
+		lbl.queue_free()
 
 func _should_reset_server_match(players_in: Array) -> bool:
 	# Zähle alle Teilnehmer (Menschen + Bots). Unter 2 -> Match zurücksetzen.

@@ -37,42 +37,42 @@ func _ready() -> void:
 	if SteamManager.steam_ready:
 		_on_steam_ready()
 	else:
-		status_label.text = "Verbinde..." if use_steam else "Lokaler Modus bereit."
+		status_label.text = "Connecting..." if use_steam else "Local mode ready."
 
 
 func _update_mode_label() -> void:
 	if mode_label:
-		mode_label.text = "Modus: Steam" if use_steam else "Modus: Lokal (127.0.0.1:4242)"
+		mode_label.text = "Mode: Steam" if use_steam else "Mode: Local (127.0.0.1:4242)"
 
 	if not use_steam:
 		if create_button:
-			create_button.text = "Host starten (Instanz 1)"
+			create_button.text = "Start Host (Instance 1)"
 		if join_button:
-			join_button.text = "Client beitreten (Instanz 2+)"
+			join_button.text = "Join as Client (Instance 2+)"
 		if lobby_id_input:
-			lobby_id_input.placeholder_text = "ID nicht nötig im Lokalmodus"
+			lobby_id_input.placeholder_text = "ID not needed in local mode"
 			lobby_id_input.editable = false
 		if list_title:
-			list_title.text = "Lokalmodus: keine öffentliche Liste"
+			list_title.text = "Local mode: no public list"
 		if join_row:
 			join_row.visible = true
 	else:
 		if create_button:
-			create_button.text = "Lobby erstellen"
+			create_button.text = "Create Lobby"
 		if join_button:
-			join_button.text = "Beitreten"
+			join_button.text = "Join"
 		if lobby_id_input:
-			lobby_id_input.placeholder_text = "Lobby-ID eingeben"
+			lobby_id_input.placeholder_text = "Enter Lobby ID"
 			lobby_id_input.editable = true
 		if list_title:
-			list_title.text = "Öffentliche Lobbies"
+			list_title.text = "Public Lobbies"
 
 
 func _on_steam_ready() -> void:
 	if use_steam:
-		status_label.text = "Steam verbunden als %s" % SteamManager.get_persona_name()
+		status_label.text = "Connected to Steam as %s" % SteamManager.get_persona_name()
 	else:
-		status_label.text = "Schritt 1: Instanz 1 → 'Host starten'. Schritt 2: Instanz 2+ → 'Client beitreten'."
+		status_label.text = "Step 1: Instance 1 → 'Start Host'. Step 2: Instance 2+ → 'Join as Client'."
 	_refresh_lobby_list()
 	if use_steam:
 		refresh_timer.start()
@@ -117,7 +117,7 @@ func _upsert_lobby_item(lobby: Dictionary) -> void:
 	var version := str(lobby.get("version", ""))
 	var players := int(lobby.get("players", 0))
 	var max_players := int(lobby.get("max_players", 8))
-	var info_text := "%s  |  %d/%d Spieler" % [version, players, max_players]
+	var info_text := "%s  |  %d/%d players" % [version, players, max_players]
 
 	if _lobby_items.has(id):
 		var item: Dictionary = _lobby_items[id]
@@ -153,12 +153,12 @@ func _create_lobby_row(id: int, name: String, info_text: String) -> Dictionary:
 	info.add_child(detail_label)
 
 	var join_btn := Button.new()
-	join_btn.text = "Beitreten"
+	join_btn.text = "Join"
 	join_btn.pressed.connect(func() -> void:
 		if not Globals.has_customized_profile():
-			status_label.text = "Bitte zuerst dein Profil anpassen."
+			status_label.text = "Please customize your profile first."
 			return
-		status_label.text = "Trete Lobby %d bei..." % id
+		status_label.text = "Joining lobby %d..." % id
 		SteamManager.join_lobby(id)
 	)
 	hbox.add_child(join_btn)
@@ -168,40 +168,40 @@ func _create_lobby_row(id: int, name: String, info_text: String) -> Dictionary:
 
 func _on_solo_pressed() -> void:
 	if not Globals.has_customized_profile():
-		status_label.text = "Bitte zuerst dein Profil anpassen."
+		status_label.text = "Please customize your profile first."
 		return
-	status_label.text = "Starte Einzelspieler..."
+	status_label.text = "Starting singleplayer..."
 	SteamManager.start_solo()
 
 
 func _on_create_pressed() -> void:
 	if not Globals.has_customized_profile():
-		status_label.text = "Bitte zuerst dein Profil anpassen."
+		status_label.text = "Please customize your profile first."
 		return
 	if use_steam:
-		status_label.text = "Erstelle Lobby..."
+		status_label.text = "Creating lobby..."
 	else:
-		status_label.text = "Starte lokalen Host..."
+		status_label.text = "Starting local host..."
 	SteamManager.create_lobby()
 
 
 func _on_join_id_pressed() -> void:
 	if not Globals.has_customized_profile():
-		status_label.text = "Bitte zuerst dein Profil anpassen."
+		status_label.text = "Please customize your profile first."
 		return
 	if not SteamManager.use_steam:
-		status_label.text = "Verbinde als Client..."
+		status_label.text = "Connecting as client..."
 		SteamManager.join_lobby(SteamManager.LOCAL_LOBBY_ID)
 		return
 	var text := lobby_id_input.text.strip_edges()
 	if text == "":
-		status_label.text = "Bitte Lobby-ID eingeben."
+		status_label.text = "Please enter a lobby ID."
 		return
 	if not text.is_valid_int():
-		status_label.text = "Lobby-ID muss eine Zahl sein."
+		status_label.text = "Lobby ID must be a number."
 		return
 	var lobby_id := int(text)
-	status_label.text = "Trete Lobby %d bei..." % lobby_id
+	status_label.text = "Joining lobby %d..." % lobby_id
 	SteamManager.join_lobby(lobby_id)
 
 

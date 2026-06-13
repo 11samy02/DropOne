@@ -38,7 +38,7 @@ theme_override_constants/separation = 24
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Spieler"
+text = "Player"
 
 [node name="host_label" type="Label" parent="Panel/HBoxContainer"]
 unique_name_in_owner = true
@@ -48,4 +48,4 @@ text = "Host"
 [node name="status_label" type="Label" parent="Panel/HBoxContainer"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "Nicht bereit"
+text = "Not Ready"

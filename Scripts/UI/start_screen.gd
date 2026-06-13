@@ -30,7 +30,7 @@ func _update_ui() -> void:
 			if not pool.is_empty():
 				profile_picture.texture = pool[0]
 	else:
-		hint_label.text = "Passe zuerst dein Profil an, bevor du eine Lobby erstellst."
+		hint_label.text = "Set up your profile before creating a lobby."
 		profile_panel.visible = false
 
 
@@ -40,6 +40,6 @@ func _on_customize_pressed() -> void:
 
 func _on_play_pressed() -> void:
 	if not Globals.has_customized_profile():
-		hint_label.text = "Bitte zuerst dein Profil anpassen."
+		hint_label.text = "Please customize your profile first."
 		return
 	Globals.change_scene_file(LOBBY_HUB)

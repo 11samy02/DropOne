@@ -94,7 +94,7 @@ func enter_lobby_host(use_steam: bool, lobby_id: int = 0) -> bool:
 		var sp := SteamMultiplayerPeer.new()
 		var err := sp.host_with_lobby(lobby_id)
 		if err != OK:
-			_emit_status("Steam-Host konnte nicht starten.")
+			_emit_status("Steam host could not start.")
 			_safe_log("host_with_lobby failed:", str(err))
 			return false
 		peer = sp
@@ -102,7 +102,7 @@ func enter_lobby_host(use_steam: bool, lobby_id: int = 0) -> bool:
 		var ep := ENetMultiplayerPeer.new()
 		var err := ep.create_server(DEFAULT_PORT, MAX_CLIENTS)
 		if err != OK:
-			_emit_status("Server-Port belegt – läuft schon eine Host-Instanz?")
+			_emit_status("Server port in use – is a host already running?")
 			_safe_log("create_server failed:", str(err))
 			return false
 		peer = ep
@@ -114,7 +114,7 @@ func enter_lobby_host(use_steam: bool, lobby_id: int = 0) -> bool:
 	_ensure_server_profile()
 	_ready_by_peer[1] = false
 	_broadcast_lobby_state()
-	_emit_status("Lobby-Host bereit.")
+	_emit_status("Lobby host ready.")
 	return true
 
 
@@ -151,7 +151,7 @@ func _local_host_exists() -> bool:
 ## Lokal: explizit als Client verbinden (Instanz 2+ – Button "Client beitreten").
 ## Wiederholt den Verbindungsversuch, falls der Host noch startet.
 func enter_local_as_client(max_wait_sec: float = 20.0) -> bool:
-	_emit_status("Verbinde mit Host 127.0.0.1:%d..." % DEFAULT_PORT)
+	_emit_status("Connecting to host 127.0.0.1:%d..." % DEFAULT_PORT)
 	is_server = false
 	_connect_multiplayer_signals()
 	_local_connecting = true
@@ -173,7 +173,7 @@ func enter_local_as_client(max_wait_sec: float = 20.0) -> bool:
 				_local_connecting = false
 				_connected = true
 				send_profile_to_server()
-				_emit_status("Mit Host verbunden.")
+				_emit_status("Connected to host.")
 				_safe_log("LOCAL: Client verbunden, peer_id=", str(multiplayer.get_unique_id()))
 				return true
 			if st == MultiplayerPeer.CONNECTION_DISCONNECTED:
@@ -183,7 +183,7 @@ func enter_local_as_client(max_wait_sec: float = 20.0) -> bool:
 		await get_tree().create_timer(0.4).timeout
 
 	_local_connecting = false
-	_emit_status("Kein Host gefunden. Starte zuerst 'Host starten' in Instanz 1.")
+	_emit_status("No host found. Start 'Start Host' in instance 1 first.")
 	return false
 
 
@@ -191,7 +191,7 @@ func enter_lobby_client(use_steam: bool, lobby_id: int = 0, host_steam_id: int =
 	is_server = false
 	_reset_peer()
 	_connect_multiplayer_signals()
-	_emit_status("Verbinde mit Lobby...")
+	_emit_status("Connecting to lobby...")
 
 	var peer: MultiplayerPeer = null
 	if use_steam:
@@ -202,7 +202,7 @@ func enter_lobby_client(use_steam: bool, lobby_id: int = 0, host_steam_id: int =
 		else:
 			err = sp.create_client(host_steam_id)
 		if err != OK:
-			_emit_status("Lobby-Verbindung fehlgeschlagen.")
+			_emit_status("Lobby connection failed.")
 			_safe_log("connect_to_lobby failed:", str(err))
 			return false
 		peer = sp
@@ -210,7 +210,7 @@ func enter_lobby_client(use_steam: bool, lobby_id: int = 0, host_steam_id: int =
 		var ep := ENetMultiplayerPeer.new()
 		var err := ep.create_client("127.0.0.1", DEFAULT_PORT)
 		if err != OK:
-			_emit_status("Lokale Verbindung fehlgeschlagen.")
+			_emit_status("Local connection failed.")
 			_safe_log("create_client failed:", str(err))
 			return false
 		peer = ep
@@ -431,12 +431,12 @@ func start_steam_host(lobby_id: int) -> void:
 	_server_slot_order.clear()
 	is_server = true
 	_reset_peer()
-	_emit_status("Starte Steam-Host...")
+	_emit_status("Starting Steam host...")
 
 	var peer := SteamMultiplayerPeer.new()
 	var err := peer.host_with_lobby(lobby_id)
 	if err != OK:
-		_emit_status("Host-Start fehlgeschlagen.")
+		_emit_status("Host start failed.")
 		_safe_log("host_with_lobby failed:", str(err))
 		return
 
@@ -447,20 +447,20 @@ func start_steam_host(lobby_id: int) -> void:
 	_broadcast_players_to_all()
 
 	_connected = true
-	_emit_status("Steam-Host bereit.")
+	_emit_status("Steam host ready.")
 	emit_signal("connected_ok")
 
 
 func connect_steam_lobby(lobby_id: int) -> void:
 	is_server = false
 	_reset_peer()
-	_emit_status("Verbinde mit Lobby...")
+	_emit_status("Connecting to lobby...")
 	_connect_multiplayer_signals()
 
 	var peer := SteamMultiplayerPeer.new()
 	var err := peer.connect_to_lobby(lobby_id)
 	if err != OK:
-		_emit_status("Lobby-Verbindung fehlgeschlagen.")
+		_emit_status("Lobby connection failed.")
 		_safe_log("connect_to_lobby failed:", str(err))
 		return
 
@@ -470,13 +470,13 @@ func connect_steam_lobby(lobby_id: int) -> void:
 func connect_steam_client(host_steam_id: int) -> void:
 	is_server = false
 	_reset_peer()
-	_emit_status("Verbinde mit Host...")
+	_emit_status("Connecting to host...")
 	_connect_multiplayer_signals()
 
 	var peer := SteamMultiplayerPeer.new()
 	var err := peer.create_client(host_steam_id)
 	if err != OK:
-		_emit_status("Client-Verbindung fehlgeschlagen.")
+		_emit_status("Client connection failed.")
 		_safe_log("create_client failed:", str(err))
 		return
 
@@ -493,7 +493,7 @@ func start_server(port: int = DEFAULT_PORT) -> void:
 	var peer := ENetMultiplayerPeer.new()
 	var err := peer.create_server(port, MAX_CLIENTS)
 	if err != OK:
-		_emit_status("Server-Start fehlgeschlagen.")
+		_emit_status("Server start failed.")
 		_safe_log("create_server failed:", str(err))
 		return
 
@@ -503,7 +503,7 @@ func start_server(port: int = DEFAULT_PORT) -> void:
 	_ensure_server_profile()
 	_broadcast_players_to_all()
 
-	_emit_status("Server gestartet.")
+	_emit_status("Server started.")
 	_safe_log("SERVER STARTED on port", str(port))
 	_connected = true
 	emit_signal("connected_ok")
@@ -512,19 +512,19 @@ func start_server(port: int = DEFAULT_PORT) -> void:
 func connect_local(host: String = "127.0.0.1", port: int = DEFAULT_PORT) -> void:
 	is_server = false
 	_reset_peer()
-	_emit_status("Verbinde lokal...")
+	_emit_status("Connecting locally...")
 	_connect_multiplayer_signals()
 
 	var peer := ENetMultiplayerPeer.new()
 	var err := peer.create_client(host, port)
 	if err != OK:
-		_emit_status("Lokale Verbindung fehlgeschlagen.")
+		_emit_status("Local connection failed.")
 		return
 	multiplayer.multiplayer_peer = peer
 
 
 func _on_peer_connected(id: int) -> void:
-	_emit_status("Ein Spieler ist beigetreten.")
+	_emit_status("A player joined.")
 	_safe_log("Client connected (id)", str(id))
 	if not _ready_by_peer.has(id):
 		_ready_by_peer[id] = false
@@ -533,7 +533,7 @@ func _on_peer_connected(id: int) -> void:
 
 
 func _on_peer_disconnected(id: int) -> void:
-	_emit_status("Ein Spieler hat die Lobby verlassen.")
+	_emit_status("A player left the lobby.")
 	_safe_log("Client disconnected (id)", str(id))
 
 	if multiplayer.is_server():
@@ -648,7 +648,7 @@ func server_rebroadcast_players() -> void:
 # -------------------------------------------------------------------
 func _on_connected_to_server() -> void:
 	_connected = true
-	_emit_status("Verbunden!")
+	_emit_status("Connected!")
 	_safe_log("CONNECTED TO HOST!")
 	emit_signal("connected_ok")
 	send_profile_to_server()
@@ -658,14 +658,14 @@ func _on_connection_failed() -> void:
 	_safe_log("CONNECTION FAILED")
 	if _local_connecting:
 		return
-	_emit_status("Verbindung fehlgeschlagen.")
+	_emit_status("Connection failed.")
 	lobby_disconnected.emit()
 
 
 func _on_server_disconnected() -> void:
 	if _local_connecting:
 		return
-	_emit_status("Verbindung getrennt.")
+	_emit_status("Disconnected.")
 	_safe_log("DISCONNECTED FROM HOST")
 	_connected = false
 	lobby_disconnected.emit()

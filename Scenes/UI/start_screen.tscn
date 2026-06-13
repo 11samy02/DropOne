@@ -108,12 +108,12 @@ stretch_mode = 5
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 36
-text = "Spieler"
+text = "Player"
 
 [node name="HintLabel" type="Label" parent="CenterContainer/VBoxContainer"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "Passe zuerst dein Profil an, bevor du eine Lobby erstellst."
+text = "Set up your profile before creating a lobby."
 horizontal_alignment = 1
 autowrap_mode = 2
 
@@ -124,7 +124,7 @@ layout_mode = 2
 size_flags_horizontal = 4
 theme_override_font_sizes/font_size = 32
 theme_override_styles/normal = SubResource("StyleBoxFlat_btn")
-text = "Profil anpassen"
+text = "Customize Profile"
 
 [node name="PlayButton" type="Button" parent="CenterContainer/VBoxContainer"]
 unique_name_in_owner = true
@@ -133,7 +133,7 @@ layout_mode = 2
 size_flags_horizontal = 4
 theme_override_font_sizes/font_size = 32
 theme_override_styles/normal = SubResource("StyleBoxFlat_btn")
-text = "Online spielen"
+text = "Play Online"
 
 [connection signal="pressed" from="CenterContainer/VBoxContainer/CustomizeButton" to="." method="_on_customize_pressed"]
 [connection signal="pressed" from="CenterContainer/VBoxContainer/PlayButton" to="." method="_on_play_pressed"]

@@ -101,7 +101,7 @@ expand_icon = true
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 48
-text = "Profil anpassen"
+text = "Customize Profile"
 horizontal_alignment = 1
 
 [node name="Panel" type="Panel" parent="HBoxContainer/MarginContainer/VBoxContainer"]
@@ -157,7 +157,7 @@ custom_minimum_size = Vector2(400, 75)
 layout_mode = 2
 size_flags_horizontal = 6
 theme_override_styles/normal = SubResource("StyleBoxFlat_btn")
-text = "Speichern"
+text = "Save"
 icon = ExtResource("4_save")
 icon_alignment = 1
 expand_icon = true

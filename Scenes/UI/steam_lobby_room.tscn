@@ -78,7 +78,7 @@ theme_override_constants/separation = 16
 [node name="Label" type="Label" parent="CenterContainer/VBoxContainer/LobbyIdRow"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 28
-text = "Lobby-ID:"
+text = "Lobby ID:"
 
 [node name="lobby_id_label" type="Label" parent="CenterContainer/VBoxContainer/LobbyIdRow"]
 unique_name_in_owner = true
@@ -101,18 +101,18 @@ theme_override_constants/separation = 16
 custom_minimum_size = Vector2(220, 60)
 layout_mode = 2
 theme_override_styles/normal = SubResource("StyleBoxFlat_btn")
-text = "ID kopieren"
+text = "Copy ID"
 
 [node name="Invite" type="Button" parent="CenterContainer/VBoxContainer/IdActions"]
 custom_minimum_size = Vector2(220, 60)
 layout_mode = 2
 theme_override_styles/normal = SubResource("StyleBoxFlat_btn")
-text = "Freunde einladen"
+text = "Invite Friends"
 
 [node name="PlayersTitle" type="Label" parent="CenterContainer/VBoxContainer"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 32
-text = "Spieler"
+text = "Players"
 horizontal_alignment = 1
 
 [node name="players_container" type="VBoxContainer" parent="CenterContainer/VBoxContainer"]
@@ -157,7 +157,7 @@ text = "- Bot"
 [node name="status_label" type="Label" parent="CenterContainer/VBoxContainer"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "Warte auf Spieler..."
+text = "Waiting for players..."
 horizontal_alignment = 1
 
 [node name="ready_button" type="Button" parent="CenterContainer/VBoxContainer"]
@@ -174,7 +174,7 @@ custom_minimum_size = Vector2(400, 60)
 layout_mode = 2
 size_flags_horizontal = 4
 theme_override_styles/normal = SubResource("StyleBoxFlat_btn")
-text = "Lobby verlassen"
+text = "Leave Lobby"
 
 [node name="poll_timer" type="Timer" parent="."]
 unique_name_in_owner = true

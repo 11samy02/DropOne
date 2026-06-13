@@ -52,28 +52,28 @@ func _ready() -> void:
 		_start_requested = false
 		_is_ready = false
 		ready_button.text = "Ready"
-		status_label.text = "Zurück in der Lobby."
+		status_label.text = "Back in the lobby."
 		NetworkManager.reset_for_lobby_return()
 		SteamManager.is_lobby_owner = NetworkManager.is_server
 		ok = true
 	elif not use_steam:
 		if SteamManager.local_role == SteamManager.LocalRole.CLIENT:
-			status_label.text = "Verbinde als Client mit Host..."
+			status_label.text = "Connecting to host..."
 			ok = await NetworkManager.enter_local_as_client()
 		elif SteamManager.local_role == SteamManager.LocalRole.SOLO:
 			# Einzelspieler: immer eigener Host, keine Probe.
-			status_label.text = "Einzelspieler – füge Bots hinzu."
+			status_label.text = "Singleplayer – add bots."
 			ok = NetworkManager.enter_lobby_host(false)
 		else:
 			# HOST: Probe -> falls schon ein Host läuft, automatisch Client.
-			status_label.text = "Starte lokalen Host..."
+			status_label.text = "Starting local host..."
 			ok = await NetworkManager.enter_local_as_host()
 		SteamManager.is_lobby_owner = NetworkManager.is_server
 	elif SteamManager.is_host():
-		status_label.text = "Lobby erstellt – warte auf Spieler..."
+		status_label.text = "Lobby created – waiting for players..."
 		ok = NetworkManager.enter_lobby_host(use_steam, SteamManager.current_lobby_id)
 	else:
-		status_label.text = "Verbinde mit Lobby..."
+		status_label.text = "Connecting to lobby..."
 		ok = NetworkManager.enter_lobby_client(use_steam, SteamManager.current_lobby_id, SteamManager.host_steam_id)
 
 	if not is_inside_tree():
@@ -81,11 +81,11 @@ func _ready() -> void:
 
 	if not ok:
 		if not use_steam and SteamManager.local_role == SteamManager.LocalRole.CLIENT:
-			status_label.text = "Kein Host gefunden. In Instanz 1 zuerst 'Host starten' klicken."
+			status_label.text = "No host found. Click 'Start Host' in instance 1 first."
 		elif not use_steam:
-			status_label.text = "Host-Port belegt – andere Instanzen schließen."
+			status_label.text = "Host port in use – close other instances."
 		else:
-			status_label.text = "Verbindung fehlgeschlagen."
+			status_label.text = "Connection failed."
 		await get_tree().create_timer(3.0).timeout
 		_leave_and_go_hub()
 		return
@@ -101,7 +101,7 @@ func _ready() -> void:
 
 func _update_mode_label() -> void:
 	if mode_label:
-		mode_label.text = "Steam" if use_steam else "Lokal (Test)"
+		mode_label.text = "Steam" if use_steam else "Local (Test)"
 
 
 func _setup_bot_options() -> void:
@@ -127,7 +127,7 @@ func _on_add_bot_pressed() -> void:
 	if not NetworkManager.is_server:
 		return
 	if NetworkManager.participant_count() >= NetworkManager.MAX_PLAYERS:
-		status_label.text = "Maximal %d Teilnehmer erreicht." % NetworkManager.MAX_PLAYERS
+		status_label.text = "Maximum of %d participants reached." % NetworkManager.MAX_PLAYERS
 		return
 	var diff := difficulty_option.get_selected_id() if difficulty_option != null else 2
 	var pers := personality_option.get_selected_id() if personality_option != null else 0
@@ -186,18 +186,18 @@ func _update_status(players: Array) -> void:
 	var count := players.size()
 	if count < 2:
 		if NetworkManager.is_server:
-			status_label.text = "Allein in der Lobby – füge Bots hinzu oder warte auf Spieler (%d/2)." % count
+			status_label.text = "Alone in the lobby – add bots or wait for players (%d/2)." % count
 		else:
-			status_label.text = "Warte auf weitere Teilnehmer (%d/2)..." % count
+			status_label.text = "Waiting for more players (%d/2)..." % count
 		return
 	var ready_count := 0
 	for p in players:
 		if p is Dictionary and bool(p.get("is_ready", false)):
 			ready_count += 1
 	if ready_count < count:
-		status_label.text = "Bereit: %d/%d – warte auf alle..." % [ready_count, count]
+		status_label.text = "Ready: %d/%d – waiting for everyone..." % [ready_count, count]
 	else:
-		status_label.text = "Alle bereit – Spiel startet..."
+		status_label.text = "Everyone ready – starting game..."
 
 
 func _on_ready_button_pressed() -> void:
@@ -208,12 +208,12 @@ func _on_ready_button_pressed() -> void:
 
 func _on_copy_id_pressed() -> void:
 	DisplayServer.clipboard_set(str(SteamManager.current_lobby_id))
-	status_label.text = "Lobby-ID kopiert!"
+	status_label.text = "Lobby ID copied!"
 
 
 func _on_invite_pressed() -> void:
 	if not use_steam:
-		status_label.text = "Einladen nur im Steam-Modus."
+		status_label.text = "Invites only available in Steam mode."
 		return
 	SteamManager.invite_friends()
 
@@ -241,7 +241,7 @@ func _on_start_game() -> void:
 	if scene == null:
 		scene = load(GAME_SCENE_PATH)
 	if scene == null:
-		status_label.text = "Spielszene fehlt."
+		status_label.text = "Game scene missing."
 		return
 	# Peer bleibt bestehen – nur die Szene wechselt.
 	Globals.change_scene_packed(scene)
@@ -250,7 +250,7 @@ func _on_start_game() -> void:
 func _on_lobby_disconnected() -> void:
 	if _did_start:
 		return
-	status_label.text = "Verbindung zum Host verloren."
+	status_label.text = "Lost connection to host."
 	_leave_and_go_hub()
 
 

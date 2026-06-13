@@ -81,7 +81,7 @@ func _init_steam() -> void:
 	var status: int = int(init_result.get("status", 1))
 	if status != Steam.STEAM_API_INIT_RESULT_OK:
 		var verbal := str(init_result.get("verbal", "Unbekannter Fehler"))
-		steam_init_failed.emit("Steam konnte nicht initialisiert werden: %s" % verbal)
+		steam_init_failed.emit("Steam could not be initialized: %s" % verbal)
 		return
 	# ZWINGEND für P2P: ohne Relay-Netzwerkzugang können sich Host und Client
 	# über SteamMultiplayerPeer nicht verbinden (Client bleibt auf "Connecting",
@@ -111,7 +111,7 @@ func get_persona_name(steam_id: int = 0) -> String:
 # -------------------------------------------------------------------
 func create_lobby(lobby_name: String = "DropOne Lobby", max_players: int = MAX_LOBBY_PLAYERS) -> void:
 	if not steam_ready:
-		steam_init_failed.emit("Netzwerk ist nicht bereit.")
+		steam_init_failed.emit("Network is not ready.")
 		return
 	_pending_lobby_name = lobby_name
 	if use_steam:
@@ -135,11 +135,11 @@ func start_solo() -> void:
 
 func join_lobby(lobby_id: int) -> void:
 	if not steam_ready:
-		steam_init_failed.emit("Netzwerk ist nicht bereit.")
+		steam_init_failed.emit("Network is not ready.")
 		return
 	if use_steam:
 		if lobby_id <= 0:
-			lobby_join_failed.emit("Ungültige Lobby-ID.")
+			lobby_join_failed.emit("Invalid lobby ID.")
 			return
 		current_lobby_id = lobby_id
 		is_lobby_owner = false
@@ -194,7 +194,7 @@ func is_host() -> bool:
 # -------------------------------------------------------------------
 func _on_lobby_created(result: int, lobby_id: int) -> void:
 	if result != Steam.RESULT_OK:
-		lobby_join_failed.emit("Lobby konnte nicht erstellt werden (Code %d)." % result)
+		lobby_join_failed.emit("Could not create lobby (code %d)." % result)
 		return
 	current_lobby_id = lobby_id
 	is_lobby_owner = true
@@ -209,7 +209,7 @@ func _on_lobby_created(result: int, lobby_id: int) -> void:
 
 func _on_lobby_joined(lobby_id: int, _permissions: int, _locked: bool, response: int) -> void:
 	if response != Steam.CHAT_ROOM_ENTER_RESPONSE_SUCCESS:
-		lobby_join_failed.emit("Lobby-Beitritt fehlgeschlagen (Code %d)." % response)
+		lobby_join_failed.emit("Failed to join lobby (code %d)." % response)
 		current_lobby_id = 0
 		return
 	current_lobby_id = lobby_id

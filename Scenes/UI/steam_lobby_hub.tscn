@@ -90,13 +90,13 @@ horizontal_alignment = 1
 [node name="status_label" type="Label" parent="MarginContainer/VBoxContainer" unique_id=1776220637]
 unique_name_in_owner = true
 layout_mode = 2
-text = "Verbinde mit Steam..."
+text = "Connecting to Steam..."
 horizontal_alignment = 1
 
 [node name="mode_label" type="Label" parent="MarginContainer/VBoxContainer" unique_id=855857295]
 unique_name_in_owner = true
 layout_mode = 2
-text = "Modus: Steam"
+text = "Mode: Steam"
 horizontal_alignment = 1
 
 [node name="Actions" type="HBoxContainer" parent="MarginContainer/VBoxContainer" unique_id=1411125136]
@@ -108,14 +108,14 @@ unique_name_in_owner = true
 custom_minimum_size = Vector2(280, 75)
 layout_mode = 2
 theme_override_styles/normal = SubResource("StyleBoxFlat_btn")
-text = "Einzelspieler (Bots)"
+text = "Singleplayer (Bots)"
 
 [node name="Create" type="Button" parent="MarginContainer/VBoxContainer/Actions" unique_id=634845425]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(280, 75)
 layout_mode = 2
 theme_override_styles/normal = SubResource("StyleBoxFlat_btn")
-text = "Lobby erstellen"
+text = "Create Lobby"
 icon = ExtResource("5_add")
 icon_alignment = 1
 expand_icon = true
@@ -129,24 +129,24 @@ unique_name_in_owner = true
 custom_minimum_size = Vector2(400, 75)
 layout_mode = 2
 size_flags_horizontal = 3
-placeholder_text = "Lobby-ID eingeben"
+placeholder_text = "Enter Lobby ID"
 alignment = 1
 
 [node name="Paste" type="Button" parent="MarginContainer/VBoxContainer/JoinRow" unique_id=650624705]
 custom_minimum_size = Vector2(160, 75)
 layout_mode = 2
 theme_override_styles/normal = SubResource("StyleBoxFlat_btn")
-text = "Einfügen"
+text = "Paste"
 
 [node name="JoinId" type="Button" parent="MarginContainer/VBoxContainer/JoinRow" unique_id=1079888514]
 custom_minimum_size = Vector2(200, 75)
 layout_mode = 2
 theme_override_styles/normal = SubResource("StyleBoxFlat_btn")
-text = "Beitreten"
+text = "Join"
 
 [node name="ListTitle" type="Label" parent="MarginContainer/VBoxContainer" unique_id=1955270552]
 layout_mode = 2
-text = "Öffentliche Lobbies"
+text = "Public Lobbies"
 horizontal_alignment = 1
 
 [node name="ScrollContainer" type="ScrollContainer" parent="MarginContainer/VBoxContainer" unique_id=879516944]

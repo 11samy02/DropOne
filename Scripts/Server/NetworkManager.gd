@@ -193,10 +193,29 @@ func enter_lobby_client(use_steam: bool, lobby_id: int = 0, host_steam_id: int =
 	is_server = false
 	_reset_peer()
 	_connect_multiplayer_signals()
-	_emit_status("Connecting to lobby...")
 
-	var peer: MultiplayerPeer = null
-	if use_steam:
+	if not use_steam:
+		_emit_status("Connecting to lobby...")
+		var ep := ENetMultiplayerPeer.new()
+		var e := ep.create_client("127.0.0.1", DEFAULT_PORT)
+		if e != OK:
+			_emit_status("Local connection failed.")
+			_safe_log("create_client failed:", str(e))
+			return false
+		multiplayer.multiplayer_peer = ep
+		return true
+
+	# Steam P2P: the very first connect_to_lobby right after joining a Steam
+	# lobby frequently fails to establish (the relay path and the host's listen
+	# socket aren't fully ready yet), which is exactly why joining only worked
+	# "on the second try". Retry the connection a few times until it sticks.
+	var total_deadline := Time.get_ticks_msec() + 22000
+	var attempt := 0
+	while Time.get_ticks_msec() < total_deadline:
+		attempt += 1
+		_emit_status("Connecting to lobby... (attempt %d)" % attempt)
+		_reset_peer()
+
 		var sp := SteamMultiplayerPeer.new()
 		var err := OK
 		if lobby_id != 0:
@@ -204,21 +223,33 @@ func enter_lobby_client(use_steam: bool, lobby_id: int = 0, host_steam_id: int =
 		else:
 			err = sp.create_client(host_steam_id)
 		if err != OK:
-			_emit_status("Lobby connection failed.")
-			_safe_log("connect_to_lobby failed:", str(err))
-			return false
-		peer = sp
-	else:
-		var ep := ENetMultiplayerPeer.new()
-		var err := ep.create_client("127.0.0.1", DEFAULT_PORT)
-		if err != OK:
-			_emit_status("Local connection failed.")
-			_safe_log("create_client failed:", str(err))
-			return false
-		peer = ep
+			_safe_log("connect_to_lobby failed (attempt %d):" % attempt, str(err))
+			await get_tree().create_timer(1.0).timeout
+			continue
 
-	multiplayer.multiplayer_peer = peer
-	return true
+		multiplayer.multiplayer_peer = sp
+
+		# Give this attempt a few seconds to reach a connected state.
+		var attempt_deadline := Time.get_ticks_msec() + 4500
+		while Time.get_ticks_msec() < attempt_deadline:
+			await get_tree().process_frame
+			if multiplayer.multiplayer_peer != sp:
+				return _connected
+			var st := sp.get_connection_status()
+			if st == MultiplayerPeer.CONNECTION_CONNECTED:
+				_connected = true
+				send_profile_to_server()
+				_emit_status("Connected!")
+				return true
+			if st == MultiplayerPeer.CONNECTION_DISCONNECTED:
+				break
+
+		# This attempt did not connect; tear it down and try again.
+		await get_tree().create_timer(0.5).timeout
+
+	_emit_status("Could not reach the host (Steam).")
+	_safe_log("enter_lobby_client: all attempts exhausted")
+	return false
 
 
 func leave_lobby() -> void:

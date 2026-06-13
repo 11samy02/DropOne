@@ -30,7 +30,6 @@ var _did_start := false
 var _start_requested := false
 var _deck_paths: Array[String] = []
 var _applying_deck_selection := false
-var _fresh_steam_client := false
 
 
 func _ready() -> void:
@@ -89,19 +88,15 @@ func _ready() -> void:
 		SteamManager.ensure_relay_ready()
 	else:
 		status_label.text = "Preparing Steam network..."
-		# Wait for the relay network; connecting before it is "current" leaves
-		# the client stuck forever and the host never sees the join.
-		var relay_ok := await SteamManager.ensure_relay_ready()
+		# Best-effort wait for the relay network; the client connect below also
+		# retries on its own, so we proceed even if this times out.
+		await SteamManager.ensure_relay_ready()
 		if not is_inside_tree():
 			return
-		if not relay_ok:
-			status_label.text = "Steam relay network unavailable – check your connection."
-			await get_tree().create_timer(3.0).timeout
-			_leave_and_go_hub()
-			return
 		status_label.text = "Connecting to lobby..."
-		ok = NetworkManager.enter_lobby_client(use_steam, SteamManager.current_lobby_id, SteamManager.host_steam_id)
-		_fresh_steam_client = ok
+		# enter_lobby_client retries the P2P connect internally and only returns
+		# once connected (true) or after exhausting its attempts (false).
+		ok = await NetworkManager.enter_lobby_client(use_steam, SteamManager.current_lobby_id, SteamManager.host_steam_id)
 
 	if not is_inside_tree():
 		return
@@ -125,25 +120,6 @@ func _ready() -> void:
 		poll_timer.start()
 
 	_on_lobby_state_changed(NetworkManager.get_lobby_players())
-
-	# Surface a stuck Steam P2P connection instead of hanging forever on
-	# "Connecting to lobby..." with an empty player list.
-	if _fresh_steam_client:
-		_watch_steam_connection()
-
-
-## If a Steam client never establishes the P2P connection (relay/NAT issues,
-## host left, wrong ID), give clear feedback and return to the hub.
-func _watch_steam_connection() -> void:
-	await get_tree().create_timer(15.0).timeout
-	if not is_inside_tree() or _did_start:
-		return
-	if NetworkManager.has_active_connection():
-		return
-	status_label.text = "Could not reach the host (Steam P2P). Returning..."
-	await get_tree().create_timer(3.0).timeout
-	if is_inside_tree():
-		_leave_and_go_hub()
 
 
 func _update_mode_label() -> void:

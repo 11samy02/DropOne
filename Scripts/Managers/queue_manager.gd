@@ -861,6 +861,14 @@ func start_place_all(holder: HandCardHolder, color: CardResource.CardColor, play
 
 	_place_all_sequence_running = false
 
+	# The whole place-all sequence runs on the server. Push the owner's new hand
+	# (all color cards + the place-all card are gone) and resync top card/counts
+	# so a client owner doesn't keep the already-played cards (soft-lock).
+	if multiplayer.is_server():
+		_server_push_hand(holder)
+		_server_broadcast_counts()
+		_server_sync_match_state()
+
 	if _check_and_finish_current_holder():
 		_after_holder_finished()
 		return
@@ -1027,6 +1035,7 @@ func resolve_target_draw(target_holder: HandCardHolder) -> void:
 	var owner := pending_target_draw_owner
 
 	if target_draw_is_multi:
+		# Multi target draw: every player except the one who played it draws.
 		for h in get_valid_target_holders(owner):
 			for i in range(target_draw_value):
 				var card := card_manager.draw_card()
@@ -1035,6 +1044,7 @@ func resolve_target_draw(target_holder: HandCardHolder) -> void:
 				h.add_card(card)
 			h.sort_cards_full()
 			h.refresh_playable_cards()
+			_server_push_hand(h)
 	else:
 		if target_holder == null:
 			target_holder = get_most_threatening_target(owner)
@@ -1046,12 +1056,16 @@ func resolve_target_draw(target_holder: HandCardHolder) -> void:
 				target_holder.add_card(card)
 			target_holder.sort_cards_full()
 			target_holder.refresh_playable_cards()
+			_server_push_hand(target_holder)
 
 	target_draw_active = false
 	target_draw_value = 0
 	target_draw_is_multi = false
 	target_draw_color = CardResource.CardColor.BLACK
 	pending_target_draw_owner = null
+
+	if multiplayer.is_server():
+		_server_broadcast_counts()
 
 	end_turn()
 
@@ -1095,6 +1109,11 @@ func _resolve_swap_with_target(owner: HandCardHolder, target: HandCardHolder) ->
 	target.sort_cards_full()
 	owner.refresh_playable_cards()
 	target.refresh_playable_cards()
+
+	# Push both swapped hands to their owning clients, otherwise the swap is only
+	# applied on the server and the affected clients keep their old cards.
+	_server_push_hand(owner)
+	_server_push_hand(target)
 
 	if card_manager != null:
 		card_manager.current_color = CardResource.CardColor.BLACK
@@ -1201,6 +1220,11 @@ func _do_roulette_draw_step(holder: HandCardHolder) -> void:
 	holder.add_card(card)
 	holder.sort_cards_full()
 	holder.refresh_playable_cards()
+
+	# Keep the drawing client and everyone's counts in sync each draw step.
+	if multiplayer.is_server():
+		_server_push_hand(holder)
+		_server_broadcast_counts()
 
 	await get_tree().create_timer(0.22).timeout
 
@@ -2015,8 +2039,6 @@ func server_apply_play(peer_id: int, card_id: int) -> void:
 		return
 	if !is_players_turn(holder):
 		return
-	if !is_players_turn(holder):
-		return
 
 	var cv: CardView = null
 	for ch in holder.get_children():
@@ -2031,9 +2053,8 @@ func server_apply_play(peer_id: int, card_id: int) -> void:
 	if not holder.can_play_card(cv.card_res):
 		return
 
-	var card_dict := _serialize_card(cv.card_res)
-	NetworkManager.rpc("client_play_event", slot, card_dict)
-
+	# NOTE: the client_play_event broadcast now happens inside holder.set_card()
+	# (server path) so it fires exactly once for both host and client plays.
 	await holder.set_card(cv)
 
 	if card_manager != null and card_manager.waiting_for_color and wild_color_owner == holder:
@@ -2266,6 +2287,25 @@ func _server_broadcast_counts() -> void:
 		deck_count = int(card_manager.deck.size())
 
 	NetworkManager.rpc("client_set_counts", counts, deck_count)
+
+## Push a holder's authoritative hand to its owning client. Many special-card
+## effects (target/multi draw, swap, roulette, place-all) change a hand purely
+## on the server; without this the client keeps showing the old cards, which
+## causes desyncs and soft-locks (cards that look playable but no longer exist).
+func _server_push_hand(holder: HandCardHolder) -> void:
+	if not multiplayer.is_server():
+		return
+	if holder == null or not is_instance_valid(holder) or holder.is_bot:
+		return
+	var peer_id := _slot_to_peer_id(int(holder.player_index))
+	# peer 0 = no peer, peer 1 = the host itself (its holder is already correct).
+	if peer_id == 0 or peer_id == 1:
+		return
+	var hand: Array = []
+	for ch in holder.get_children():
+		if ch is CardView and ch.card_res != null:
+			hand.append(_serialize_card(ch.card_res))
+	NetworkManager.rpc_id(peer_id, "client_set_hand", hand)
 
 ## Client play event for opponents
 func _on_play_event_received(from_slot: int, card: Dictionary) -> void:

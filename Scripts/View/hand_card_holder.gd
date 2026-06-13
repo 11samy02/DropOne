@@ -193,6 +193,20 @@ func set_card(card_view: CardView) -> void:
 		queue_manager.start_place_all(self, played_card_res.color, played_card_res, card_view)
 		return
 	
+	# Multiplayer: broadcast the play so every client flies this card to the
+	# discard pile. This runs on the server for BOTH the host's own plays and
+	# client plays (which reach here via server_apply_play), so the placement
+	# animation now shows on non-host peers too (previously only client plays
+	# were broadcast, so the host's cards just snapped into place for others).
+	if multiplayer.has_multiplayer_peer() and multiplayer.is_server():
+		var ev := {
+			"c": int(played_card_res.color),
+			"t": int(played_card_res.type),
+			"v": int(played_card_res.value),
+			"id": int(played_card_res.uid),
+		}
+		NetworkManager.rpc("client_play_event", int(player_index), ev)
+	
 	card_view.set_clickable(false, true)
 	var animation_duration := 0.3
 	card_view.smooth_move_button_to_top_card_juicy(animation_duration)
@@ -236,10 +250,8 @@ func can_play_card(card_res: CardResource) -> bool:
 			return false
 		return true
 
-	if queue_manager != null and queue_manager.target_draw_active:
-		if card_res.type != CardResource.CardType.TARGET_DRAW and card_res.type != CardResource.CardType.MULTI_TARGET_DRAW:
-			return false
-		return card_res.value == queue_manager.target_draw_value
+	# Target Draw and Multi Target Draw are NOT stackable: once played they
+	# resolve immediately, the targeted player(s) just draw. No counter-play.
 
 	if queue_manager != null and queue_manager.draw_stack_amount > 0:
 		if queue_manager.draw_stack_is_wild:

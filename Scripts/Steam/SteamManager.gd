@@ -11,7 +11,7 @@ enum LocalRole { NONE, HOST, CLIENT, SOLO }
 
 var use_steam: bool = true
 
-const GAME_VERSION := "v0.1.4"
+const GAME_VERSION := "v0.1.5"
 const MAX_LOBBY_PLAYERS := 8
 const LOCAL_LOBBY_ID := 4242
 const LOBBY_ROOM_SCENE := preload("res://Scenes/UI/steam_lobby_room.tscn")

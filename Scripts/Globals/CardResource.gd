@@ -59,6 +59,60 @@ func get_background_texture(hidden_card: bool = false) -> Texture2D:
 		CardColor.BLACK: return BLACK
 	return RED
 
+## Localized color name for UI descriptions
+func get_color_name() -> String:
+	match color:
+		CardColor.RED: return "Rot"
+		CardColor.GREEN: return "Grün"
+		CardColor.BLUE: return "Blau"
+		CardColor.YELLOW: return "Gelb"
+		CardColor.BLACK: return "Schwarz (Wild)"
+	return "Unbekannt"
+
+## Localized symbol name for colorblind accessibility text
+func get_symbol_name() -> String:
+	match color:
+		CardColor.RED: return "Herz"
+		CardColor.GREEN: return "Kreuz"
+		CardColor.BLUE: return "Pik"
+		CardColor.YELLOW: return "Karo"
+		CardColor.BLACK: return ""
+	return ""
+
+## Full hover description: color, number/value, and card effect
+func get_description() -> String:
+	var color_line := get_color_name()
+	var symbol := get_symbol_name()
+	if symbol != "":
+		color_line += " (" + symbol + ")"
+
+	match type:
+		CardType.NUMBER:
+			return "%s – Zahl %d. Spielbar auf gleiche Farbe oder gleiche Zahl." % [color_line, value]
+		CardType.DRAW:
+			return "%s +%d – Der nächste Spieler muss %d Karte(n) ziehen. Stapelt mit anderen +Karten." % [color_line, value, value]
+		CardType.TARGET_DRAW:
+			return "%s +%d – Wähle einen Gegner, der %d Karte(n) ziehen muss." % [color_line, value, value]
+		CardType.MULTI_TARGET_DRAW:
+			return "%s +%d – Alle anderen Spieler ziehen jeweils %d Karte(n)." % [color_line, value, value]
+		CardType.SKIP:
+			return "%s – Überspringt den nächsten Spieler." % color_line
+		CardType.REVERSE:
+			return "%s – Kehrt die Spielrichtung um." % color_line
+		CardType.PLACE_ALL:
+			return "%s – Lege alle Karten dieser Farbe aus deiner Hand, dann wähle eine Farbe." % color_line
+		CardType.WILD:
+			return "Wild – Wähle eine Farbe. Spielbar jederzeit."
+		CardType.WILD_DRAW:
+			return "Wild +%d – Wähle eine Farbe. Nächster Spieler zieht %d Karte(n)." % [value, value]
+		CardType.WILD_DRAW_REVERSE:
+			return "Wild +%d & Richtungswechsel – Wähle eine Farbe. Nächster Spieler zieht %d Karte(n), Richtung kehrt um." % [value, value]
+		CardType.SWAP_HANDS:
+			return "Wild – Tausche deine Hand mit einem gewählten Gegner, dann wähle eine Farbe."
+		CardType.WILD_COLOR_ROULET:
+			return "Wild – Farbroulette: Der nächste Spieler muss die gewählte Farbe legen oder ziehen."
+	return color_line
+
 ## Get display text for number and draw-like cards
 func get_display_text() -> String:
 	match type:

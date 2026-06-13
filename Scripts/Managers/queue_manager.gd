@@ -977,6 +977,23 @@ func get_most_threatening_target(exclude: HandCardHolder) -> HandCardHolder:
 			best = h
 	return best
 
+## Show target selection UI on the card owner's machine (host/solo included).
+func _request_target_select_for_owner(owner: HandCardHolder, allow_self: bool) -> void:
+	if _is_local_human_owner(owner):
+		Signals.TARGET_request_target_select.emit(owner, allow_self)
+	elif multiplayer.has_multiplayer_peer() and multiplayer.is_server():
+		var peer_id := _slot_to_peer_id(owner.player_index)
+		if peer_id != 0:
+			NetworkManager.rpc_id(peer_id, "client_request_target_select", int(owner.player_index), allow_self)
+
+## True when this machine should show UI for a human card owner.
+func _is_local_human_owner(owner: HandCardHolder) -> bool:
+	if owner == null or owner.is_bot:
+		return false
+	if !multiplayer.has_multiplayer_peer():
+		return true
+	return int(owner.player_index) == int(NetworkManager.my_slot)
+
 ## Target draw start
 func start_target_draw(owner: HandCardHolder, value: int, multi: bool, color: CardResource.CardColor) -> void:
 	target_draw_active = true
@@ -997,13 +1014,8 @@ func start_target_draw(owner: HandCardHolder, value: int, multi: bool, color: Ca
 		var target := get_most_threatening_target(owner)
 		resolve_target_draw(target)
 		return
-	
-	if multiplayer.is_server():
-		var peer_id := _slot_to_peer_id(owner.player_index)
-		if peer_id != 0:
-			NetworkManager.rpc_id(peer_id, "client_request_target_select", int(owner.player_index), false)
-			return
-	Signals.TARGET_request_target_select.emit(owner, false)
+
+	_request_target_select_for_owner(owner, false)
 
 ## Swap hands start
 func start_swap_hands(owner: HandCardHolder) -> void:
@@ -1016,12 +1028,7 @@ func start_swap_hands(owner: HandCardHolder) -> void:
 		var target := get_most_threatening_target(owner)
 		_resolve_swap_with_target(owner, target)
 		return
-	if multiplayer.is_server():
-		var peer_id := _slot_to_peer_id(owner.player_index)
-		if peer_id != 0:
-			NetworkManager.rpc_id(peer_id, "client_request_target_select", int(owner.player_index), false)
-			return
-	Signals.TARGET_request_target_select.emit(owner, false)
+	_request_target_select_for_owner(owner, false)
 
 ## Target draw resolve
 func resolve_target_draw(target_holder: HandCardHolder) -> void:

@@ -19,6 +19,8 @@ func _ready() -> void:
 func _on_request_target_select(owner: HandCardHolder, allow_self: bool) -> void:
 	if queue_manager == null:
 		return
+	if !_can_local_owner_select(owner):
+		return
 
 	_owner = owner
 	_allow_self = allow_self
@@ -81,3 +83,11 @@ func _on_target_clicked(holder: HandCardHolder) -> void:
 		NetworkManager.request_target_select(int(holder.player_index))
 		return
 	Signals.TARGET_target_selected.emit(holder)
+
+## Only the human who played the targeting card may pick a target.
+func _can_local_owner_select(owner: HandCardHolder) -> bool:
+	if owner == null or owner.is_bot:
+		return false
+	if !multiplayer.has_multiplayer_peer():
+		return true
+	return int(owner.player_index) == int(NetworkManager.my_slot)

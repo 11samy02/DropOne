@@ -243,10 +243,14 @@ func get_card_color(card_color: CardResource.CardColor) -> Color:
 func _mouse_enter() -> void:
 	if _show_front and !is_top_card:
 		animation_player.play("zoom")
+	if in_hand_card and hand_card_holder != null and _show_front and _card_res != null:
+		hand_card_holder.show_card_description(_card_res)
 
 func _mouse_exit() -> void:
 	if _show_front and !is_top_card:
 		animation_player.play_backwards("zoom")
+	if in_hand_card and hand_card_holder != null and _card_res != null:
+		hand_card_holder.hide_card_description(_card_res)
 
 ## Enable/disable click behavior for this card
 func set_clickable(active: bool, stop_hover: bool = false) -> void:

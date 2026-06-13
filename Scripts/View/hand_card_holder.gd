@@ -21,6 +21,11 @@ var _busy := false
 var _queued: CardView = null
 var _waiting_color_turn_end := false
 
+const SCALED_CARD_WIDTH := 126.5625
+
+var _desc_label: Label = null
+var _desc_card: CardResource = null
+
 ## Creates and returns an instance of this holder scene
 static func create() -> HandCardHolder:
 	return HAND_CARD_HOLDER.instantiate()
@@ -28,6 +33,15 @@ static func create() -> HandCardHolder:
 ## Connects required signals for wild color selection follow-up
 func _ready() -> void:
 	Signals.COLOR_color_selected.connect(_on_color_selected)
+	if !is_bot and !compact_view:
+		call_deferred("_setup_description_label")
+	call_deferred("_fix_card_size_flags")
+
+## Prevent hand cards from expanding to fill the full screen width
+func _fix_card_size_flags() -> void:
+	for c in get_children():
+		if c is CardView:
+			c.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 
 ## Updates card alignment smoothly every frame
 func _process(delta: float) -> void:
@@ -45,21 +59,37 @@ func align_cards(delta: float) -> void:
 	_current_sep = lerp(_current_sep, float(target_sep), 1.0 - exp(-smooth_speed * delta))
 	add_theme_constant_override("separation", int(round(_current_sep)))
 
+## Returns max hand width as a fraction of the viewport
+func _get_max_hand_width() -> float:
+	if is_inside_tree():
+		return get_viewport().get_visible_rect().size.x * 0.88
+	return 1200.0
+
+## Computes separation so the hand stays within the max width (negative = overlap)
+func _separation_for_count(count: int, max_width: float) -> int:
+	if count <= 1:
+		return 0
+	var card_w := SCALED_CARD_WIDTH
+	var max_step := (max_width - card_w) / float(count - 1)
+	var sep := int(floor(max_step - card_w))
+	var min_sep := int(-card_w * 0.86)
+	return clampi(sep, min_sep, 0)
+
 ## Returns the appropriate card separation based on how many cards are in the hand
 func _get_target_separation(count: int) -> int:
-	if is_bot or compact_view: return -162
-	if count <= 7: return 0
-	if count <= 10: return -25
-	if count <= 15: return -50
-	if count <= 21: return -75
-	if count <= 28: return -100
-	if count <= 36: return -125
-	if count <= 45: return -130
-	if count <= 52: return -135
-	if count <= 61: return -140
-	if count <= 75: return -145
-	if count <= 90: return -150
-	return -153
+	if is_bot or compact_view:
+		return -162
+	if count <= 1:
+		return 0
+
+	var max_w := _get_max_hand_width()
+	var width_based := _separation_for_count(count, max_w)
+
+	if count <= 7:
+		var natural_w := SCALED_CARD_WIDTH * count
+		if natural_w <= max_w:
+			return 0
+	return width_based
 
 ## Defines ordering rules for sorting cards by color, type, and value
 func _compare_cards(a: CardResource, b: CardResource) -> bool:
@@ -115,6 +145,7 @@ func add_card(card_res: CardResource, play_appear: bool = false) -> void:
 	card_view.hand_card_holder = self
 	card_view.visible = false
 	card_view.set_meta("play_appear", play_appear)
+	card_view.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 
 	add_child(card_view)
 
@@ -391,3 +422,52 @@ func setup_profile(index: int, bot: bool, name: String = "") -> void:
 		profile.player_name = "Player " + str(index + 1)
 
 	profile.ensure_picture()
+
+## Creates a centered description label above the local player's hand
+func _setup_description_label() -> void:
+	if _desc_label != null or is_bot or compact_view:
+		return
+	var container := get_parent()
+	if container == null:
+		return
+
+	_desc_label = Label.new()
+	_desc_label.name = "CardDescription"
+	_desc_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_desc_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_desc_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_desc_label.custom_minimum_size = Vector2(700, 0)
+	_desc_label.add_theme_font_size_override("font_size", 20)
+	_desc_label.add_theme_color_override("font_color", Color(1, 0.95, 0.75))
+	_desc_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.75))
+	_desc_label.add_theme_constant_override("shadow_offset_x", 2)
+	_desc_label.add_theme_constant_override("shadow_offset_y", 2)
+	_desc_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_desc_label.visible = false
+	_desc_label.z_index = 50
+
+	container.add_child(_desc_label)
+	_desc_label.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	_desc_label.offset_top = -340.0
+	_desc_label.offset_bottom = -270.0
+	_desc_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
+
+## Shows a card description centered above the player hand
+func show_card_description(card_res: CardResource) -> void:
+	if is_bot or compact_view or card_res == null:
+		return
+	if _desc_label == null:
+		_setup_description_label()
+	if _desc_label == null:
+		return
+	_desc_card = card_res
+	_desc_label.text = card_res.get_description()
+	_desc_label.visible = true
+
+## Hides the description when the hovered card is no longer under the cursor
+func hide_card_description(card_res: CardResource) -> void:
+	if _desc_label == null:
+		return
+	if _desc_card == card_res:
+		_desc_label.visible = false
+		_desc_card = null

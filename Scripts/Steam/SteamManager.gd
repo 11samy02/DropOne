@@ -11,7 +11,7 @@ enum LocalRole { NONE, HOST, CLIENT, SOLO }
 
 var use_steam: bool = true
 
-const GAME_VERSION := "v0.1.1"
+const GAME_VERSION := "v0.1.2"
 const MAX_LOBBY_PLAYERS := 8
 const LOCAL_LOBBY_ID := 4242
 const LOBBY_ROOM_SCENE := preload("res://Scenes/UI/steam_lobby_room.tscn")
@@ -22,8 +22,14 @@ var is_lobby_owner := false
 var host_steam_id: int = 0
 var local_role: LocalRole = LocalRole.NONE
 
+## Steam relay network readiness. P2P (host_with_lobby / connect_to_lobby) only
+## works once the relay network is "current". Connecting before that silently
+## leaves the client stuck on "Connecting..." and the host never sees the join.
+var relay_ready := false
+
 signal steam_init_failed(reason: String)
 signal steam_ready_signal
+signal relay_ready_changed(available: bool)
 signal lobby_created(lobby_id: int)
 signal lobby_joined(lobby_id: int)
 signal lobby_join_failed(reason: String)
@@ -86,10 +92,53 @@ func _init_steam() -> void:
 	# ZWINGEND für P2P: ohne Relay-Netzwerkzugang können sich Host und Client
 	# über SteamMultiplayerPeer nicht verbinden (Client bleibt auf "Connecting",
 	# der Host sieht den Beitritt nie).
+	if not Steam.relay_network_status.is_connected(_on_relay_network_status):
+		Steam.relay_network_status.connect(_on_relay_network_status)
 	Steam.initRelayNetworkAccess()
+	_refresh_relay_ready()
 	steam_ready = true
 	steam_ready_signal.emit()
 	print("Steam initialisiert. Steam ID: ", Steam.getSteamID())
+
+
+# -------------------------------------------------------------------
+# Relay-Netzwerk (Voraussetzung für SteamMultiplayerPeer P2P)
+# -------------------------------------------------------------------
+func _on_relay_network_status(available: int, _ping_measurement: int, _available_config: int, _available_relay: int, _debug_message: String) -> void:
+	var is_ready := (available == Steam.NETWORKING_AVAILABILITY_CURRENT)
+	if is_ready != relay_ready:
+		relay_ready = is_ready
+		relay_ready_changed.emit(relay_ready)
+
+
+func _refresh_relay_ready() -> void:
+	if not use_steam:
+		relay_ready = true
+		return
+	# getRelayNetworkStatus() returns the summary availability enum (int).
+	var avail := int(Steam.getRelayNetworkStatus())
+	relay_ready = (avail == Steam.NETWORKING_AVAILABILITY_CURRENT)
+
+
+## Wait until the Steam relay network is ready so P2P connections can actually be
+## established. Returns true once ready (or immediately in local mode), false on
+## timeout. Without this, joining a lobby by ID/list often hangs forever.
+func ensure_relay_ready(timeout_sec: float = 12.0) -> bool:
+	if not use_steam:
+		return true
+	_refresh_relay_ready()
+	if relay_ready:
+		return true
+	# Force a (re)try; the first attempt may have failed or still be pending.
+	Steam.initRelayNetworkAccess()
+	var deadline := Time.get_ticks_msec() + int(timeout_sec * 1000.0)
+	while Time.get_ticks_msec() < deadline:
+		await get_tree().process_frame
+		Steam.run_callbacks()
+		_refresh_relay_ready()
+		if relay_ready:
+			return true
+	return relay_ready
 
 
 func get_local_player_name() -> String:

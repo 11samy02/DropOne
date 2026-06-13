@@ -2275,6 +2275,12 @@ func _on_play_event_received(from_slot: int, card: Dictionary) -> void:
 		if card_manager != null:
 			card_manager.end_top_card_suppression(r)
 
+		# The top card was buffered during the fly, so any turn/playability
+		# refresh that ran mid-flight evaluated against the OLD top card.
+		# Re-evaluate now that the new top card is live, otherwise actually
+		# playable cards stay locked and the player is forced to draw.
+		update_turn_state()
+
 		if r.type in [
 			CardResource.CardType.WILD,
 			CardResource.CardType.WILD_DRAW,
@@ -2335,6 +2341,10 @@ func _on_play_event_received(from_slot: int, card: Dictionary) -> void:
 
 	if card_manager != null:
 		card_manager.end_top_card_suppression(r)
+
+	# Re-evaluate playable cards now that the new top card is live (it was
+	# buffered during the fly, so the mid-flight refresh used the old top card).
+	update_turn_state()
 
 func _server_sync_late_joiners(players_in: Array) -> void:
 	if not _server_match_started:

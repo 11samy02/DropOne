@@ -37,6 +37,13 @@ func _ready() -> void:
 	if !is_bot and !compact_view:
 		call_deferred("ensure_description_label")
 	call_deferred("_fix_card_size_flags")
+	call_deferred("_init_card_separation")
+
+## Snap separation to the correct overlap immediately on spawn
+func _init_card_separation() -> void:
+	var count := _get_card_count()
+	_current_sep = float(_get_target_separation(count))
+	add_theme_constant_override("separation", int(round(_current_sep)))
 
 ## Prevent hand cards from expanding to fill the full screen width
 func _fix_card_size_flags() -> void:
@@ -55,16 +62,40 @@ func set_turn_active(value: bool) -> void:
 
 ## Smoothly aligns cards based on dynamic separation for the current hand size
 func align_cards(delta: float) -> void:
-	var count := get_child_count()
+	var count := _get_card_count()
 	var target_sep := _get_target_separation(count)
 	_current_sep = lerp(_current_sep, float(target_sep), 1.0 - exp(-smooth_speed * delta))
 	add_theme_constant_override("separation", int(round(_current_sep)))
+
+## Count only card views (ignore transient animation nodes)
+func _get_card_count() -> int:
+	var n := 0
+	for c in get_children():
+		if c is CardView:
+			n += 1
+	return n
 
 ## Returns max hand width as a fraction of the viewport
 func _get_max_hand_width() -> float:
 	if is_inside_tree():
 		return get_viewport().get_visible_rect().size.x * 0.88
 	return 1200.0
+
+## Minimum overlap separation for a pleasant hand fan (negative = overlap)
+func _aesthetic_separation(count: int) -> int:
+	if count <= 2:
+		return -20
+	if count <= 4:
+		return -40
+	if count <= 7:
+		return -58
+	if count <= 10:
+		return -78
+	if count <= 14:
+		return -98
+	if count <= 20:
+		return -118
+	return -138
 
 ## Computes separation so the hand stays within the max width (negative = overlap)
 func _separation_for_count(count: int, max_width: float) -> int:
@@ -73,7 +104,7 @@ func _separation_for_count(count: int, max_width: float) -> int:
 	var card_w := SCALED_CARD_WIDTH
 	var max_step := (max_width - card_w) / float(count - 1)
 	var sep := int(floor(max_step - card_w))
-	var min_sep := int(-card_w * 0.86)
+	var min_sep := int(-card_w * 0.88)
 	return clampi(sep, min_sep, 0)
 
 ## Returns the appropriate card separation based on how many cards are in the hand
@@ -84,13 +115,10 @@ func _get_target_separation(count: int) -> int:
 		return 0
 
 	var max_w := _get_max_hand_width()
-	var width_based := _separation_for_count(count, max_w)
-
-	if count <= 7:
-		var natural_w := SCALED_CARD_WIDTH * count
-		if natural_w <= max_w:
-			return 0
-	return width_based
+	var width_sep := _separation_for_count(count, max_w)
+	var aesthetic_sep := _aesthetic_separation(count)
+	# Pick the stronger overlap: fit on screen (width_sep) vs. visual fan (aesthetic_sep)
+	return mini(width_sep, aesthetic_sep)
 
 ## Defines ordering rules for sorting cards by color, type, and value
 func _compare_cards(a: CardResource, b: CardResource) -> bool:

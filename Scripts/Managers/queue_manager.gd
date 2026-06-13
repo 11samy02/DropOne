@@ -1823,6 +1823,15 @@ func _server_start_match() -> void:
 	has_drawn_this_turn = false
 	winners.clear()
 
+	# Apply the deck chosen in the lobby (host-authoritative). Falls back to the
+	# card manager's default deck if none was selected / it fails to load.
+	var chosen_deck_path := str(NetworkManager.lobby_deck_path)
+	if chosen_deck_path != "":
+		var chosen_deck := Globals.load_deck(chosen_deck_path)
+		if chosen_deck != null:
+			card_manager.loaded_deck = chosen_deck
+			print("QueueManager: Using deck '%s'" % str(chosen_deck.deck_name))
+
 	card_manager.deck = card_manager.create_default_cards()
 	card_manager.deck.shuffle()
 	card_manager.set_top_card()

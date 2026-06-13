@@ -23,16 +23,22 @@ const PERSONALITY_NAMES := ["Balanced", "Aggressor", "Collector", "Chaos", "Puni
 @onready var personality_option: OptionButton = %personality_option
 @onready var add_bot_button: Button = %add_bot_button
 @onready var remove_bot_button: Button = %remove_bot_button
+@onready var deck_option: OptionButton = %deck_option
 
 var _is_ready := false
 var _did_start := false
 var _start_requested := false
+var _deck_paths: Array[String] = []
+var _applying_deck_selection := false
 
 
 func _ready() -> void:
 	use_steam = SteamManager.use_steam
 	_update_mode_label()
 	_setup_bot_options()
+	_setup_deck_options()
+
+	NetworkManager.lobby_deck_changed.connect(_on_lobby_deck_changed)
 
 	if SteamManager.current_lobby_id == 0:
 		_go_to_hub()
@@ -91,6 +97,7 @@ func _ready() -> void:
 		return
 
 	_update_bot_controls_visibility()
+	_init_deck_state()
 
 	if poll_timer:
 		poll_timer.timeout.connect(_on_poll)
@@ -117,10 +124,73 @@ func _setup_bot_options() -> void:
 		personality_option.selected = 0  # Balanced
 
 
+func _setup_deck_options() -> void:
+	if deck_option == null:
+		return
+	deck_option.clear()
+	_deck_paths = Globals.list_deck_paths()
+	for i in range(_deck_paths.size()):
+		deck_option.add_item(Globals.deck_display_name(_deck_paths[i]), i)
+	if _deck_paths.is_empty():
+		deck_option.add_item("Default", 0)
+		deck_option.disabled = true
+
+
+## Once connected we know our role: the host picks the deck (and seeds the
+## default), everyone else sees a read-only selection.
+func _init_deck_state() -> void:
+	if deck_option == null:
+		return
+	if NetworkManager.is_server:
+		deck_option.disabled = _deck_paths.is_empty()
+		# Seed a default deck if none chosen yet, then broadcast it.
+		var path := str(NetworkManager.lobby_deck_path)
+		if path == "" and not _deck_paths.is_empty():
+			path = _deck_paths[deck_option.selected if deck_option.selected >= 0 else 0]
+		if path != "":
+			Globals.selected_deck_path = path
+			NetworkManager.set_lobby_deck(path)
+	else:
+		# Clients can see the deck but not change it.
+		deck_option.disabled = true
+	_select_deck_in_ui(str(NetworkManager.lobby_deck_path))
+
+
+func _select_deck_in_ui(path: String) -> void:
+	if deck_option == null or path == "":
+		return
+	var idx := _deck_paths.find(path)
+	if idx < 0:
+		return
+	_applying_deck_selection = true
+	deck_option.selected = idx
+	_applying_deck_selection = false
+
+
+func _on_deck_selected(index: int) -> void:
+	if _applying_deck_selection:
+		return
+	if not NetworkManager.is_server:
+		return
+	if index < 0 or index >= _deck_paths.size():
+		return
+	var path := _deck_paths[index]
+	Globals.selected_deck_path = path
+	NetworkManager.set_lobby_deck(path)
+
+
+func _on_lobby_deck_changed(deck_path: String) -> void:
+	Globals.selected_deck_path = str(deck_path)
+	_select_deck_in_ui(str(deck_path))
+
+
 func _update_bot_controls_visibility() -> void:
 	# Nur der Host darf Bots verwalten.
 	if bot_controls:
 		bot_controls.visible = NetworkManager.is_server
+	if deck_option:
+		# Everyone sees the deck; only the host can change it.
+		deck_option.disabled = (not NetworkManager.is_server) or _deck_paths.is_empty()
 
 
 func _on_add_bot_pressed() -> void:
@@ -272,3 +342,5 @@ func _exit_tree() -> void:
 		NetworkManager.lobby_disconnected.disconnect(_on_lobby_disconnected)
 	if SteamManager.lobby_left.is_connected(_go_to_hub):
 		SteamManager.lobby_left.disconnect(_go_to_hub)
+	if NetworkManager.lobby_deck_changed.is_connected(_on_lobby_deck_changed):
+		NetworkManager.lobby_deck_changed.disconnect(_on_lobby_deck_changed)

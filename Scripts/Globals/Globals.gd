@@ -3,9 +3,66 @@ extends Node
 
 var client_profile: PlayerProfile
 
+## Deck selected in the lobby (res:// path). Empty = use the scene's default deck.
+const DECK_DIR := "res://Resources/Decks/"
+var selected_deck_path: String = ""
+
 
 func has_customized_profile() -> bool:
 	return client_profile != null and str(client_profile.player_name).strip_edges() != ""
+
+
+## List all available deck resource paths in the decks folder. Handles exported
+## builds where resources may be remapped (.tres.remap / .res).
+func list_deck_paths() -> Array[String]:
+	var paths: Array[String] = []
+	var dir := DirAccess.open(DECK_DIR)
+	if dir == null:
+		return paths
+	dir.list_dir_begin()
+	var f := dir.get_next()
+	while f != "":
+		if not dir.current_is_dir():
+			var n := f
+			if n.ends_with(".remap"):
+				n = n.substr(0, n.length() - ".remap".length())
+			if n.ends_with(".import"):
+				n = ""
+			if n.ends_with(".res"):
+				n = n.substr(0, n.length() - 4) + ".tres"
+			if n.ends_with(".tres"):
+				var p := DECK_DIR + n
+				if not paths.has(p):
+					paths.append(p)
+		f = dir.get_next()
+	dir.list_dir_end()
+
+	# Fallback for exported builds where res:// directory listing can come back
+	# empty: probe known deck files directly.
+	if paths.is_empty():
+		for known in ["Classic", "Default", "DefaultPlus", "Test"]:
+			var p: String = DECK_DIR + str(known) + ".tres"
+			if ResourceLoader.exists(p) and not paths.has(p):
+				paths.append(p)
+
+	paths.sort()
+	return paths
+
+
+## Human-readable name for a deck path (falls back to the file name).
+func deck_display_name(path: String) -> String:
+	var deck := load_deck(path)
+	if deck != null and str(deck.deck_name).strip_edges() != "":
+		return str(deck.deck_name)
+	return path.get_file().get_basename()
+
+
+func load_deck(path: String) -> DeckResource:
+	if path == "":
+		return null
+	if not ResourceLoader.exists(path):
+		return null
+	return load(path) as DeckResource
 
 
 func change_scene_packed(scene: PackedScene) -> void:

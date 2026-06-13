@@ -28,6 +28,7 @@ var _server_slot_order: Array[int] = []
 var _ready_by_peer: Dictionary = {} # { peer_id:int : bool }
 var last_lobby_players: Array = []   # Cache für Lobby-UI
 var _lobby_bots: Array = []          # [{name, difficulty, personality}] (nur Host)
+var lobby_deck_path: String = ""     # Vom Host gewähltes Deck (an alle gesynct)
 
 signal status_changed(message: String)
 signal match_state_received(state: Dictionary)
@@ -41,6 +42,7 @@ signal lobby_start_game
 signal lobby_disconnected
 signal game_won(winner_name: String, winner_slot: int)
 signal return_to_lobby
+signal lobby_deck_changed(deck_path: String)
 
 
 
@@ -248,6 +250,24 @@ func set_lobby_ready(ready: bool) -> void:
 
 
 # -------------------------------------------------------------------
+# DECK (nur Host wählt das Deck; an alle synchronisiert)
+# -------------------------------------------------------------------
+func set_lobby_deck(deck_path: String) -> void:
+	if not multiplayer.is_server():
+		return
+	lobby_deck_path = str(deck_path)
+	for pid in multiplayer.get_peers():
+		rpc_id(int(pid), "client_set_lobby_deck", lobby_deck_path)
+	client_set_lobby_deck(lobby_deck_path)
+
+
+@rpc("authority", "reliable", "call_local")
+func client_set_lobby_deck(deck_path: String) -> void:
+	lobby_deck_path = str(deck_path)
+	lobby_deck_changed.emit(lobby_deck_path)
+
+
+# -------------------------------------------------------------------
 # BOTS (nur Host verwaltet die Lobby-Bots)
 # -------------------------------------------------------------------
 func add_lobby_bot(difficulty: int, personality: int) -> bool:
@@ -343,6 +363,8 @@ func _broadcast_lobby_state() -> void:
 	var arr := _build_lobby_player_array()
 	for pid in multiplayer.get_peers():
 		rpc_id(int(pid), "client_lobby_state", arr)
+		# Keep late joiners in sync with the host's chosen deck.
+		rpc_id(int(pid), "client_set_lobby_deck", lobby_deck_path)
 	client_lobby_state(arr)
 
 

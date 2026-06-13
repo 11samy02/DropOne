@@ -2,6 +2,8 @@
 
 [ext_resource type="Shader" uid="uid://corv0pvqk7gru" path="res://Shaders/Background.gdshader" id="2_qx5k3"]
 [ext_resource type="StyleBox" path="res://Themes/ui_button.tres" id="3_btn"]
+[ext_resource type="StyleBox" path="res://Themes/ui_button_hover.tres" id="4_btn_hover"]
+[ext_resource type="StyleBox" path="res://Themes/ui_button_pressed.tres" id="5_btn_pressed"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_o66dd"]
 shader = ExtResource("2_qx5k3")
@@ -54,7 +56,9 @@ custom_minimum_size = Vector2(400, 75)
 layout_mode = 2
 size_flags_horizontal = 6
 theme_override_font_sizes/font_size = 80
+theme_override_styles/hover = ExtResource("4_btn_hover")
 theme_override_styles/normal = ExtResource("3_btn")
+theme_override_styles/pressed = ExtResource("5_btn_pressed")
 text = "Ready"
 
 [node name="players_in_lobby" type="Label" parent="VBoxContainer" unique_id=2079085187]

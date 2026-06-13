@@ -888,6 +888,10 @@ func bot_draw_current() -> bool:
 
 ## End turn
 func end_turn() -> void:
+	# Place-all runs as an async server sequence; block premature end_turn calls
+	# (e.g. legacy bot finisher logic) so the turn is not advanced twice.
+	if place_all_resolving or _place_all_sequence_running:
+		return
 	next_turn()
 
 ## Next turn logic
@@ -1129,19 +1133,21 @@ func start_place_all(holder: HandCardHolder, color: CardResource.CardColor, play
 
 	_place_all_sequence_running = false
 
-	# The whole place-all sequence runs on the server. Push the owner's new hand
-	# (all color cards + the place-all card are gone) and resync top card/counts
-	# so a client owner doesn't keep the already-played cards (soft-lock).
-	if multiplayer.is_server():
-		_server_push_hand(holder)
-		_server_broadcast_counts()
-		_server_sync_match_state()
-
 	if _check_and_finish_current_holder():
 		_after_holder_finished()
+		if multiplayer.is_server():
+			_server_push_hand(holder)
+			_server_broadcast_counts()
+			_server_sync_match_state()
 		return
 
 	end_turn()
+
+	# Push the owner's new hand after the turn advances so clients never receive
+	# a stale turn_index (still on the place-all player) with has_played cleared.
+	if multiplayer.is_server():
+		_server_push_hand(holder)
+		_server_broadcast_counts()
 
 ## Place-all play color cards
 func _place_all_play_color_cards_sequential(owner: HandCardHolder, place_all_view: CardView) -> void:
@@ -1783,6 +1789,8 @@ func _try_apply_pending_hand() -> void:
 	_pending_hand = []
 	NetworkManager.clear_last_hand()
 	_client_has_hand = true
+	if !multiplayer.is_server() and my_holder._busy:
+		my_holder.notify_remote_play_finished()
 	if multiplayer.is_server():
 		_apply_counts_to_ui()
 		_apply_local_visibility()
@@ -2206,14 +2214,18 @@ func _try_apply_pending_match_state() -> void:
 
 	current_turn_index = int(_pending_state.get("turn_index", 0))
 	direction = int(_pending_state.get("direction", 1))
-	draw_stack_amount = int(_pending_state.get("draw_stack", 0))
-	draw_stack_min_value = int(_pending_state.get("draw_stack_min", draw_stack_min_value))
-	draw_stack_is_wild = bool(_pending_state.get("draw_stack_is_wild", draw_stack_is_wild))
-	draw_stack_color = int(_pending_state.get("draw_stack_color", draw_stack_color))
+	if !multiplayer.is_server():
+		draw_stack_amount = int(_pending_state.get("draw_stack", 0))
+		draw_stack_min_value = int(_pending_state.get("draw_stack_min", draw_stack_min_value))
+		draw_stack_is_wild = bool(_pending_state.get("draw_stack_is_wild", draw_stack_is_wild))
+		draw_stack_color = int(_pending_state.get("draw_stack_color", draw_stack_color))
 
 	if _pending_state.has("current_color") and card_manager != null:
 		card_manager.current_color = int(_pending_state.get("current_color", card_manager.current_color))
-	if _pending_state.has("waiting_for_color") and card_manager != null:
+	# Clients mirror server snapshots; the server must not reconcile
+	# waiting_for_color from its own broadcasts or a pending wild play can be
+	# auto-resolved without register_card_play (stacked +4 stays at +4).
+	if _pending_state.has("waiting_for_color") and card_manager != null and !multiplayer.is_server():
 		var waiting := bool(_pending_state.get("waiting_for_color", card_manager.waiting_for_color))
 		if waiting and !card_manager.waiting_for_color:
 			card_manager.waiting_for_color = true
@@ -2541,7 +2553,12 @@ func server_apply_play(peer_id: int, card_id: int) -> void:
 
 	# NOTE: the client_play_event broadcast now happens inside holder.set_card()
 	# (server path) so it fires exactly once for both host and client plays.
+	var was_place_all := cv.card_res.type == CardResource.CardType.PLACE_ALL
 	await holder.set_card(cv)
+
+	# start_place_all awaits to completion and already syncs + advances the turn.
+	if was_place_all:
+		return
 
 	if card_manager != null and card_manager.waiting_for_color and wild_color_owner == holder:
 		var owner_peer := _slot_to_peer_id(holder.player_index)
@@ -2669,11 +2686,24 @@ func server_apply_wild_color(peer_id: int, color: int) -> void:
 				_server_sync_match_state()
 		return
 
-	if card_manager == null or !card_manager.waiting_for_color:
+	if card_manager == null:
+		return
+	var needs_color := card_manager.waiting_for_color
+	if !needs_color and wild_color_owner == holder and is_instance_valid(holder) and holder._waiting_color_turn_end:
+		needs_color = true
+	if !needs_color:
 		return
 	if wild_color_owner != holder:
 		return
 	_apply_wild_color(color, slot)
+
+## Host/local authoritative wild color (same path as client RPC).
+func server_apply_local_wild_color(color: int) -> void:
+	if not multiplayer.is_server():
+		return
+	if wild_color_owner == null or !is_instance_valid(wild_color_owner):
+		return
+	_apply_wild_color(color, int(wild_color_owner.player_index))
 
 ## Apply wild color locally and broadcast to clients
 func _apply_wild_color(color: int, owner_slot: int) -> void:
@@ -2699,9 +2729,10 @@ func _apply_wild_color(color: int, owner_slot: int) -> void:
 			# a SECOND time. For a +4 that meant the draw effect ran twice and hit
 			# another player too. Clear the holder's flag so the effect resolves
 			# exactly once here.
-			if is_instance_valid(wild_color_owner):
-				wild_color_owner._waiting_color_turn_end = false
-			register_card_play(card_manager.top_card)
+			var owner := wild_color_owner
+			if is_instance_valid(owner):
+				owner._waiting_color_turn_end = false
+			register_card_play(card_manager.top_card, owner)
 			clear_wild_owner()
 		NetworkManager.rpc("client_set_wild_color", int(color), int(owner_slot))
 		_server_sync_match_state()
@@ -2768,7 +2799,8 @@ func _server_sync_match_state() -> void:
 
 	var state := _build_match_state()
 	NetworkManager.rpc("client_set_match_state", state)
-	_on_match_state_received(state)
+	# Do not apply the snapshot on the server — it is authoritative and
+	# re-applying (especially mid wild-color pick) can clobber draw_stack.
 
 ## Server broadcast counts
 func _server_broadcast_counts() -> void:

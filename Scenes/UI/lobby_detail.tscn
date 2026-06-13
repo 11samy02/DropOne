@@ -1,4 +1,4 @@
-[gd_scene load_steps=7 format=3 uid="uid://cw6no3dl40h5p"]
+[gd_scene load_steps=9 format=3 uid="uid://cw6no3dl40h5p"]
 
 [ext_resource type="Script" uid="uid://bix386pgusofu" path="res://Scripts/UI/lobby_detail.gd" id="1_cm4a1"]
 [ext_resource type="StyleBox" path="res://Themes/ui_button.tres" id="2_btn"]
@@ -40,6 +40,40 @@ content_margin_left = 28.0
 content_margin_top = 12.0
 content_margin_right = 28.0
 content_margin_bottom = 12.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_4a2go_hover"]
+bg_color = Color(0.22, 0.52, 0.08, 0.88)
+border_width_left = 5
+border_width_top = 5
+border_width_right = 5
+border_width_bottom = 5
+border_color = Color(0.72, 0.98, 0.35, 1)
+corner_radius_top_left = 25
+corner_radius_top_right = 25
+corner_radius_bottom_right = 25
+corner_radius_bottom_left = 25
+content_margin_left = 28.0
+content_margin_top = 12.0
+content_margin_right = 28.0
+content_margin_bottom = 12.0
+shadow_color = Color(0.4, 0.85, 0.1, 0.35)
+shadow_size = 6
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_4a2go_pressed"]
+bg_color = Color(0.1, 0.28, 0.02, 0.95)
+border_width_left = 5
+border_width_top = 5
+border_width_right = 5
+border_width_bottom = 5
+border_color = Color(0.45, 0.72, 0.12, 1)
+corner_radius_top_left = 25
+corner_radius_top_right = 25
+corner_radius_bottom_right = 25
+corner_radius_bottom_left = 25
+content_margin_left = 30.0
+content_margin_top = 14.0
+content_margin_right = 26.0
+content_margin_bottom = 10.0
 
 [node name="Lobby_detail" type="Panel"]
 custom_minimum_size = Vector2(0, 150)
@@ -96,7 +130,9 @@ custom_minimum_size = Vector2(200, 100)
 layout_mode = 2
 size_flags_vertical = 4
 theme_override_font_sizes/font_size = 48
+theme_override_styles/hover = SubResource("StyleBoxFlat_4a2go_hover")
 theme_override_styles/normal = SubResource("StyleBoxFlat_4a2go")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_4a2go_pressed")
 text = "Join"
 
 [connection signal="pressed" from="MarginContainer/HBoxContainer/HBoxContainer/join" to="." method="_on_join_pressed"]

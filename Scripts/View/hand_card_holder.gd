@@ -255,7 +255,7 @@ func set_card(card_view: CardView) -> void:
 		card_view.set_clickable(false, true)
 		_busy = true
 		_queued = null
-		queue_manager.start_place_all(self, played_card_res.color, played_card_res, card_view)
+		await queue_manager.start_place_all(self, played_card_res.color, played_card_res, card_view)
 		return
 	
 	# Multiplayer: broadcast the play so every client flies this card to the

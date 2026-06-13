@@ -4,6 +4,8 @@
 [ext_resource type="Script" path="res://Scripts/UI/steam_lobby_room.gd" id="2_script"]
 [ext_resource type="PackedScene" uid="uid://b3cbm8norl5h7" path="res://Scenes/Managers/card_manager.tscn" id="3_game"]
 [ext_resource type="StyleBox" path="res://Themes/ui_button.tres" id="4_btn"]
+[ext_resource type="StyleBox" path="res://Themes/ui_button_hover.tres" id="5_btn_hover"]
+[ext_resource type="StyleBox" path="res://Themes/ui_button_pressed.tres" id="6_btn_pressed"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_bg"]
 shader = ExtResource("1_shader")
@@ -87,13 +89,17 @@ theme_override_constants/separation = 16
 [node name="CopyId" type="Button" parent="CenterContainer/VBoxContainer/IdActions"]
 custom_minimum_size = Vector2(220, 60)
 layout_mode = 2
+theme_override_styles/hover = ExtResource("5_btn_hover")
 theme_override_styles/normal = ExtResource("4_btn")
+theme_override_styles/pressed = ExtResource("6_btn_pressed")
 text = "Copy ID"
 
 [node name="Invite" type="Button" parent="CenterContainer/VBoxContainer/IdActions"]
 custom_minimum_size = Vector2(220, 60)
 layout_mode = 2
+theme_override_styles/hover = ExtResource("5_btn_hover")
 theme_override_styles/normal = ExtResource("4_btn")
+theme_override_styles/pressed = ExtResource("6_btn_pressed")
 text = "Invite Friends"
 
 [node name="PlayersTitle" type="Label" parent="CenterContainer/VBoxContainer"]
@@ -146,14 +152,18 @@ layout_mode = 2
 unique_name_in_owner = true
 custom_minimum_size = Vector2(120, 50)
 layout_mode = 2
+theme_override_styles/hover = ExtResource("5_btn_hover")
 theme_override_styles/normal = ExtResource("4_btn")
+theme_override_styles/pressed = ExtResource("6_btn_pressed")
 text = "+ Bot"
 
 [node name="remove_bot_button" type="Button" parent="CenterContainer/VBoxContainer/bot_controls"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(120, 50)
 layout_mode = 2
+theme_override_styles/hover = ExtResource("5_btn_hover")
 theme_override_styles/normal = ExtResource("4_btn")
+theme_override_styles/pressed = ExtResource("6_btn_pressed")
 text = "- Bot"
 
 [node name="status_label" type="Label" parent="CenterContainer/VBoxContainer"]
@@ -168,14 +178,18 @@ custom_minimum_size = Vector2(400, 75)
 layout_mode = 2
 size_flags_horizontal = 4
 theme_override_font_sizes/font_size = 48
+theme_override_styles/hover = ExtResource("5_btn_hover")
 theme_override_styles/normal = ExtResource("4_btn")
+theme_override_styles/pressed = ExtResource("6_btn_pressed")
 text = "Ready"
 
 [node name="Leave" type="Button" parent="CenterContainer/VBoxContainer"]
 custom_minimum_size = Vector2(400, 60)
 layout_mode = 2
 size_flags_horizontal = 4
+theme_override_styles/hover = ExtResource("5_btn_hover")
 theme_override_styles/normal = ExtResource("4_btn")
+theme_override_styles/pressed = ExtResource("6_btn_pressed")
 text = "Leave Lobby"
 
 [node name="poll_timer" type="Timer" parent="."]

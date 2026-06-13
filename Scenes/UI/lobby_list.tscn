@@ -6,6 +6,8 @@
 [ext_resource type="Texture2D" uid="uid://3nkukhpnmr17" path="res://Assets/Ui/back.png" id="2_kylcb"]
 [ext_resource type="Texture2D" uid="uid://c50tcwbujokxo" path="res://Assets/Ui/add.png" id="3_g23g8"]
 [ext_resource type="StyleBox" path="res://Themes/ui_button.tres" id="4_btn"]
+[ext_resource type="StyleBox" path="res://Themes/ui_button_hover.tres" id="5_btn_hover"]
+[ext_resource type="StyleBox" path="res://Themes/ui_button_pressed.tres" id="6_btn_pressed"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_e8qkb"]
 shader = ExtResource("1_6ep1p")
@@ -115,7 +117,9 @@ alignment = 1
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
+theme_override_styles/hover = ExtResource("5_btn_hover")
 theme_override_styles/normal = SubResource("StyleBoxFlat_pxy4v")
+theme_override_styles/pressed = ExtResource("6_btn_pressed")
 icon = ExtResource("2_kylcb")
 icon_alignment = 1
 expand_icon = true
@@ -132,7 +136,9 @@ label_settings = SubResource("LabelSettings_e8qkb")
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
+theme_override_styles/hover = ExtResource("5_btn_hover")
 theme_override_styles/normal = SubResource("StyleBoxFlat_25mch")
+theme_override_styles/pressed = ExtResource("6_btn_pressed")
 icon = ExtResource("3_g23g8")
 icon_alignment = 1
 expand_icon = true

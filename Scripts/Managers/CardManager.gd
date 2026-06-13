@@ -31,7 +31,6 @@ var _draw_pulse_tween: Tween = null
 func _ready() -> void:
 	connect_signals()
 	Signals.TURN_changed.connect(_on_turn_changed)
-	NetworkManager.match_state_received.connect(_on_match_state_received)
 	is_initialized = true
 
 
@@ -78,6 +77,9 @@ func set_top_card() -> void:
 ## fly animations so the top card only swaps once the card lands).
 func begin_top_card_suppression() -> void:
 	_top_card_suppressed = true
+
+func is_top_card_suppressed() -> bool:
+	return _top_card_suppressed
 
 func end_top_card_suppression(fallback: CardResource = null) -> void:
 	_top_card_suppressed = false
@@ -392,23 +394,3 @@ func _smooth_modulate(node: CanvasItem, target: Color, duration: float = 0.2) ->
 		return
 	var tween := create_tween()
 	tween.tween_property(node, "modulate", target, duration).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-
-
-func _on_match_state_received(state: Dictionary) -> void:
-	var top = state.get("top_card", null)
-	if top is Dictionary and top.has("c") and top.has("t") and top.has("v") and top.has("id"):
-		var r := CardResource.new()
-		r.color = int(top.get("c", 0))
-		r.type = int(top.get("t", 0))
-		r.value = int(top.get("v", 0))
-		r.uid = int(top.get("id", 0))
-		set_top_card_runtime(r)
-
-	if state.has("current_color"):
-		current_color = int(state.get("current_color", current_color))
-	if state.has("waiting_for_color"):
-		var waiting := bool(state.get("waiting_for_color", waiting_for_color))
-		if waiting and !waiting_for_color:
-			waiting_for_color = true
-		elif !waiting and waiting_for_color:
-			select_color(current_color)

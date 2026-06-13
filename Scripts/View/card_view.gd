@@ -288,36 +288,80 @@ func rezise_card() -> void:
 	else:
 		scale = Vector2(1, 1)
 
-## Animate moving this card button to the top card
-func smooth_move_button_to_top_card_juicy(duration: float = 0.35, overshoot: float = 14.0) -> void:
-	if current_top_card == null:
+## Returns the scene overlay layer used for fly animations and tooltips.
+func _get_overlay_layer() -> CanvasLayer:
+	var scene := get_tree().current_scene
+	if scene == null:
+		return null
+	return scene.get_node_or_null("CanvasLayer") as CanvasLayer
+
+## Reset hover/zoom offsets before a fly animation.
+func _reset_visuells_for_fly() -> void:
+	if visuells == null:
 		return
-	if current_top_card == self:
+	visuells.position = Vector2.ZERO
+	visuells.scale = Vector2.ONE
+	visuells.z_index = 0
+	if animation_player != null and animation_player.has_animation("zoom"):
+		animation_player.play("zoom")
+		animation_player.seek(0.0, true)
+		animation_player.stop()
+
+## Global offset from card origin to visuells anchor in screen space.
+func _visuells_origin_offset() -> Vector2:
+	if visuells == null:
+		return Vector2.ZERO
+	return visuells.global_position - global_position
+
+## Flies this card to the discard pile, centered on the top card (all peers).
+func fly_to_discard_pile(duration: float = 0.35, overshoot: float = 14.0) -> void:
+	var top := current_top_card
+	if top == null or top == self:
 		return
 	if visuells == null or !is_instance_valid(visuells):
 		return
-	if current_top_card.visuells == null or !is_instance_valid(current_top_card.visuells):
+	if top.visuells == null or !is_instance_valid(top.visuells):
 		return
 
 	show_front = true
+	_reset_visuells_for_fly()
 
-	var parent_control := visuells.get_parent() as Control
-	if parent_control == null:
+	var start_vis_global := visuells.global_position
+	var end_vis_global := top.visuells.global_position
+
+	var layer := _get_overlay_layer()
+	if layer == null:
 		return
 
-	# Ziel: visuells-Position der Top-Karte
-	var target_global_pos: Vector2 = current_top_card.visuells.global_position
-	var target_local_pos: Vector2 = parent_control.get_global_transform().affine_inverse() * target_global_pos
+	var parent := get_parent()
+	if parent != null:
+		parent.remove_child(self)
+	layer.add_child(self)
+	top_level = true
+	z_as_relative = false
+	z_index = 4096
 
-	var dir := (target_local_pos - visuells.position)
-	if dir.length() < 0.001:
-		return
+	card_size = top.card_size
+	rezise_card()
 
-	var overshoot_pos := target_local_pos + dir.normalized() * overshoot
+	await get_tree().process_frame
+
+	var vis_offset := _visuells_origin_offset()
+	global_position = start_vis_global - vis_offset
+
+	var target_pos := end_vis_global - vis_offset
+	var dir := target_pos - global_position
+	var overshoot_pos := target_pos
+	if dir.length() > 0.001:
+		overshoot_pos = target_pos + dir.normalized() * overshoot
 
 	var tween := create_tween()
-	tween.tween_property(visuells, "position", overshoot_pos, duration * 0.75)\
+	tween.tween_property(self, "global_position", overshoot_pos, duration * 0.75) \
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-
-	tween.tween_property(visuells, "position", target_local_pos, duration * 0.25)\
+	tween.tween_property(self, "global_position", target_pos, duration * 0.25) \
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	await tween.finished
+
+## Animate moving this card button to the top card
+func smooth_move_button_to_top_card_juicy(duration: float = 0.35, overshoot: float = 14.0) -> void:
+	await fly_to_discard_pile(duration, overshoot)

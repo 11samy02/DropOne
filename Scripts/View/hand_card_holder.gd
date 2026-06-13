@@ -25,6 +25,7 @@ const SCALED_CARD_WIDTH := 126.5625
 
 var _desc_label: Label = null
 var _desc_card: CardResource = null
+var _remote_play_timeout: SceneTreeTimer = null
 
 ## Creates and returns an instance of this holder scene
 static func create() -> HandCardHolder:
@@ -34,7 +35,7 @@ static func create() -> HandCardHolder:
 func _ready() -> void:
 	Signals.COLOR_color_selected.connect(_on_color_selected)
 	if !is_bot and !compact_view:
-		call_deferred("_setup_description_label")
+		call_deferred("ensure_description_label")
 	call_deferred("_fix_card_size_flags")
 
 ## Prevent hand cards from expanding to fill the full screen width
@@ -208,8 +209,13 @@ func set_card(card_view: CardView) -> void:
 		_busy = true
 		_queued = null
 		NetworkManager.request_play(int(card_view.card_res.uid))
-		await get_tree().create_timer(0.15).timeout
-		_busy = false
+		if _remote_play_timeout != null:
+			_remote_play_timeout = null
+		_remote_play_timeout = get_tree().create_timer(3.0)
+		_remote_play_timeout.timeout.connect(func():
+			if _busy:
+				_busy = false
+		, CONNECT_ONE_SHOT)
 		return
 	
 	_busy = true
@@ -240,8 +246,7 @@ func set_card(card_view: CardView) -> void:
 	
 	card_view.set_clickable(false, true)
 	var animation_duration := 0.3
-	card_view.smooth_move_button_to_top_card_juicy(animation_duration)
-	await get_tree().create_timer(animation_duration).timeout
+	await card_view.fly_to_discard_pile(animation_duration)
 	
 	if is_instance_valid(card_view):
 		remove_child(card_view)
@@ -423,12 +428,16 @@ func setup_profile(index: int, bot: bool, name: String = "") -> void:
 
 	profile.ensure_picture()
 
+## Ensures the hover description label exists for the local player's hand.
+func ensure_description_label() -> void:
+	if is_bot or compact_view:
+		return
+	if _desc_label == null:
+		_setup_description_label()
+
 ## Creates a centered description label above the local player's hand
 func _setup_description_label() -> void:
 	if _desc_label != null or is_bot or compact_view:
-		return
-	var container := get_parent()
-	if container == null:
 		return
 
 	_desc_label = Label.new()
@@ -444,25 +453,58 @@ func _setup_description_label() -> void:
 	_desc_label.add_theme_constant_override("shadow_offset_y", 2)
 	_desc_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_desc_label.visible = false
-	_desc_label.z_index = 50
 
-	container.add_child(_desc_label)
-	_desc_label.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	_desc_label.offset_top = -340.0
-	_desc_label.offset_bottom = -270.0
-	_desc_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	var layer := _get_overlay_layer()
+	if layer == null:
+		return
+
+	layer.add_child(_desc_label)
+	_desc_label.z_as_relative = false
+	_desc_label.z_index = 600
+	_update_description_label_position()
+
+func _get_overlay_layer() -> CanvasLayer:
+	var scene := get_tree().current_scene
+	if scene == null:
+		return null
+	return scene.get_node_or_null("CanvasLayer") as CanvasLayer
+
+func _update_description_label_position() -> void:
+	if _desc_label == null:
+		return
+	var vp := get_viewport().get_visible_rect().size
+	var label_w := 700.0
+	_desc_label.position = Vector2((vp.x - label_w) * 0.5, vp.y - 360.0)
+	_desc_label.size = Vector2(label_w, 80.0)
 
 ## Shows a card description centered above the player hand
 func show_card_description(card_res: CardResource) -> void:
 	if is_bot or compact_view or card_res == null:
 		return
-	if _desc_label == null:
-		_setup_description_label()
+	ensure_description_label()
 	if _desc_label == null:
 		return
 	_desc_card = card_res
-	_desc_label.text = card_res.get_description()
+	_update_description_label_position()
+	_desc_label.text = card_res.get_description(_get_participant_count())
 	_desc_label.visible = true
+
+func _get_participant_count() -> int:
+	if queue_manager == null:
+		return 0
+	var count := int(queue_manager.player_count)
+	if count <= 0:
+		count = queue_manager.turn_order.size()
+	return count
+
+## Clears client-side play lock after the server confirms a remote play.
+func notify_remote_play_finished() -> void:
+	_remote_play_timeout = null
+	_busy = false
+	if _queued != null and is_instance_valid(_queued):
+		var next := _queued
+		_queued = null
+		call_deferred("set_card", next)
 
 ## Hides the description when the hovered card is no longer under the cursor
 func hide_card_description(card_res: CardResource) -> void:

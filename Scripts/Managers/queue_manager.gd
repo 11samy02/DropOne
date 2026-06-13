@@ -69,6 +69,7 @@ var _winner_overlay: CanvasLayer = null
 var _server_last_players_change_ms := 0
 var _server_start_delay_active := false
 const SERVER_START_DELAY_MS := 300
+var _client_play_animating := false
 
 ## Init networking + buffered snapshots
 func _ready() -> void:
@@ -840,6 +841,9 @@ func start_place_all(holder: HandCardHolder, color: CardResource.CardColor, play
 	has_drawn_this_turn = false
 	update_turn_state()
 
+	if multiplayer.is_server():
+		_server_sync_match_state()
+
 	place_all_view.set_clickable(false, true)
 
 	await get_tree().process_frame
@@ -1006,6 +1010,9 @@ func start_target_draw(owner: HandCardHolder, value: int, multi: bool, color: Ca
 		target_draw_active = false
 		return
 
+	if multiplayer.is_server():
+		_server_sync_match_state()
+
 	if multi:
 		resolve_target_draw(null)
 		return
@@ -1024,6 +1031,8 @@ func start_swap_hands(owner: HandCardHolder) -> void:
 	if pending_swap_owner != null:
 		return
 	pending_swap_owner = owner
+	if multiplayer.is_server():
+		_server_sync_match_state()
 	if owner.is_bot:
 		var target := get_most_threatening_target(owner)
 		_resolve_swap_with_target(owner, target)
@@ -1157,6 +1166,9 @@ func start_color_roulette(owner: HandCardHolder) -> void:
 
 	next_turn(false)
 	await get_tree().process_frame
+
+	if multiplayer.is_server():
+		_server_sync_match_state()
 
 	if roulette_target == null:
 		_end_roulette(false)
@@ -1607,6 +1619,8 @@ func _refresh_holder_layouts() -> void:
 		if h == null or !is_instance_valid(h):
 			continue
 		h.compact_view = (my_slot < 0) or (h.player_index != my_slot)
+		if !h.is_bot and !h.compact_view:
+			h.ensure_description_label()
 		var target := get_container_for_holder(h)
 		if target == null:
 			continue
@@ -1714,6 +1728,47 @@ func _reset_server_match_state() -> void:
 		card_manager.pending_wild_card = null
 		card_manager.current_color = CardResource.CardColor.BLACK
 
+## Build serializable match state snapshot (server authoritative).
+func _build_match_state() -> Dictionary:
+	var top_card_dict := {}
+	if card_manager != null and card_manager.top_card != null:
+		top_card_dict = _serialize_card(card_manager.top_card)
+
+	var pending_swap_slot := -1
+	if pending_swap_owner != null and is_instance_valid(pending_swap_owner):
+		pending_swap_slot = int(pending_swap_owner.player_index)
+
+	return {
+		"top_card": top_card_dict,
+		"turn_index": int(current_turn_index),
+		"direction": int(direction),
+		"draw_stack": int(draw_stack_amount),
+		"draw_stack_min": int(draw_stack_min_value),
+		"draw_stack_is_wild": bool(draw_stack_is_wild),
+		"draw_stack_color": int(draw_stack_color),
+		"current_color": int(card_manager.current_color) if card_manager != null else 0,
+		"waiting_for_color": bool(card_manager.waiting_for_color) if card_manager != null else false,
+		"has_played": bool(has_played_this_turn),
+		"has_drawn": bool(has_drawn_this_turn),
+		"roulette_active": bool(roulette_active),
+		"place_all_active": bool(place_all_active),
+		"target_draw_active": bool(target_draw_active),
+		"pending_swap_slot": pending_swap_slot,
+	}
+
+## Apply special-mode flags from a match-state snapshot.
+func _apply_match_state_flags(state: Dictionary) -> void:
+	has_played_this_turn = bool(state.get("has_played", has_played_this_turn))
+	has_drawn_this_turn = bool(state.get("has_drawn", has_drawn_this_turn))
+	roulette_active = bool(state.get("roulette_active", false))
+	place_all_active = bool(state.get("place_all_active", false))
+	target_draw_active = bool(state.get("target_draw_active", false))
+	var swap_slot := int(state.get("pending_swap_slot", -1))
+	if swap_slot >= 0:
+		pending_swap_owner = _slot_to_holder.get(swap_slot, null)
+	else:
+		pending_swap_owner = null
+
 ## Buffer incoming match state
 func _on_match_state_received(state: Dictionary) -> void:
 	_pending_state = state
@@ -1728,6 +1783,9 @@ func _try_apply_pending_match_state() -> void:
 	if card_manager == null:
 		return
 
+	if !multiplayer.is_server() and _client_play_animating:
+		return
+
 	var top = _pending_state.get("top_card", null)
 	if top is Dictionary:
 		var r := CardResource.new()
@@ -1735,7 +1793,9 @@ func _try_apply_pending_match_state() -> void:
 		r.type = int(top.get("t", 0))
 		r.value = int(top.get("v", 0))
 		r.uid = int(top.get("id", 0))
-		card_manager.set_top_card_runtime(r)
+		var same_top := card_manager.top_card != null and int(card_manager.top_card.uid) == int(r.uid)
+		if !same_top:
+			card_manager.set_top_card_runtime(r)
 
 	current_turn_index = int(_pending_state.get("turn_index", 0))
 	direction = int(_pending_state.get("direction", 1))
@@ -1753,8 +1813,7 @@ func _try_apply_pending_match_state() -> void:
 		if !waiting and card_manager.waiting_for_color:
 			card_manager.select_color(card_manager.current_color)
 
-	has_played_this_turn = false
-	has_drawn_this_turn = false
+	_apply_match_state_flags(_pending_state)
 
 	update_turn_state()
 
@@ -2255,25 +2314,9 @@ func _server_sync_match_state() -> void:
 		return
 	if card_manager == null:
 		return
-	
-	var top_card_dict := {}
-	if card_manager.top_card != null:
-		top_card_dict = _serialize_card(card_manager.top_card)
-	
-	var state := {
-		"top_card": top_card_dict,
-		"turn_index": int(current_turn_index),
-		"direction": int(direction),
-		"draw_stack": int(draw_stack_amount),
-		"draw_stack_min": int(draw_stack_min_value),
-		"draw_stack_is_wild": bool(draw_stack_is_wild),
-		"draw_stack_color": int(draw_stack_color),
-		"current_color": int(card_manager.current_color),
-		"waiting_for_color": bool(card_manager.waiting_for_color)
-	}
-	
+
+	var state := _build_match_state()
 	NetworkManager.rpc("client_set_match_state", state)
-	# Also apply locally on server
 	_on_match_state_received(state)
 
 ## Server broadcast counts
@@ -2318,12 +2361,16 @@ func _server_push_hand(holder: HandCardHolder) -> void:
 func _on_play_event_received(from_slot: int, card: Dictionary) -> void:
 	if multiplayer.is_server():
 		return
+
+	_client_play_animating = true
 	var my_slot := int(NetworkManager.my_slot)
 	
 	# Handle own card play - remove card from hand
 	if int(from_slot) == my_slot:
 		var holder: HandCardHolder = _slot_to_holder.get(int(from_slot), null)
 		if holder == null or !is_instance_valid(holder):
+			_client_play_animating = false
+			_try_apply_pending_match_state()
 			return
 
 		var card_uid := int(card.get("id", 0))
@@ -2339,26 +2386,20 @@ func _on_play_event_received(from_slot: int, card: Dictionary) -> void:
 		r.value = int(card.get("v", 0))
 		r.uid = int(card.get("id", 0))
 
-		# Fly the played card to the discard pile first, then swap the top card
-		# once it lands (suppress mid-flight match-state snaps).
 		if card_manager != null:
 			card_manager.begin_top_card_suppression()
 
 		if cv != null and is_instance_valid(cv):
 			cv.set_clickable(false, true)
-			cv.smooth_move_button_to_top_card_juicy(0.3)
-			await get_tree().create_timer(0.3).timeout
+			await cv.fly_to_discard_pile(0.3)
 			if is_instance_valid(cv):
-				holder.remove_child(cv)
+				if cv.get_parent() != null:
+					cv.get_parent().remove_child(cv)
 				cv.queue_free()
 
 		if card_manager != null:
 			card_manager.end_top_card_suppression(r)
 
-		# The top card was buffered during the fly, so any turn/playability
-		# refresh that ran mid-flight evaluated against the OLD top card.
-		# Re-evaluate now that the new top card is live, otherwise actually
-		# playable cards stay locked and the player is forced to draw.
 		update_turn_state()
 
 		if r.type in [
@@ -2367,29 +2408,19 @@ func _on_play_event_received(from_slot: int, card: Dictionary) -> void:
 			CardResource.CardType.WILD_DRAW_REVERSE
 		]:
 			set_wild_color_owner(holder)
-			if !multiplayer.is_server():
-				Signals.COLOR_request_color_select.emit()
 
 		holder.sort_cards_full()
 		holder.refresh_playable_cards()
+		holder.notify_remote_play_finished()
+		_client_play_animating = false
+		_try_apply_pending_match_state()
 		return
-
-		
 
 	var holder: HandCardHolder = _slot_to_holder.get(int(from_slot), null)
 	if holder == null or not is_instance_valid(holder):
+		_client_play_animating = false
+		_try_apply_pending_match_state()
 		return
-
-	# Remove one card from opponent's hand (we don't know which exact card, so remove first visible)
-	var remove_one: CardView = null
-	for ch in holder.get_children():
-		if ch is CardView:
-			remove_one = ch
-			break
-
-	if remove_one != null and is_instance_valid(remove_one):
-		holder.remove_child(remove_one)
-		remove_one.queue_free()
 
 	var r := CardResource.new()
 	r.color = int(card.get("c", 0))
@@ -2397,10 +2428,6 @@ func _on_play_event_received(from_slot: int, card: Dictionary) -> void:
 	r.value = int(card.get("v", 0))
 	r.uid = int(card.get("id", 0))
 
-	# Fly a face-up copy of the played card from the opponent's seat to the
-	# discard pile, and only swap the top card once it lands. The suppression
-	# keeps an incoming match-state sync from snapping the top card mid-flight,
-	# which is why remote plays previously just "appeared" instead of flying.
 	if card_manager != null:
 		card_manager.begin_top_card_suppression()
 
@@ -2410,35 +2437,14 @@ func _on_play_event_received(from_slot: int, card: Dictionary) -> void:
 	temp.card_res = r
 	temp.show_front = true
 	temp.set_clickable(false, true)
-	# Mark as a transient animation card so the counts/visibility rebuilds don't
-	# delete it mid-flight (that's why remote plays only animated on the host).
 	temp.set_meta("anim_temp", true)
 	holder.add_child(temp)
+	temp.load_card()
 
-	# Let the seat container lay the card out so we read its real on-screen
-	# position before flying it.
 	await get_tree().process_frame
 	await get_tree().process_frame
 
-	var start_pos := temp.global_position
-	var target_pos := start_pos
-	if card_manager != null and card_manager.top_card_view != null and is_instance_valid(card_manager.top_card_view):
-		target_pos = card_manager.top_card_view.global_position
-
-	# Opponent seats use compact/overlapping layouts, so the old local-space fly
-	# (visuells.position relative to the seat) was distorted to near-zero on
-	# clients and the card just "appeared". Detach to top-level and animate in
-	# global space with a high z_index so it visibly flies above all UI from the
-	# seat to the centre on every peer.
-	temp.top_level = true
-	temp.z_index = 4096
-	temp.global_position = start_pos
-
-	var tw := create_tween()
-	tw.tween_property(temp, "global_position", target_pos, 0.3) \
-		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-
-	await get_tree().create_timer(0.3).timeout
+	await temp.fly_to_discard_pile(0.3)
 
 	if temp != null and is_instance_valid(temp):
 		temp.queue_free()
@@ -2446,9 +2452,9 @@ func _on_play_event_received(from_slot: int, card: Dictionary) -> void:
 	if card_manager != null:
 		card_manager.end_top_card_suppression(r)
 
-	# Re-evaluate playable cards now that the new top card is live (it was
-	# buffered during the fly, so the mid-flight refresh used the old top card).
 	update_turn_state()
+	_client_play_animating = false
+	_try_apply_pending_match_state()
 
 func _server_sync_late_joiners(players_in: Array) -> void:
 	if not _server_match_started:
@@ -2456,17 +2462,7 @@ func _server_sync_late_joiners(players_in: Array) -> void:
 	if card_manager == null:
 		return
 
-	var state := {
-		"top_card": _serialize_card(card_manager.top_card),
-		"turn_index": int(current_turn_index),
-		"direction": int(direction),
-		"draw_stack": int(draw_stack_amount),
-		"draw_stack_min": int(draw_stack_min_value),
-		"draw_stack_is_wild": bool(draw_stack_is_wild),
-		"draw_stack_color": int(draw_stack_color),
-		"current_color": int(card_manager.current_color),
-		"waiting_for_color": bool(card_manager.waiting_for_color)
-	}
+	var state := _build_match_state()
 
 	for row in players_in:
 		if not (row is Dictionary):

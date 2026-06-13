@@ -59,28 +59,30 @@ func get_background_texture(hidden_card: bool = false) -> Texture2D:
 		CardColor.BLACK: return BLACK
 	return RED
 
-## Localized color name for UI descriptions
+## Color name for UI descriptions
 func get_color_name() -> String:
 	match color:
-		CardColor.RED: return "Rot"
-		CardColor.GREEN: return "Grün"
-		CardColor.BLUE: return "Blau"
-		CardColor.YELLOW: return "Gelb"
-		CardColor.BLACK: return "Schwarz (Wild)"
-	return "Unbekannt"
+		CardColor.RED: return "Red"
+		CardColor.GREEN: return "Green"
+		CardColor.BLUE: return "Blue"
+		CardColor.YELLOW: return "Yellow"
+		CardColor.BLACK: return "Black (Wild)"
+	return "Unknown"
 
-## Localized symbol name for colorblind accessibility text
+## Symbol name for colorblind accessibility text
 func get_symbol_name() -> String:
 	match color:
-		CardColor.RED: return "Herz"
-		CardColor.GREEN: return "Kreuz"
-		CardColor.BLUE: return "Pik"
-		CardColor.YELLOW: return "Karo"
+		CardColor.RED: return "Hearts"
+		CardColor.GREEN: return "Clubs"
+		CardColor.BLUE: return "Spades"
+		CardColor.YELLOW: return "Diamonds"
 		CardColor.BLACK: return ""
 	return ""
 
-## Full hover description: color, number/value, and card effect
-func get_description() -> String:
+## Full hover description: color, number/value, and card effect.
+## participant_count: pass turn_order.size() so 1v1 rule text is accurate.
+func get_description(participant_count: int = 0) -> String:
+	var is_1v1 := participant_count == 2
 	var color_line := get_color_name()
 	var symbol := get_symbol_name()
 	if symbol != "":
@@ -88,29 +90,41 @@ func get_description() -> String:
 
 	match type:
 		CardType.NUMBER:
-			return "%s – Zahl %d. Spielbar auf gleiche Farbe oder gleiche Zahl." % [color_line, value]
+			return "%s – Number %d. Play on matching color or matching number." % [color_line, value]
 		CardType.DRAW:
-			return "%s +%d – Der nächste Spieler muss %d Karte(n) ziehen. Stapelt mit anderen +Karten." % [color_line, value, value]
+			return "%s +%d – Next player must draw %d card(s). Can stack on matching +draw cards." % [color_line, value, value]
 		CardType.TARGET_DRAW:
-			return "%s +%d – Wähle einen Gegner, der %d Karte(n) ziehen muss." % [color_line, value, value]
+			if is_1v1:
+				return "%s +%d – Your opponent draws %d card(s)." % [color_line, value, value]
+			return "%s +%d – Choose an opponent to draw %d card(s)." % [color_line, value, value]
 		CardType.MULTI_TARGET_DRAW:
-			return "%s +%d – Alle anderen Spieler ziehen jeweils %d Karte(n)." % [color_line, value, value]
+			if is_1v1:
+				return "%s +%d – Your opponent draws %d card(s)." % [color_line, value, value]
+			return "%s +%d – All other players each draw %d card(s)." % [color_line, value, value]
 		CardType.SKIP:
-			return "%s – Überspringt den nächsten Spieler." % color_line
+			if is_1v1:
+				return "%s – Skips your opponent's turn." % color_line
+			return "%s – Skips the next player." % color_line
 		CardType.REVERSE:
-			return "%s – Kehrt die Spielrichtung um." % color_line
+			if is_1v1:
+				return "%s – Skips your opponent (Reverse acts as Skip in 1v1)." % color_line
+			return "%s – Reverses play direction." % color_line
 		CardType.PLACE_ALL:
-			return "%s – Lege alle Karten dieser Farbe aus deiner Hand, dann wähle eine Farbe." % color_line
+			return "%s – Play all cards of this color from your hand, then choose a new color." % color_line
 		CardType.WILD:
-			return "Wild – Wähle eine Farbe. Spielbar jederzeit."
+			return "Wild – Choose a color. Playable at any time."
 		CardType.WILD_DRAW:
-			return "Wild +%d – Wähle eine Farbe. Nächster Spieler zieht %d Karte(n)." % [value, value]
+			return "Wild +%d – Choose a color. Next player draws %d card(s)." % [value, value]
 		CardType.WILD_DRAW_REVERSE:
-			return "Wild +%d & Richtungswechsel – Wähle eine Farbe. Nächster Spieler zieht %d Karte(n), Richtung kehrt um." % [value, value]
+			if is_1v1:
+				return "Wild +%d – Choose a color. You draw %d card(s) (no direction change in 1v1)." % [value, value]
+			return "Wild +%d & Reverse – Choose a color. Next player draws %d card(s) and direction reverses." % [value, value]
 		CardType.SWAP_HANDS:
-			return "Wild – Tausche deine Hand mit einem gewählten Gegner, dann wähle eine Farbe."
+			if is_1v1:
+				return "Wild – Swap hands with your opponent, then choose a color."
+			return "Wild – Swap your hand with a chosen opponent, then choose a color."
 		CardType.WILD_COLOR_ROULET:
-			return "Wild – Farbroulette: Der nächste Spieler muss die gewählte Farbe legen oder ziehen."
+			return "Wild – Color roulette: the next player must play the chosen color or draw until they can."
 	return color_line
 
 ## Get display text for number and draw-like cards

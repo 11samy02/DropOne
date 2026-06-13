@@ -24,6 +24,9 @@ var _uid_counter: int = 1
 var _top_card_suppressed := false
 var _suppressed_top_card: CardResource = null
 
+## Looping highlight on the draw deck shown when the local player must draw.
+var _draw_pulse_tween: Tween = null
+
 
 func _ready() -> void:
 	connect_signals()
@@ -240,11 +243,57 @@ func update_draw_button_state() -> void:
 
 func _on_turn_changed(_holder: HandCardHolder) -> void:
 	update_draw_button_state()
+	_update_draw_hint()
 
-	if queue_manager != null and queue_manager.is_human_turn():
-		_smooth_modulate(draw_button, Color.WHITE, 0.25)
-	else:
+
+## Visually communicate the local player's draw situation:
+## - not your turn  -> dimmed deck
+## - your turn, can play -> bright deck
+## - your turn, no playable card (must draw) -> pulsing highlight
+func _update_draw_hint() -> void:
+	if draw_button == null:
+		return
+
+	var my_turn := false
+	if queue_manager != null:
+		if multiplayer.has_multiplayer_peer():
+			my_turn = queue_manager.is_local_turn()
+		else:
+			my_turn = queue_manager.is_human_turn()
+
+	if !my_turn or waiting_for_color:
+		_stop_draw_pulse()
 		_smooth_modulate(draw_button, Color(0.35, 0.35, 0.35, 1.0), 0.25)
+		return
+
+	var must_draw := false
+	if queue_manager != null:
+		var ch := queue_manager.get_current_holder()
+		must_draw = ch != null and !queue_manager.holder_has_playable_card(ch)
+
+	if must_draw:
+		_start_draw_pulse()
+	else:
+		_stop_draw_pulse()
+		_smooth_modulate(draw_button, Color.WHITE, 0.25)
+
+
+func _start_draw_pulse() -> void:
+	if draw_button == null:
+		return
+	if _draw_pulse_tween != null and _draw_pulse_tween.is_valid():
+		return
+	_draw_pulse_tween = create_tween().set_loops()
+	_draw_pulse_tween.tween_property(draw_button, "modulate", Color(1.0, 0.82, 0.2, 1.0), 0.45) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	_draw_pulse_tween.tween_property(draw_button, "modulate", Color(1.0, 1.0, 1.0, 1.0), 0.45) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+
+
+func _stop_draw_pulse() -> void:
+	if _draw_pulse_tween != null and _draw_pulse_tween.is_valid():
+		_draw_pulse_tween.kill()
+	_draw_pulse_tween = null
 
 
 func create_cards_from_deck(deck_res: DeckResource) -> Array[CardResource]:

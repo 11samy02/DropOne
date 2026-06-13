@@ -1342,7 +1342,7 @@ func _apply_local_visibility() -> void:
 		var is_me := (h.player_index == my_slot)
 
 		for cv in h.get_children():
-			if cv is CardView:
+			if cv is CardView and not cv.get_meta("anim_temp", false):
 				cv.show_front = is_me
 				cv.load_card()
 
@@ -1936,7 +1936,7 @@ func _apply_counts_to_ui() -> void:
 
 		var current_count := 0
 		for c in holder.get_children():
-			if c is CardView:
+			if c is CardView and not c.get_meta("anim_temp", false):
 				current_count += 1
 
 		var n := int(_last_hand_counts[i])
@@ -1944,7 +1944,9 @@ func _apply_counts_to_ui() -> void:
 			continue
 
 		for c in holder.get_children():
-			if c is CardView:
+			# Keep transient fly-animation cards alive so the rebuild doesn't
+			# cancel an in-flight play animation.
+			if c is CardView and not c.get_meta("anim_temp", false):
 				holder.remove_child(c)
 				c.queue_free()
 
@@ -2330,6 +2332,9 @@ func _on_play_event_received(from_slot: int, card: Dictionary) -> void:
 	temp.card_res = r
 	temp.show_front = true
 	temp.set_clickable(false, true)
+	# Mark as a transient animation card so the counts/visibility rebuilds don't
+	# delete it mid-flight (that's why remote plays only animated on the host).
+	temp.set_meta("anim_temp", true)
 	holder.add_child(temp)
 
 	await get_tree().process_frame

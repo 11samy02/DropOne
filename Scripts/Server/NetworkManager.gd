@@ -8,6 +8,9 @@ const NM_VERSION := "0.3.0"
 const BUILD_ID := "STEAM_BUILD_2026-06-12"
 
 var _local_connecting := false
+var _rejoin_from_match := false
+var _session_had_remote_peers := false
+var _host_alone_lobby_return_pending := false
 
 var is_server := false
 var _signals_connected := false
@@ -41,6 +44,7 @@ signal lobby_state_changed(players: Array)  # [{peer_id, name, is_ready, is_host
 signal lobby_start_game
 signal lobby_disconnected
 signal game_won(winner_name: String, winner_slot: int)
+signal player_eliminated(slot: int)
 signal return_to_lobby
 signal lobby_deck_changed(deck_path: String)
 
@@ -98,6 +102,7 @@ func enter_lobby_host(use_steam: bool, lobby_id: int = 0) -> bool:
 		if err != OK:
 			_emit_status("Steam host could not start.")
 			_safe_log("host_with_lobby failed:", str(err))
+			is_server = false
 			return false
 		peer = sp
 	else:
@@ -106,6 +111,7 @@ func enter_lobby_host(use_steam: bool, lobby_id: int = 0) -> bool:
 		if err != OK:
 			_emit_status("Server port in use – is a host already running?")
 			_safe_log("create_server failed:", str(err))
+			is_server = false
 			return false
 		peer = ep
 
@@ -120,34 +126,12 @@ func enter_lobby_host(use_steam: bool, lobby_id: int = 0) -> bool:
 	return true
 
 
-## Lokal: als Host starten. Prüft zuerst per kurzem Verbindungsversuch, ob bereits
-## ein Host auf 127.0.0.1:4242 läuft – falls ja, wird automatisch als Client verbunden
-## (verhindert mehrere isolierte Hosts). Sonst startet diese Instanz den Server.
+## Lokal: explizit als Host starten (Button „Start Host“). Kein Auto-Join –
+## dafür gibt es „Join as Client“.
 func enter_local_as_host() -> bool:
-	if await _local_host_exists():
-		_safe_log("LOCAL: Host existiert bereits -> verbinde als Client")
-		return await enter_local_as_client(8.0)
+	_reset_peer()
 	_safe_log("LOCAL: Host startet auf 127.0.0.1:", str(DEFAULT_PORT))
 	return enter_lobby_host(false)
-
-
-func _local_host_exists() -> bool:
-	var probe := ENetMultiplayerPeer.new()
-	if probe.create_client("127.0.0.1", DEFAULT_PORT) != OK:
-		return false
-	var deadline := Time.get_ticks_msec() + 700
-	var found := false
-	while Time.get_ticks_msec() < deadline:
-		probe.poll()
-		var st := probe.get_connection_status()
-		if st == MultiplayerPeer.CONNECTION_CONNECTED:
-			found = true
-			break
-		if st == MultiplayerPeer.CONNECTION_DISCONNECTED:
-			break
-		await get_tree().process_frame
-	probe.close()
-	return found
 
 
 ## Lokal: explizit als Client verbinden (Instanz 2+ – Button "Client beitreten").
@@ -174,6 +158,8 @@ func enter_local_as_client(max_wait_sec: float = 20.0) -> bool:
 			if st == MultiplayerPeer.CONNECTION_CONNECTED:
 				_local_connecting = false
 				_connected = true
+				await get_tree().process_frame
+				await get_tree().process_frame
 				send_profile_to_server()
 				_emit_status("Connected to host.")
 				_safe_log("LOCAL: Client verbunden, peer_id=", str(multiplayer.get_unique_id()))
@@ -209,7 +195,12 @@ func enter_lobby_client(use_steam: bool, lobby_id: int = 0, host_steam_id: int =
 	# lobby frequently fails to establish (the relay path and the host's listen
 	# socket aren't fully ready yet), which is exactly why joining only worked
 	# "on the second try". Retry the connection a few times until it sticks.
-	var total_deadline := Time.get_ticks_msec() + 22000
+	if use_steam:
+		await SteamManager.ensure_relay_ready(15.0)
+		# Kurze Pause, damit der Host host_with_lobby abschließen kann.
+		await get_tree().create_timer(0.75).timeout
+
+	var total_deadline := Time.get_ticks_msec() + 30000
 	var attempt := 0
 	while Time.get_ticks_msec() < total_deadline:
 		attempt += 1
@@ -233,11 +224,15 @@ func enter_lobby_client(use_steam: bool, lobby_id: int = 0, host_steam_id: int =
 		var attempt_deadline := Time.get_ticks_msec() + 4500
 		while Time.get_ticks_msec() < attempt_deadline:
 			await get_tree().process_frame
+			if use_steam:
+				Steam.run_callbacks()
 			if multiplayer.multiplayer_peer != sp:
 				return _connected
 			var st := sp.get_connection_status()
 			if st == MultiplayerPeer.CONNECTION_CONNECTED:
 				_connected = true
+				await get_tree().process_frame
+				await get_tree().process_frame
 				send_profile_to_server()
 				_emit_status("Connected!")
 				return true
@@ -262,7 +257,30 @@ func leave_lobby() -> void:
 	my_slot = -1
 	last_slot = -1
 	last_players = []
+	_rejoin_from_match = false
+	_session_had_remote_peers = false
+	_host_alone_lobby_return_pending = false
 	_reset_peer()
+
+
+func mark_rejoin_from_match() -> void:
+	_rejoin_from_match = true
+
+
+## Nur nach Spielende: bestehende Verbindung in der Lobby weiterverwenden.
+func consume_rejoin_from_match() -> bool:
+	if not _rejoin_from_match or not has_active_connection():
+		_rejoin_from_match = false
+		return false
+	_rejoin_from_match = false
+	return true
+
+
+func refresh_lobby_display() -> void:
+	if not multiplayer.is_server():
+		return
+	_ensure_server_profile()
+	_broadcast_lobby_state()
 
 
 func _exit_tree() -> void:
@@ -460,6 +478,8 @@ func reset_for_lobby_return() -> void:
 	last_players = []
 	last_hand = []
 	last_match_state = {}
+	_session_had_remote_peers = false
+	_host_alone_lobby_return_pending = false
 	if multiplayer.is_server():
 		for key in _ready_by_peer.keys():
 			_ready_by_peer[key] = false
@@ -470,6 +490,11 @@ func reset_for_lobby_return() -> void:
 @rpc("authority", "reliable", "call_local")
 func client_on_winner(winner_name: String, winner_slot: int = -1) -> void:
 	game_won.emit(winner_name, int(winner_slot))
+
+
+@rpc("authority", "reliable", "call_local")
+func client_on_player_eliminated(slot: int) -> void:
+	player_eliminated.emit(int(slot))
 
 
 @rpc("authority", "reliable", "call_local")
@@ -579,10 +604,12 @@ func connect_local(host: String = "127.0.0.1", port: int = DEFAULT_PORT) -> void
 func _on_peer_connected(id: int) -> void:
 	_emit_status("A player joined.")
 	_safe_log("Client connected (id)", str(id))
+	_session_had_remote_peers = true
 	if not _ready_by_peer.has(id):
 		_ready_by_peer[id] = false
 	rpc_id(id, "client_receive_message", "Welcome!")
-	# Profil kommt per server_register_player; danach broadcast.
+	# Profil kommt per server_register_player; kurz warten und erneut broadcasten falls nötig.
+	_deferred_profile_sync(int(id))
 
 
 func _on_peer_disconnected(id: int) -> void:
@@ -597,14 +624,28 @@ func _on_peer_disconnected(id: int) -> void:
 		_prune_profiles_to_connected()
 		_broadcast_players_to_all()
 		_broadcast_lobby_state()
+		_try_return_host_to_lobby_if_alone()
+
+
+func _deferred_profile_sync(peer_id: int) -> void:
+	await get_tree().create_timer(0.35).timeout
+	if not multiplayer.is_server():
+		return
+	if not _get_connected_peer_ids_including_server().has(peer_id):
+		return
+	if not _server_profiles_by_peer.has(peer_id):
+		rpc_id(peer_id, "client_request_send_profile")
+	_broadcast_lobby_state()
+
+
+@rpc("authority", "reliable")
+func client_request_send_profile() -> void:
+	send_profile_to_server()
 
 
 func _ensure_server_profile() -> void:
 	if not multiplayer.is_server():
 		return
-	if _server_profiles_by_peer.has(1):
-		return
-
 	var nm := _get_local_player_name()
 	_server_profiles_by_peer[1] = {
 		"name": nm,
@@ -645,6 +686,37 @@ func _prune_profiles_to_connected() -> void:
 		if _server_profiles_by_peer.has(id):
 			keep[id] = _server_profiles_by_peer[id]
 	_server_profiles_by_peer = keep
+
+
+## Host-only: after the last remote peer leaves an active match, return to the lobby.
+func _try_return_host_to_lobby_if_alone() -> void:
+	if not multiplayer.is_server() or _is_dedicated_server():
+		return
+	if not _session_had_remote_peers:
+		return
+	if not multiplayer.get_peers().is_empty():
+		return
+	if _host_alone_lobby_return_pending:
+		return
+
+	var qm := get_tree().get_first_node_in_group("queue_manager")
+	if qm == null or not qm.has_method("is_match_in_progress"):
+		return
+	if not bool(qm.call("is_match_in_progress")):
+		return
+
+	_host_alone_lobby_return_pending = true
+	_emit_status("All players left – returning to lobby.")
+	_safe_log("Host alone in active match – returning to lobby.")
+	call_deferred("_finish_host_alone_lobby_return")
+
+
+func _finish_host_alone_lobby_return() -> void:
+	if not multiplayer.is_server():
+		_host_alone_lobby_return_pending = false
+		return
+	server_return_to_lobby()
+	_host_alone_lobby_return_pending = false
 
 
 func _broadcast_players_to_all() -> void:
@@ -890,6 +962,10 @@ func client_set_wild_color(color: int, owner_slot: int) -> void:
 	var qm := get_tree().get_first_node_in_group("queue_manager")
 	if qm != null and qm.has_method("client_apply_wild_color"):
 		qm.call_deferred("client_apply_wild_color", int(color), int(owner_slot))
+
+@rpc("authority", "reliable")
+func client_dismiss_color_select() -> void:
+	Signals.COLOR_color_select_dismissed.emit()
 
 @rpc("authority", "reliable")
 func client_request_color(owner_slot: int) -> void:

@@ -110,21 +110,21 @@ func get_description(participant_count: int = 0) -> String:
 				return "%s – Skips your opponent (Reverse acts as Skip in 1v1)." % color_line
 			return "%s – Reverses play direction." % color_line
 		CardType.PLACE_ALL:
-			return "%s – Play all cards of this color from your hand, then choose a new color." % color_line
+			return "%s – Play all cards of this color from your hand." % color_line
 		CardType.WILD:
 			return "Wild – Choose a color. Playable at any time."
 		CardType.WILD_DRAW:
-			return "Wild +%d – Choose a color. Next player draws %d card(s)." % [value, value]
+			return "Wild +%d – Choose a color. Next player must draw %d card(s) or stack another wild +draw." % [value, value]
 		CardType.WILD_DRAW_REVERSE:
 			if is_1v1:
-				return "Wild +%d – Choose a color. You draw %d card(s) (no direction change in 1v1)." % [value, value]
-			return "Wild +%d & Reverse – Choose a color. Next player draws %d card(s) and direction reverses." % [value, value]
+				return "Wild +%d – Choose a color. Next player must draw %d card(s) or stack another wild +draw." % [value, value]
+			return "Wild +%d & Reverse – Choose a color. Next player must draw %d card(s) or stack; direction reverses." % [value, value]
 		CardType.SWAP_HANDS:
 			if is_1v1:
 				return "Wild – Swap hands with your opponent, then choose a color."
 			return "Wild – Swap your hand with a chosen opponent, then choose a color."
 		CardType.WILD_COLOR_ROULET:
-			return "Wild – Color roulette: the next player must play the chosen color or draw until they can."
+			return "Wild – Color roulette: the next player picks a color, draws until they draw that color, then may still play."
 	return color_line
 
 ## Get display text for number and draw-like cards

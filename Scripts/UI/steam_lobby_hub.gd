@@ -17,11 +17,13 @@ const START_SCREEN := "res://Scenes/UI/start_screen.tscn"
 @onready var join_row: HBoxContainer = $MarginContainer/VBoxContainer/JoinRow
 
 var _lobby_items: Dictionary = {}
+var _ui_locked := false
 
 
 func _ready() -> void:
 	SteamManager.configure(use_steam)
 	_update_mode_label()
+	SteamManager.lobby_left.connect(_on_lobby_left_reset_ui)
 
 	if not Globals.has_customized_profile():
 		Globals.change_scene_file(START_SCREEN)
@@ -84,6 +86,19 @@ func _on_steam_init_failed(reason: String) -> void:
 
 func _on_lobby_join_failed(reason: String) -> void:
 	status_label.text = reason
+	_set_ui_locked(false)
+
+
+func _on_lobby_left_reset_ui() -> void:
+	_set_ui_locked(false)
+
+
+func _set_ui_locked(locked: bool) -> void:
+	_ui_locked = locked
+	if create_button:
+		create_button.disabled = locked
+	if join_button:
+		join_button.disabled = locked
 
 
 func _refresh_lobby_list() -> void:
@@ -155,9 +170,12 @@ func _create_lobby_row(id: int, name: String, info_text: String) -> Dictionary:
 	var join_btn := Button.new()
 	join_btn.text = "Join"
 	join_btn.pressed.connect(func() -> void:
+		if _ui_locked or SteamManager.is_lobby_busy():
+			return
 		if not Globals.has_customized_profile():
 			status_label.text = "Please customize your profile first."
 			return
+		_set_ui_locked(true)
 		status_label.text = "Joining lobby %d..." % id
 		SteamManager.join_lobby(id)
 	)
@@ -167,17 +185,23 @@ func _create_lobby_row(id: int, name: String, info_text: String) -> Dictionary:
 
 
 func _on_solo_pressed() -> void:
+	if _ui_locked or SteamManager.is_lobby_busy():
+		return
 	if not Globals.has_customized_profile():
 		status_label.text = "Please customize your profile first."
 		return
+	_set_ui_locked(true)
 	status_label.text = "Starting singleplayer..."
 	SteamManager.start_solo()
 
 
 func _on_create_pressed() -> void:
+	if _ui_locked or SteamManager.is_lobby_busy():
+		return
 	if not Globals.has_customized_profile():
 		status_label.text = "Please customize your profile first."
 		return
+	_set_ui_locked(true)
 	if use_steam:
 		status_label.text = "Creating lobby..."
 	else:
@@ -186,9 +210,12 @@ func _on_create_pressed() -> void:
 
 
 func _on_join_id_pressed() -> void:
+	if _ui_locked or SteamManager.is_lobby_busy():
+		return
 	if not Globals.has_customized_profile():
 		status_label.text = "Please customize your profile first."
 		return
+	_set_ui_locked(true)
 	if not SteamManager.use_steam:
 		status_label.text = "Connecting as client..."
 		SteamManager.join_lobby(SteamManager.LOCAL_LOBBY_ID)
@@ -212,10 +239,13 @@ func _on_paste_pressed() -> void:
 
 
 func _on_back_pressed() -> void:
+	SteamManager.leave_lobby()
 	Globals.change_scene_file(START_SCREEN)
 
 
 func _exit_tree() -> void:
+	if SteamManager.lobby_left.is_connected(_on_lobby_left_reset_ui):
+		SteamManager.lobby_left.disconnect(_on_lobby_left_reset_ui)
 	if SteamManager.steam_init_failed.is_connected(_on_steam_init_failed):
 		SteamManager.steam_init_failed.disconnect(_on_steam_init_failed)
 	if SteamManager.steam_ready_signal.is_connected(_on_steam_ready):

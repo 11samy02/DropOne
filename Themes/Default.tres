@@ -1,8 +1,13 @@
 [gd_resource type="Theme" format=3 uid="uid://c4dcsowe1220v"]
 
 [ext_resource type="FontFile" uid="uid://c5hom8rufx0x4" path="res://Assets/Fonts/Montserrat-ExtraBold.ttf" id="1_hymkg"]
+[ext_resource type="StyleBox" path="res://Themes/ui_button.tres" id="2_btn"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_11isl"]
+content_margin_left = 20.0
+content_margin_top = 8.0
+content_margin_right = 20.0
+content_margin_bottom = 8.0
 bg_color = Color(0.06555709, 0.27681145, 0.47136915, 1)
 border_width_left = 5
 border_width_top = 5
@@ -31,7 +36,15 @@ corner_radius_bottom_left = 10
 [resource]
 default_font = ExtResource("1_hymkg")
 default_font_size = 0
+Button/colors/font_color = Color(1, 1, 1, 1)
+Button/constants/hseparation = 14
+Button/constants/icon_max_width = 36
 Button/font_sizes/font_size = 32
+Button/styles/disabled = ExtResource("2_btn")
+Button/styles/focus = ExtResource("2_btn")
+Button/styles/hover = ExtResource("2_btn")
+Button/styles/normal = ExtResource("2_btn")
+Button/styles/pressed = ExtResource("2_btn")
 Label/font_sizes/font_size = 32
 Label/fonts/font = ExtResource("1_hymkg")
 LineEdit/colors/font_color = Color(0.78039217, 0.7529412, 1, 1)

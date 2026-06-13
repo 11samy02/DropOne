@@ -1,6 +1,7 @@
 [gd_scene format=3 uid="uid://rfu5lg5asy1b"]
 
 [ext_resource type="Shader" uid="uid://corv0pvqk7gru" path="res://Shaders/Background.gdshader" id="2_qx5k3"]
+[ext_resource type="StyleBox" path="res://Themes/ui_button.tres" id="3_btn"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_o66dd"]
 shader = ExtResource("2_qx5k3")
@@ -14,20 +15,6 @@ shader_parameter/dithering = 0.0
 shader_parameter/col_dark = Color(0, 0, 0, 1)
 shader_parameter/col_mid = Color(0.036908284, 0.13531986, 0.27183843, 1)
 shader_parameter/col_glow = Color(0.16, 0.52, 0.82, 1)
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_rm6pd"]
-bg_color = Color(0, 0, 0.08627451, 0.5803922)
-border_width_left = 5
-border_width_top = 5
-border_width_right = 5
-border_width_bottom = 5
-border_color = Color(0.7802099, 0.7513736, 1, 1)
-corner_radius_top_left = 25
-corner_radius_top_right = 25
-corner_radius_bottom_right = 25
-corner_radius_bottom_left = 25
-expand_margin_top = 10.0
-expand_margin_bottom = 10.0
 
 [node name="CurrentLobby" type="Control" unique_id=837190060]
 layout_mode = 3
@@ -67,10 +54,8 @@ custom_minimum_size = Vector2(400, 75)
 layout_mode = 2
 size_flags_horizontal = 6
 theme_override_font_sizes/font_size = 80
-theme_override_styles/normal = SubResource("StyleBoxFlat_rm6pd")
+theme_override_styles/normal = ExtResource("3_btn")
 text = "Ready"
-icon_alignment = 1
-expand_icon = true
 
 [node name="players_in_lobby" type="Label" parent="VBoxContainer" unique_id=2079085187]
 unique_name_in_owner = true

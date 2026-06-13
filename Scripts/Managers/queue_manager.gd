@@ -10,6 +10,7 @@ class_name QueueManager
 @export var bot_profiles: Array[BotProfile] = []
 
 var winners: Array[HandCardHolder] = []
+var max_card_losers: Array[HandCardHolder] = []
 
 var players: Array[HandCardHolder] = []
 var bots: Array[HandCardHolder] = []
@@ -44,6 +45,7 @@ var roulette_active := false
 var roulette_waiting_for_color := false
 var roulette_owner: HandCardHolder = null
 var roulette_target: HandCardHolder = null
+var roulette_target_slot: int = -1
 var roulette_chosen_color: CardResource.CardColor = CardResource.CardColor.BLACK
 var roulette_step_running := false
 var pending_swap_owner: HandCardHolder = null
@@ -66,6 +68,8 @@ var _client_has_state := false
 var _client_match_started := false
 var _game_over_handled := false
 var _winner_overlay: CanvasLayer = null
+var _loser_overlay: CanvasLayer = null
+var _local_loser_overlay_shown := false
 var _server_last_players_change_ms := 0
 var _server_start_delay_active := false
 const SERVER_START_DELAY_MS := 300
@@ -81,6 +85,7 @@ func _ready() -> void:
 	NetworkManager.counts_received.connect(_on_counts_received)
 	NetworkManager.play_event_received.connect(_on_play_event_received)
 	NetworkManager.game_won.connect(_on_game_won)
+	NetworkManager.player_eliminated.connect(_on_player_eliminated)
 	NetworkManager.return_to_lobby.connect(_on_return_to_lobby)
 
 	var buffered_players := NetworkManager.get_last_players()
@@ -248,6 +253,14 @@ func start_game() -> void:
 	call_deferred("_handle_start_of_turn_effects")
 
 ## Current holder getter
+func _is_authoritative() -> bool:
+	return !multiplayer.has_multiplayer_peer() or multiplayer.is_server()
+
+## True while a multiplayer match is running on this machine (host or client).
+func is_match_in_progress() -> bool:
+	return _server_match_started or _client_match_started
+
+
 func get_current_holder() -> HandCardHolder:
 	if turn_order.is_empty():
 		return null
@@ -265,14 +278,29 @@ func is_human_turn() -> bool:
 
 ## Local player turn check (multiplayer)
 func is_local_turn() -> bool:
+	if is_local_eliminated():
+		return false
 	var my_slot := int(NetworkManager.my_slot)
 	if my_slot < 0:
 		return false
 	var my_holder: HandCardHolder = _slot_to_holder.get(my_slot, null)
 	return my_holder != null and is_players_turn(my_holder)
 
+## True when the local human was eliminated by the max-card rule.
+func is_local_eliminated() -> bool:
+	var my_slot := int(NetworkManager.my_slot)
+	if my_slot < 0:
+		return false
+	var my_holder: HandCardHolder = _slot_to_holder.get(my_slot, null)
+	return is_holder_eliminated(my_holder)
+
+func is_holder_eliminated(holder: HandCardHolder) -> bool:
+	return holder != null and max_card_losers.has(holder)
+
 ## Play permission check
 func can_play_now(holder: HandCardHolder) -> bool:
+	if is_holder_eliminated(holder):
+		return false
 	if place_all_resolving:
 		return false
 	if roulette_active:
@@ -296,7 +324,7 @@ func can_play_now(holder: HandCardHolder) -> bool:
 	return true
 
 ## Register played card and advance rules
-func register_card_play(played_card: CardResource) -> void:
+func register_card_play(played_card: CardResource, player: HandCardHolder = null) -> void:
 	if played_card == null:
 		end_turn()
 		return
@@ -304,6 +332,7 @@ func register_card_play(played_card: CardResource) -> void:
 	if place_all_active:
 		return
 
+	var actor := player if player != null else get_current_holder()
 	has_played_this_turn = true
 
 	if _check_and_finish_current_holder():
@@ -322,14 +351,18 @@ func register_card_play(played_card: CardResource) -> void:
 				end_turn()
 			return
 		CardResource.CardType.DRAW:
-			start_or_stack_draw(played_card.value, false)
+			start_or_stack_draw(_draw_stack_value_for_play(played_card), false)
 			end_turn()
 			return
 		CardResource.CardType.WILD_DRAW:
-			_apply_wild_draw_effect(played_card.value, false)
+			start_or_stack_draw(played_card.value, true)
+			end_turn()
 			return
 		CardResource.CardType.WILD_DRAW_REVERSE:
-			_apply_wild_draw_effect(played_card.value, true)
+			if turn_order.size() > 2:
+				apply_reverse()
+			start_or_stack_draw(played_card.value, true)
+			end_turn()
 			return
 		CardResource.CardType.SWAP_HANDS:
 			if swap_color_pending:
@@ -340,13 +373,13 @@ func register_card_play(played_card: CardResource) -> void:
 				start_swap_hands(get_current_holder())
 			return
 		CardResource.CardType.TARGET_DRAW:
-			start_target_draw(get_current_holder(), played_card.value, false, played_card.color)
+			start_target_draw(actor, played_card.value, false, played_card.color)
 			return
 		CardResource.CardType.MULTI_TARGET_DRAW:
-			start_target_draw(get_current_holder(), played_card.value, true, played_card.color)
+			start_target_draw(actor, played_card.value, true, played_card.color)
 			return
 		CardResource.CardType.WILD_COLOR_ROULET:
-			start_color_roulette(get_current_holder())
+			start_color_roulette(actor)
 			return
 
 	end_turn()
@@ -419,6 +452,9 @@ func _force_clear_winner_hand(winner_slot: int) -> void:
 func _on_return_to_lobby() -> void:
 	get_tree().paused = false
 	_hide_winner_overlay()
+	_hide_loser_overlay()
+	_local_loser_overlay_shown = false
+	NetworkManager.mark_rejoin_from_match()
 	Globals.change_scene_file("res://Scenes/UI/steam_lobby_room.tscn")
 
 func _show_winner_overlay(winner_name: String) -> void:
@@ -471,6 +507,69 @@ func _hide_winner_overlay() -> void:
 		_winner_overlay.queue_free()
 	_winner_overlay = null
 
+func _show_loser_overlay() -> void:
+	if _local_loser_overlay_shown:
+		return
+	_local_loser_overlay_shown = true
+	_hide_loser_overlay()
+
+	var max_count := get_max_card_lose_count()
+	var layer := CanvasLayer.new()
+	layer.layer = 127
+	layer.process_mode = Node.PROCESS_MODE_ALWAYS
+
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.55)
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dim.mouse_filter = Control.MOUSE_FILTER_STOP
+	layer.add_child(dim)
+
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	layer.add_child(center)
+
+	var vbox := VBoxContainer.new()
+	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	vbox.add_theme_constant_override("separation", 20)
+	center.add_child(vbox)
+
+	var title := Label.new()
+	title.text = "YOU LOSE"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 52)
+	title.modulate = Color(1.0, 0.35, 0.35)
+	vbox.add_child(title)
+
+	var reason := Label.new()
+	reason.text = "You reached %d cards and were eliminated." % max_count
+	reason.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	reason.add_theme_font_size_override("font_size", 28)
+	vbox.add_child(reason)
+
+	var hint := Label.new()
+	hint.text = "You can watch the rest of the match."
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint.add_theme_font_size_override("font_size", 22)
+	hint.modulate = Color(0.75, 0.75, 0.75)
+	vbox.add_child(hint)
+
+	var spectate_btn := Button.new()
+	spectate_btn.text = "Spectate"
+	spectate_btn.custom_minimum_size = Vector2(320, 64)
+	spectate_btn.pressed.connect(_dismiss_loser_overlay_for_spectate)
+	vbox.add_child(spectate_btn)
+
+	get_tree().root.add_child(layer)
+	_loser_overlay = layer
+
+func _dismiss_loser_overlay_for_spectate() -> void:
+	_hide_loser_overlay()
+
+func _hide_loser_overlay() -> void:
+	if _loser_overlay != null and is_instance_valid(_loser_overlay):
+		_loser_overlay.queue_free()
+	_loser_overlay = null
+
 ## Reverse direction
 func apply_reverse() -> void:
 	direction *= -1
@@ -484,66 +583,222 @@ func start_or_stack_draw(value: int, is_wild: bool) -> void:
 	draw_stack_min_value = max(draw_stack_min_value, value)
 	if is_wild:
 		draw_stack_is_wild = true
-	if !is_wild and draw_stack_color == CardResource.CardColor.BLACK and card_manager != null and card_manager.top_card != null:
+		if card_manager != null:
+			draw_stack_color = card_manager.current_color
+	elif draw_stack_color == CardResource.CardColor.BLACK and card_manager != null and card_manager.top_card != null:
 		draw_stack_color = card_manager.top_card.color
-	
+
 	# Synchronize draw stack changes
 	if multiplayer.is_server():
 		_server_sync_match_state()
 
-## Wild draw (non-stack) apply
-func _apply_wild_draw_effect(value: int, reverse: bool) -> void:
-	var owner := get_current_holder()
-	if owner == null:
-		end_turn()
+## When a higher-value colored draw is played on a lower-value draw of the
+## same color, include the previous top card's value (e.g. +3 on +2 → 5).
+func _draw_stack_value_for_play(played_card: CardResource) -> int:
+	if played_card == null:
+		return 0
+	var value := played_card.value
+	if draw_stack_amount > 0:
+		return value
+	if card_manager == null or card_manager.discard_pile.is_empty():
+		return value
+	var prev: CardResource = card_manager.discard_pile[-1]
+	if prev.type != CardResource.CardType.DRAW:
+		return value
+	if prev.color != played_card.color:
+		return value
+	if played_card.value <= prev.value:
+		return value
+	return value + prev.value
+
+## Max-card-lose rule helpers (configured on DeckResource).
+func is_max_card_lose_enabled() -> bool:
+	if card_manager == null or card_manager.loaded_deck == null:
+		return false
+	return card_manager.loaded_deck.max_card_lose_enabled
+
+func get_max_card_lose_count() -> int:
+	if card_manager == null or card_manager.loaded_deck == null:
+		return 0
+	return maxi(1, card_manager.loaded_deck.max_card_lose_count)
+
+func on_holder_hand_changed(holder: HandCardHolder) -> void:
+	if holder == null or !is_instance_valid(holder):
 		return
-	if reverse and turn_order.size() > 2:
-		apply_reverse()
-	var target: HandCardHolder = null
-	if reverse and turn_order.size() == 2:
-		target = owner
+	if !_is_authoritative():
+		return
+	_check_max_card_lose(holder)
+
+func _check_max_card_lose(holder: HandCardHolder) -> bool:
+	if holder == null or !is_max_card_lose_enabled():
+		return false
+	if is_holder_eliminated(holder):
+		return false
+	if _count_cards_in_holder(holder) < get_max_card_lose_count():
+		return false
+	_eliminate_holder_for_max_cards(holder)
+	return true
+
+func _eliminate_holder_for_max_cards(holder: HandCardHolder) -> void:
+	if !_is_authoritative():
+		return
+	if holder == null or is_holder_eliminated(holder):
+		return
+	var slot := int(holder.player_index)
+	if multiplayer.has_multiplayer_peer():
+		NetworkManager.rpc("client_on_player_eliminated", slot)
 	else:
-		target = get_next_holder(owner)
-	if target == null:
-		end_turn()
+		_on_player_eliminated(slot)
+
+func _on_player_eliminated(slot: int) -> void:
+	_apply_player_eliminated_slot(int(slot), true)
+
+func _apply_player_eliminated_slot(slot: int, show_local_lose_ui: bool) -> void:
+	var holder: HandCardHolder = _slot_to_holder.get(slot, null)
+	if holder == null or !is_instance_valid(holder):
+		return
+	if is_holder_eliminated(holder):
+		_finalize_eliminated_holder_ui(holder, show_local_lose_ui)
 		return
 
-	for i in range(value):
-		var card := card_manager.draw_card()
-		if card == null:
-			break
-		target.add_card(card)
+	max_card_losers.append(holder)
+	_clear_blocking_state_for_holder(holder)
 
-	target.sort_cards_full()
-	target.refresh_playable_cards()
+	var removed_index := turn_order.find(holder)
+	if removed_index >= 0:
+		turn_order.remove_at(removed_index)
+		if turn_order.is_empty():
+			if _is_authoritative():
+				_check_max_card_lose_winner()
+			_finalize_eliminated_holder_ui(holder, show_local_lose_ui)
+			return
+		if removed_index == current_turn_index:
+			has_played_this_turn = false
+			has_drawn_this_turn = false
+			current_turn_index = removed_index % turn_order.size()
+		elif removed_index < current_turn_index:
+			current_turn_index -= 1
+		if current_turn_index >= turn_order.size():
+			current_turn_index = 0
 
-	# Send updated hand to the drawn player in multiplayer
-	if multiplayer.is_server() and target != null and !target.is_bot:
-		var peer_id := _slot_to_peer_id(target.player_index)
-		if peer_id != 0:
-			var hand: Array = []
-			for ch in target.get_children():
-				if ch is CardView and ch.card_res != null:
-					hand.append(_serialize_card(ch.card_res))
-			NetworkManager.rpc_id(peer_id, "client_set_hand", hand)
+	_finalize_eliminated_holder_ui(holder, show_local_lose_ui)
 
-	# Target keeps the turn after drawing
-	if target != owner:
-		current_turn_index = turn_order.find(target)
-	has_played_this_turn = false
-	has_drawn_this_turn = false
-	update_turn_state()
+	if _is_authoritative():
+		_check_max_card_lose_winner()
+		if multiplayer.is_server():
+			_server_broadcast_counts()
+			_server_sync_match_state()
 
+	if winners.size() == 0:
+		update_turn_state()
+		if card_manager != null:
+			card_manager.update_draw_button_state()
+		if _is_authoritative():
+			call_deferred("_handle_start_of_turn_effects")
+
+func _clear_blocking_state_for_holder(holder: HandCardHolder) -> void:
+	if holder == null:
+		return
+	holder._busy = false
+	holder._queued = null
+	holder._waiting_color_turn_end = false
+
+	if wild_color_owner == holder:
+		clear_wild_owner()
+		if card_manager != null:
+			card_manager.waiting_for_color = false
+
+	if place_all_owner == holder:
+		place_all_active = false
+		place_all_resolving = false
+		place_all_owner = null
+		place_all_card = null
+		_place_all_sequence_running = false
+
+	if pending_swap_owner == holder:
+		pending_swap_owner = null
+		swap_color_pending = false
+
+	if pending_target_draw_owner == holder:
+		target_draw_active = false
+		pending_target_draw_owner = null
+
+	if roulette_owner == holder or roulette_target == holder:
+		if _is_authoritative():
+			_abort_roulette()
+		else:
+			roulette_active = false
+			roulette_waiting_for_color = false
+			roulette_owner = null
+			roulette_target = null
+			roulette_target_slot = -1
+			roulette_step_running = false
+
+	Signals.COLOR_color_select_dismissed.emit()
+
+func _finalize_eliminated_holder_ui(holder: HandCardHolder, show_local_lose_ui: bool) -> void:
+	holder.set_turn_active(false)
+	_dim_eliminated_holder(holder)
+	var ui_container := get_container_for_holder(holder)
+	if ui_container != null:
+		_smooth_modulate(ui_container, Color(0.2, 0.2, 0.2, 1.0), 0.25)
+	holder.refresh_playable_cards()
+
+	if show_local_lose_ui and int(NetworkManager.my_slot) == int(holder.player_index) and !holder.is_bot:
+		_dim_all_cards_for_local_loser()
+		_show_loser_overlay()
+
+func _dim_eliminated_holder(holder: HandCardHolder) -> void:
+	if holder == null:
+		return
+	for c in holder.get_children():
+		if c is CardView:
+			c.set_clickable(false, true)
+			_smooth_modulate(c, Color(0.15, 0.15, 0.15, 1.0), 0.25)
+
+func _dim_all_cards_for_local_loser() -> void:
+	for slot in _slot_to_holder.keys():
+		var h: HandCardHolder = _slot_to_holder[slot]
+		if h != null and is_instance_valid(h):
+			_dim_eliminated_holder(h)
+	if card_manager != null:
+		if card_manager.draw_button != null:
+			_smooth_modulate(card_manager.draw_button, Color(0.15, 0.15, 0.15, 1.0), 0.25)
+		if card_manager.top_card_view != null:
+			_smooth_modulate(card_manager.top_card_view, Color(0.15, 0.15, 0.15, 1.0), 0.25)
+
+func _get_eliminated_slots() -> Array:
+	var slots: Array = []
+	for h in max_card_losers:
+		if h != null and is_instance_valid(h):
+			slots.append(int(h.player_index))
+	return slots
+
+func _sync_eliminated_slots_from_state(state: Dictionary) -> void:
+	var slots: Array = state.get("eliminated_slots", [])
+	for slot_val in slots:
+		_apply_player_eliminated_slot(int(slot_val), true)
+
+func _check_max_card_lose_winner() -> void:
+	if !is_max_card_lose_enabled():
+		return
+	if turn_order.size() != 1:
+		return
+	var winner := turn_order[0]
+	if winner == null or !is_instance_valid(winner):
+		return
+	if winners.has(winner):
+		return
+	winners.append(winner)
 	if multiplayer.is_server():
-		_server_broadcast_counts()
-		_server_sync_match_state()
-
-	call_deferred("_handle_start_of_turn_effects")
+		_server_handle_game_over()
 
 ## Human draw action
 func on_draw_pressed() -> void:
 	var holder := get_current_holder()
 	if holder == null:
+		return
+	if is_holder_eliminated(holder):
 		return
 	if holder.is_bot:
 		return
@@ -664,6 +919,15 @@ func next_turn(skip_next: bool = false) -> void:
 
 ## Turn UI update
 func update_turn_state() -> void:
+	for holder in max_card_losers:
+		if holder == null or !is_instance_valid(holder):
+			continue
+		holder.set_turn_active(false)
+		_dim_eliminated_holder(holder)
+		var eliminated_ui := get_container_for_holder(holder)
+		if eliminated_ui != null:
+			_smooth_modulate(eliminated_ui, Color(0.2, 0.2, 0.2, 1.0), 0.25)
+
 	for holder in turn_order:
 		var active := is_players_turn(holder)
 		holder.set_turn_active(active)
@@ -1195,19 +1459,24 @@ func _bot_choose_wild_color(holder: HandCardHolder) -> CardResource.CardColor:
 			return child.choose_best_wild_color()
 	return choose_color_for_roulette(holder)
 
-## Color roulette start
+## Color roulette start – next player picks a color, then draws until that color is drawn.
 func start_color_roulette(owner: HandCardHolder) -> void:
+	if not _is_authoritative():
+		return
 	if owner == null:
+		end_turn()
 		return
 
 	var target := get_next_holder(owner)
 	if target == null:
+		end_turn()
 		return
 
 	roulette_active = true
 	roulette_waiting_for_color = true
 	roulette_owner = owner
 	roulette_target = target
+	roulette_target_slot = int(target.player_index)
 	roulette_chosen_color = CardResource.CardColor.BLACK
 	roulette_step_running = false
 
@@ -1217,55 +1486,110 @@ func start_color_roulette(owner: HandCardHolder) -> void:
 	next_turn(false)
 	await get_tree().process_frame
 
+	if roulette_target == null or not is_instance_valid(roulette_target):
+		_abort_roulette()
+		return
+
+	if not _ensure_roulette_target_turn():
+		_abort_roulette()
+		return
+
 	if multiplayer.is_server():
 		_server_sync_match_state()
 
-	if roulette_target == null:
-		_end_roulette(false)
-		return
-
 	if roulette_target.is_bot:
 		var chosen := choose_color_for_roulette(roulette_target)
-		_on_roulette_color_selected(chosen)
+		_resolve_roulette_color(chosen)
 	else:
-		if card_manager != null:
-			card_manager.waiting_for_color = true
-		set_wild_color_owner(roulette_target)
-		Signals.COLOR_request_color_select.emit()
-		if multiplayer.is_server():
-			var peer_id := _slot_to_peer_id(roulette_target.player_index)
-			if peer_id != 0:
-				NetworkManager.rpc_id(peer_id, "client_request_color", int(roulette_target.player_index))
+		_prompt_roulette_color_for(roulette_target)
 
-## Roulette color selected
+
+func _prompt_roulette_color_for(target: HandCardHolder) -> void:
+	if target == null or not is_instance_valid(target):
+		_abort_roulette()
+		return
+	if card_manager != null:
+		card_manager.waiting_for_color = true
+	set_wild_color_owner(target)
+	Signals.COLOR_request_color_select.emit()
+	if multiplayer.is_server():
+		var peer_id := _slot_to_peer_id(target.player_index)
+		if peer_id != 0:
+			NetworkManager.rpc_id(peer_id, "client_request_color", int(target.player_index))
+
+
+func _ensure_roulette_target_turn() -> bool:
+	if roulette_target == null or not is_instance_valid(roulette_target):
+		return false
+	if get_current_holder() == roulette_target:
+		return true
+	var idx := turn_order.find(roulette_target)
+	if idx < 0:
+		return false
+	current_turn_index = idx
+	update_turn_state()
+	return get_current_holder() == roulette_target
+
+
+func is_local_roulette_color_picker() -> bool:
+	if not roulette_active or not roulette_waiting_for_color:
+		return false
+	if roulette_target == null or roulette_target.is_bot:
+		return false
+	if not multiplayer.has_multiplayer_peer():
+		return is_players_turn(roulette_target)
+	return int(NetworkManager.my_slot) == int(roulette_target.player_index)
+
+
+## Roulette color selected (server/offline only).
 func _on_roulette_color_selected(color: CardResource.CardColor) -> void:
-	if !roulette_active:
+	if not _is_authoritative():
 		return
-	if roulette_target == null:
-		_end_roulette(false)
+	_resolve_roulette_color(color)
+
+
+func _resolve_roulette_color(color: CardResource.CardColor) -> void:
+	if not roulette_active or not roulette_waiting_for_color:
 		return
-	if get_current_holder() != roulette_target:
+	if roulette_target == null or not _ensure_roulette_target_turn():
+		_abort_roulette()
 		return
 
 	roulette_waiting_for_color = false
 	roulette_chosen_color = color
 
-	_apply_roulette_color_to_top_card(color)
+	if card_manager != null and card_manager.waiting_for_color:
+		card_manager.select_color(color)
+	else:
+		_apply_roulette_color_to_top_card(color)
+
 	clear_wild_owner()
+	Signals.COLOR_color_select_dismissed.emit()
+	if multiplayer.is_server() and multiplayer.has_multiplayer_peer():
+		NetworkManager.rpc("client_dismiss_color_select")
 	_handle_roulette_start()
+
+
+func _abort_roulette() -> void:
+	_end_roulette(false)
+
 
 ## Roulette step loop
 func _handle_roulette_start() -> void:
+	if not _is_authoritative():
+		return
 	if !roulette_active:
 		return
 	if roulette_target == null:
-		_end_roulette(false)
+		_abort_roulette()
 		return
 
 	var holder := get_current_holder()
 	if holder != roulette_target:
-		_end_roulette(false)
-		return
+		if not _ensure_roulette_target_turn():
+			_abort_roulette()
+			return
+		holder = roulette_target
 
 	if roulette_waiting_for_color:
 		return
@@ -1275,47 +1599,61 @@ func _handle_roulette_start() -> void:
 	roulette_step_running = true
 	call_deferred("_do_roulette_draw_step", holder)
 
-## Roulette draw step
+
+## Roulette draw step – always draw from deck until the chosen color appears.
 func _do_roulette_draw_step(holder: HandCardHolder) -> void:
-	if holder == null:
-		_end_roulette(false)
+	if not _is_authoritative():
+		return
+	if holder == null or not is_instance_valid(holder):
+		_abort_roulette()
 		return
 
 	var card := card_manager.draw_card()
 	if card == null:
-		_end_roulette(false)
+		_abort_roulette()
 		return
 
 	holder.add_card(card)
 	holder.sort_cards_full()
 	holder.refresh_playable_cards()
 
-	# Keep the drawing client and everyone's counts in sync each draw step.
 	if multiplayer.is_server():
 		_server_push_hand(holder)
 		_server_broadcast_counts()
 
 	await get_tree().create_timer(0.22).timeout
 
+	if not roulette_active:
+		return
+
 	if card.color == roulette_chosen_color:
-		_end_roulette(true)
-		holder.refresh_playable_cards()
+		_finish_roulette_draw()
 		return
 
 	roulette_step_running = false
 	_handle_roulette_start()
 
+
+func _finish_roulette_draw() -> void:
+	_end_roulette(true)
+
+
 ## Roulette end
 func _end_roulette(success: bool) -> void:
+	if not _is_authoritative():
+		return
+
 	roulette_active = false
 	roulette_waiting_for_color = false
 	roulette_owner = null
 	roulette_target = null
+	roulette_target_slot = -1
 	roulette_chosen_color = CardResource.CardColor.BLACK
 	roulette_step_running = false
 
 	if card_manager != null:
 		card_manager.waiting_for_color = false
+	clear_wild_owner()
 
 	if success:
 		has_drawn_this_turn = true
@@ -1325,17 +1663,23 @@ func _end_roulette(success: bool) -> void:
 		if holder != null:
 			holder.refresh_playable_cards()
 
-		await get_tree().process_frame
+		update_turn_state()
+		if card_manager != null:
+			card_manager.update_draw_button_state()
 
-		var holder2 := get_current_holder()
-		if holder2 != null and holder2.is_bot:
+		if multiplayer.is_server():
+			_server_sync_match_state()
+			_server_broadcast_counts()
+
+		if holder != null and holder.is_bot:
 			for child in get_children():
-				if child is KIController and child.hand_card_holder == holder2:
+				if child is KIController and child.hand_card_holder == holder:
 					child.call_deferred("play_turn")
-					return
 		return
 
 	end_turn()
+	if multiplayer.is_server():
+		_server_sync_match_state()
 
 ## Roulette color choice for bots
 func choose_color_for_roulette(target: HandCardHolder) -> CardResource.CardColor:
@@ -1749,6 +2093,9 @@ func _reset_server_match_state() -> void:
 	has_played_this_turn = false
 	has_drawn_this_turn = false
 	winners.clear()
+	max_card_losers.clear()
+	_local_loser_overlay_shown = false
+	_hide_loser_overlay()
 	draw_stack_amount = 0
 	draw_stack_min_value = 0
 	draw_stack_is_wild = false
@@ -1769,6 +2116,7 @@ func _reset_server_match_state() -> void:
 	roulette_waiting_for_color = false
 	roulette_owner = null
 	roulette_target = null
+	roulette_target_slot = -1
 	roulette_chosen_color = CardResource.CardColor.BLACK
 	roulette_step_running = false
 	pending_swap_owner = null
@@ -1801,9 +2149,12 @@ func _build_match_state() -> Dictionary:
 		"has_played": bool(has_played_this_turn),
 		"has_drawn": bool(has_drawn_this_turn),
 		"roulette_active": bool(roulette_active),
+		"roulette_waiting": bool(roulette_waiting_for_color),
+		"roulette_target_slot": int(roulette_target_slot),
 		"place_all_active": bool(place_all_active),
 		"target_draw_active": bool(target_draw_active),
 		"pending_swap_slot": pending_swap_slot,
+		"eliminated_slots": _get_eliminated_slots(),
 	}
 
 ## Apply special-mode flags from a match-state snapshot.
@@ -1811,6 +2162,12 @@ func _apply_match_state_flags(state: Dictionary) -> void:
 	has_played_this_turn = bool(state.get("has_played", has_played_this_turn))
 	has_drawn_this_turn = bool(state.get("has_drawn", has_drawn_this_turn))
 	roulette_active = bool(state.get("roulette_active", false))
+	roulette_waiting_for_color = bool(state.get("roulette_waiting", false))
+	roulette_target_slot = int(state.get("roulette_target_slot", -1))
+	if roulette_target_slot >= 0:
+		roulette_target = _slot_to_holder.get(roulette_target_slot, null)
+	else:
+		roulette_target = null
 	place_all_active = bool(state.get("place_all_active", false))
 	target_draw_active = bool(state.get("target_draw_active", false))
 	var swap_slot := int(state.get("pending_swap_slot", -1))
@@ -1864,8 +2221,14 @@ func _try_apply_pending_match_state() -> void:
 			card_manager.select_color(card_manager.current_color)
 
 	_apply_match_state_flags(_pending_state)
+	_sync_eliminated_slots_from_state(_pending_state)
 
 	update_turn_state()
+
+	if not multiplayer.is_server() and roulette_active and roulette_waiting_for_color:
+		_try_prompt_local_roulette_color()
+	elif not multiplayer.is_server() and not roulette_waiting_for_color:
+		Signals.COLOR_color_select_dismissed.emit()
 
 	_pending_state = {}
 	NetworkManager.clear_last_match_state()
@@ -1962,6 +2325,9 @@ func _server_start_match() -> void:
 	has_played_this_turn = false
 	has_drawn_this_turn = false
 	winners.clear()
+	max_card_losers.clear()
+	_local_loser_overlay_shown = false
+	_hide_loser_overlay()
 
 	# Apply the deck chosen in the lobby (host-authoritative). Falls back to the
 	# card manager's default deck if none was selected / it fails to load.
@@ -2094,15 +2460,17 @@ func _apply_counts_to_ui() -> void:
 		return
 
 	var my_slot := int(NetworkManager.my_slot)
-	if my_slot < 0 or my_slot >= turn_order.size():
+	if my_slot < 0:
 		return
 
-	for i in range(min(_last_hand_counts.size(), turn_order.size())):
+	for i in range(_last_hand_counts.size()):
 		if i == my_slot:
 			continue
 
-		var holder: HandCardHolder = turn_order[i]
+		var holder: HandCardHolder = _slot_to_holder.get(i, null)
 		if holder == null or !is_instance_valid(holder):
+			continue
+		if is_holder_eliminated(holder):
 			continue
 
 		var current_count := 0
@@ -2153,6 +2521,8 @@ func server_apply_play(peer_id: int, card_id: int) -> void:
 	var holder: HandCardHolder = _slot_to_holder.get(slot, null)
 	if holder == null or not is_instance_valid(holder):
 		return
+	if is_holder_eliminated(holder):
+		return
 	if !is_players_turn(holder):
 		return
 
@@ -2193,6 +2563,8 @@ func server_apply_draw(peer_id: int) -> void:
 
 	var holder: HandCardHolder = _slot_to_holder.get(slot, null)
 	if holder == null or not is_instance_valid(holder):
+		return
+	if is_holder_eliminated(holder):
 		return
 
 	# Only the player whose turn it is may draw (prevents drawing on someone
@@ -2281,13 +2653,23 @@ func server_apply_target_select(peer_id: int, target_slot: int) -> void:
 func server_apply_wild_color(peer_id: int, color: int) -> void:
 	if not multiplayer.is_server():
 		return
-	if card_manager == null or !card_manager.waiting_for_color:
-		return
 	var slot := int(_peer_to_slot.get(int(peer_id), -1))
 	if slot < 0:
 		return
 	var holder: HandCardHolder = _slot_to_holder.get(slot, null)
 	if holder == null or !is_instance_valid(holder):
+		return
+
+	# Color roulette: next player picks, then draws until that color is drawn.
+	if roulette_active and roulette_waiting_for_color:
+		if roulette_target != null and int(slot) == int(roulette_target.player_index):
+			_resolve_roulette_color(color)
+			if multiplayer.is_server():
+				NetworkManager.rpc("client_set_wild_color", int(color), int(slot))
+				_server_sync_match_state()
+		return
+
+	if card_manager == null or !card_manager.waiting_for_color:
 		return
 	if wild_color_owner != holder:
 		return
@@ -2309,7 +2691,9 @@ func _apply_wild_color(color: int, owner_slot: int) -> void:
 			card_manager.top_card_view.load_card()
 	Signals.COLOR_color_selected.emit(color)
 	if multiplayer.is_server():
-		if wild_color_owner != null and !card_manager.waiting_for_color:
+		if roulette_active:
+			pass
+		elif wild_color_owner != null and !card_manager.waiting_for_color:
 			# The COLOR_color_selected emit above already scheduled the owning
 			# holder's _after_color_selected(), which would call register_card_play
 			# a SECOND time. For a +4 that meant the draw effect ran twice and hit
@@ -2336,8 +2720,23 @@ func client_apply_wild_color(color: int, owner_slot: int) -> void:
 			card_manager.top_card_view.override_color_enabled = true
 			card_manager.top_card_view.override_color = color
 			card_manager.top_card_view.load_card()
-	Signals.COLOR_color_selected.emit(color)
+	if not roulette_active:
+		Signals.COLOR_color_selected.emit(color)
 	clear_wild_owner()
+	Signals.COLOR_color_select_dismissed.emit()
+
+
+func _try_prompt_local_roulette_color() -> void:
+	if not is_local_roulette_color_picker():
+		return
+	var holder: HandCardHolder = _slot_to_holder.get(roulette_target_slot, null)
+	if holder == null or not is_instance_valid(holder):
+		return
+	if card_manager != null and !card_manager.waiting_for_color:
+		card_manager.waiting_for_color = true
+	set_wild_color_owner(holder)
+	Signals.COLOR_request_color_select.emit()
+
 
 ## Client request to show color selector for a specific owner slot
 func client_request_color(owner_slot: int) -> void:
@@ -2346,6 +2745,8 @@ func client_request_color(owner_slot: int) -> void:
 	var holder: HandCardHolder = _slot_to_holder.get(int(owner_slot), null)
 	if holder == null or !is_instance_valid(holder):
 		return
+	if card_manager != null:
+		card_manager.waiting_for_color = true
 	set_wild_color_owner(holder)
 	Signals.COLOR_request_color_select.emit()
 
@@ -2375,12 +2776,13 @@ func _server_broadcast_counts() -> void:
 		return
 
 	var counts: Array = []
-	for i in range(turn_order.size()):
+	var total := maxi(player_count, _slot_to_holder.size())
+	for i in range(total):
 		var h: HandCardHolder = _slot_to_holder.get(i, null)
 		if h == null or not is_instance_valid(h):
 			counts.append(0)
 		else:
-			counts.append(int(h.get_child_count()))
+			counts.append(_count_cards_in_holder(h))
 
 	var deck_count := 0
 	if card_manager != null and card_manager.deck != null:

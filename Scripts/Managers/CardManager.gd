@@ -263,7 +263,7 @@ func _update_draw_hint() -> void:
 		else:
 			my_turn = queue_manager.is_human_turn()
 
-	if !my_turn or waiting_for_color:
+	if !my_turn or waiting_for_color or (queue_manager != null and queue_manager.is_local_eliminated()):
 		_stop_draw_pulse()
 		_smooth_modulate(draw_button, Color(0.35, 0.35, 0.35, 1.0), 0.25)
 		return

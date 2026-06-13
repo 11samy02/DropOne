@@ -1,9 +1,12 @@
 # DropOne
 
-**DropOne** is a fast-paced, online multiplayer card game built with **Godot 4**. Match colors and numbers, stack draw penalties, play wild cards, and be the first to empty your hand.
+**DropOne** is a fast-paced online multiplayer card game built with **Godot 4**. Match colors and numbers, stack draw penalties, play wild cards, and be the first to empty your hand.
+
+> **Alpha release** — features are playable but still in active development. Expect bugs, balance tweaks, and UI polish between builds.
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v0.1.10-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/release-Alpha-orange" alt="Alpha" />
+  <img src="https://img.shields.io/badge/version-v0.2.0--alpha-blue" alt="Version" />
   <img src="https://img.shields.io/badge/engine-Godot%204.6-478CBF?logo=godotengine&logoColor=white" alt="Godot 4.6" />
   <img src="https://img.shields.io/badge/players-2--8-green" alt="2-8 players" />
   <img src="https://img.shields.io/badge/platform-Windows-0078D6?logo=windows&logoColor=white" alt="Windows" />
@@ -17,39 +20,42 @@
 |---|---|
 | **Online multiplayer** | Steam lobbies with up to 8 players, or local LAN-style testing without Steam |
 | **Singleplayer** | Practice against AI bots with adjustable difficulty and personality |
-| **Custom decks** | Host picks the deck in the lobby — Classic, Default, DefaultPlus, and more |
+| **Custom decks** | Host picks the deck in the lobby — **Classic**, **Merciless**, and more |
 | **Special cards** | Skip, Reverse, Draw +2/+4, Wild, Target Draw, Swap Hands, Place All, Color Roulette, and more |
-| **Smart UI** | Dynamic hand layout with card overlap, hover descriptions, and smooth fly animations |
-| **1v1 rules** | Reverse acts as Skip; Wild Draw Reverse makes you draw in duels |
+| **Max-card elimination** | Optional deck rule: exceed the card limit and you are eliminated (spectate the rest of the match) |
+| **Smart UI** | Dynamic hand layout, hover descriptions, shared button styling, smooth fly animations |
+| **1v1 rules** | Reverse acts as Skip; target/draw wording adapts to duel size |
 
 ---
 
 ## Download
 
-Pre-built Windows builds are available on the [**Releases**](https://github.com/11samy02/DropOne/releases) page.
+Pre-built Windows builds are on the [**Releases**](https://github.com/11samy02/DropOne/releases) page.
 
-1. Download `DropOne-Windows-v0.1.10.zip`
+1. Download `DropOne-Windows-v0.2.0-alpha.zip`
 2. Extract the folder
 3. Launch **`DropOne.exe`**
 4. Keep `steam_appid.txt` and the Steam DLLs next to the executable
 
-> **Steam required.** The game uses Steamworks for lobbies and networking (test App ID `480` for development builds). Host and clients must run the **same version**.
+> **Steam required** for online play. The game uses Steamworks for lobbies and networking (test App ID `480` in development builds). Everyone in a lobby must run the **same version tag**.
 
 ---
 
 ## How to Play
 
 1. **Create your profile** on first launch (name + avatar).
-2. **Create or join a lobby** from the hub — or start **Singleplayer** against bots.
+2. **Create or join a lobby** from the hub — or start **Singleplayer (Bots)**.
 3. When everyone is ready, the host starts the match.
 4. On your turn, play a card that matches the **color** or **number/type** of the top discard card, or draw from the deck.
 5. First player to play their last card wins.
 
-**Hover any card in your hand** to see an English description of its color, value, and effect.
+**Hover any card in your hand** for an English description of its color, value, and effect.
+
+If the active deck uses the **max-card rule** and you hit the limit, you are eliminated. A lose overlay appears; click **Spectate** to dismiss it and watch the remaining players.
 
 ---
 
-## Special Cards (overview)
+## Special Cards
 
 | Card | Effect |
 |------|--------|
@@ -61,8 +67,8 @@ Pre-built Windows builds are available on the [**Releases**](https://github.com/
 | **Target Draw** | Pick an opponent to draw |
 | **Multi Target Draw** | All other players draw |
 | **Swap Hands** | Swap hands with a chosen player, then pick a color |
-| **Place All** | Play all cards of one color, then pick a new color |
-| **Color Roulette** | Next player must match your chosen color or keep drawing |
+| **Place All** | Play all cards of one color from your hand |
+| **Color Roulette** | Next player picks a color, draws until they draw that color, then may still play |
 
 ---
 
@@ -107,7 +113,8 @@ Include alongside the executable:
 DropOne/
 ├── Scenes/          # UI, game table, card views
 ├── Scripts/         # Game logic, networking, AI, Steam
-├── Resources/Decks/ # Deck definitions
+├── Resources/Decks/ # Deck definitions (Classic, Merciless, …)
+├── Themes/          # Global UI theme and shared button styles
 ├── Assets/          # Card art, UI textures, avatars
 └── addons/godotsteam/
 ```
@@ -125,7 +132,7 @@ DropOne/
 
 ## Versioning
 
-Lobby matchmaking filters by game version — all players in a match must share the same build tag (e.g. `v0.1.7`).
+Steam lobby matchmaking filters by game version — all players in a match must share the same build tag (e.g. `v0.2.0-alpha`).
 
 ---
 

@@ -1,6 +1,7 @@
 [gd_scene load_steps=7 format=3 uid="uid://cw6no3dl40h5p"]
 
 [ext_resource type="Script" uid="uid://bix386pgusofu" path="res://Scripts/UI/lobby_detail.gd" id="1_cm4a1"]
+[ext_resource type="StyleBox" path="res://Themes/ui_button.tres" id="2_btn"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_6jdaf"]
 bg_color = Color(0.10947073, 0.3744524, 0.47051376, 0.30588236)
@@ -35,6 +36,10 @@ corner_radius_top_left = 25
 corner_radius_top_right = 25
 corner_radius_bottom_right = 25
 corner_radius_bottom_left = 25
+content_margin_left = 28.0
+content_margin_top = 12.0
+content_margin_right = 28.0
+content_margin_bottom = 12.0
 
 [node name="Lobby_detail" type="Panel"]
 custom_minimum_size = Vector2(0, 150)

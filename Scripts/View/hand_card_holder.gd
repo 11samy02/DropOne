@@ -88,7 +88,9 @@ func _separation_for_count(count: int, target_width: float) -> int:
 	var card_w := SCALED_CARD_WIDTH
 	var ideal_step := (target_width - card_w) / float(count - 1)
 	var sep := int(round(ideal_step - card_w))
-	var min_sep := int(-card_w * 0.58)
+	# Allow up to ~82% overlap so very large hands still fit on screen.
+	var min_visible := 22.0
+	var min_sep := int(round(min_visible - card_w))
 	return clampi(sep, min_sep, 0)
 
 ## Returns the appropriate card separation based on how many cards are in the hand
@@ -102,12 +104,18 @@ func _get_target_separation(count: int) -> int:
 	var card_w := SCALED_CARD_WIDTH
 	var touching_w := card_w * float(count)
 
-	# Default: cards touch (separation 0), centered by the HBoxContainer
-	if touching_w <= max_w:
-		return 0
+	# Small hands: side-by-side until they would spill off-screen.
+	if count <= 7:
+		if touching_w <= max_w:
+			return 0
+		return _separation_for_count(count, max_w)
 
-	# Only overlap when the hand would exceed the available width
-	return _separation_for_count(count, max_w)
+	# Large hands: compress early – visible strip shrinks as count grows.
+	var t := clampf(float(count - 7) / 16.0, 0.0, 1.0)
+	var visible_step := lerpf(78.0, 26.0, t)
+	var target_w := card_w + visible_step * float(count - 1)
+	target_w = minf(target_w, max_w)
+	return _separation_for_count(count, target_w)
 
 ## Defines ordering rules for sorting cards by color, type, and value
 func _compare_cards(a: CardResource, b: CardResource) -> bool:
@@ -177,6 +185,9 @@ func add_card(card_res: CardResource, play_appear: bool = false) -> void:
 	move_child(card_view, idx)
 
 	call_deferred("_finalize_spawned_card", card_view)
+
+	if queue_manager != null:
+		queue_manager.call_deferred("on_holder_hand_changed", self)
 
 
 ## Finalizes a newly added card after layout settles and plays an appear animation if available
@@ -284,7 +295,7 @@ func set_card(card_view: CardView) -> void:
 	if card_manager.waiting_for_color:
 		_waiting_color_turn_end = true
 	else:
-		queue_manager.register_card_play(played_card_res)
+		queue_manager.register_card_play(played_card_res, self)
 	
 	if _queued != null and is_instance_valid(_queued):
 		var next := _queued
@@ -372,6 +383,13 @@ func sort_cards_full() -> void:
 
 ## Refreshes clickable state and visuals for all cards in this hand
 func refresh_playable_cards() -> void:
+	if queue_manager != null and queue_manager.is_holder_eliminated(self):
+		for c in get_children():
+			if c is CardView:
+				c.set_clickable(false, true)
+				smooth_modulate(c, Color(0.15, 0.15, 0.15, 1.0), 0.3)
+		return
+
 	if !is_bot:
 		for c in get_children():
 			if c is CardView:
@@ -412,7 +430,7 @@ func _after_color_selected() -> void:
 		return
 	if _waiting_color_turn_end:
 		_waiting_color_turn_end = false
-		queue_manager.register_card_play(card_manager.top_card)
+		queue_manager.register_card_play(card_manager.top_card, self)
 		queue_manager.clear_wild_owner()
 
 	# Keep target turn UI in sync after wild color selection

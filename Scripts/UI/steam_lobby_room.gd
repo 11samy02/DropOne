@@ -52,7 +52,7 @@ func _ready() -> void:
 	SteamManager.lobby_left.connect(_go_to_hub)
 
 	var ok := false
-	if NetworkManager.has_active_connection():
+	if NetworkManager.consume_rejoin_from_match():
 		# Rückkehr aus einem Spiel – bestehende Verbindung wiederverwenden.
 		_did_start = false
 		_start_requested = false
@@ -70,22 +70,20 @@ func _ready() -> void:
 			# Einzelspieler: immer eigener Host, keine Probe.
 			status_label.text = "Singleplayer – add bots."
 			ok = NetworkManager.enter_lobby_host(false)
-		else:
-			# HOST: Probe -> falls schon ein Host läuft, automatisch Client.
+		elif SteamManager.local_role == SteamManager.LocalRole.HOST:
 			status_label.text = "Starting local host..."
 			ok = await NetworkManager.enter_local_as_host()
+		else:
+			status_label.text = "Invalid lobby state – please try again."
+			ok = false
 		SteamManager.is_lobby_owner = NetworkManager.is_server
 	elif SteamManager.is_host():
-		# The host does NOT need to wait for the relay network to show the lobby
-		# and its settings: host_with_lobby creates the listen socket right away
-		# and the relay (already initialized at hub start) keeps coming up in the
-		# background so remote peers can route in. Blocking here made the lobby
-		# appear broken with missing settings on the first (cold relay) create.
+		status_label.text = "Preparing Steam network..."
+		await SteamManager.ensure_relay_ready(15.0)
+		if not is_inside_tree():
+			return
 		status_label.text = "Lobby created – waiting for players..."
 		ok = NetworkManager.enter_lobby_host(use_steam, SteamManager.current_lobby_id)
-		# Kick the relay along in the background (non-blocking) in case its first
-		# init attempt failed.
-		SteamManager.ensure_relay_ready()
 	else:
 		status_label.text = "Preparing Steam network..."
 		# Best-effort wait for the relay network; the client connect below also
@@ -105,20 +103,25 @@ func _ready() -> void:
 		if not use_steam and SteamManager.local_role == SteamManager.LocalRole.CLIENT:
 			status_label.text = "No host found. Click 'Start Host' in instance 1 first."
 		elif not use_steam:
-			status_label.text = "Host port in use – close other instances."
+			status_label.text = "Port 4242 in use – close other hosts or use 'Join as Client'."
 		else:
 			status_label.text = "Connection failed."
 		await get_tree().create_timer(3.0).timeout
 		_leave_and_go_hub()
 		return
 
-	_update_bot_controls_visibility()
-	_init_deck_state()
+	_finalize_lobby_ui()
 
 	if poll_timer:
 		poll_timer.timeout.connect(_on_poll)
 		poll_timer.start()
 
+
+func _finalize_lobby_ui() -> void:
+	if NetworkManager.is_server:
+		NetworkManager.refresh_lobby_display()
+	_update_bot_controls_visibility()
+	_init_deck_state()
 	_on_lobby_state_changed(NetworkManager.get_lobby_players())
 
 
@@ -157,7 +160,8 @@ func _setup_deck_options() -> void:
 func _init_deck_state() -> void:
 	if deck_option == null:
 		return
-	if NetworkManager.is_server:
+	var is_host := NetworkManager.is_server or (not use_steam and SteamManager.local_role == SteamManager.LocalRole.HOST) or (use_steam and SteamManager.is_host())
+	if is_host:
 		deck_option.disabled = _deck_paths.is_empty()
 		# Seed a default deck if none chosen yet, then broadcast it.
 		var path := str(NetworkManager.lobby_deck_path)
@@ -201,12 +205,13 @@ func _on_lobby_deck_changed(deck_path: String) -> void:
 
 
 func _update_bot_controls_visibility() -> void:
+	var is_host := NetworkManager.is_server or (not use_steam and SteamManager.local_role == SteamManager.LocalRole.HOST) or (use_steam and SteamManager.is_host())
 	# Nur der Host darf Bots verwalten.
 	if bot_controls:
-		bot_controls.visible = NetworkManager.is_server
+		bot_controls.visible = is_host
 	if deck_option:
 		# Everyone sees the deck; only the host can change it.
-		deck_option.disabled = (not NetworkManager.is_server) or _deck_paths.is_empty()
+		deck_option.disabled = (not is_host) or _deck_paths.is_empty()
 
 
 func _on_add_bot_pressed() -> void:
@@ -271,7 +276,7 @@ func _render_players(players: Array) -> void:
 func _update_status(players: Array) -> void:
 	var count := players.size()
 	if count < 2:
-		if NetworkManager.is_server:
+		if NetworkManager.is_server or SteamManager.is_host():
 			status_label.text = "Alone in the lobby – add bots or wait for players (%d/2)." % count
 		else:
 			status_label.text = "Waiting for more players (%d/2)..." % count

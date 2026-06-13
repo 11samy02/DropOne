@@ -319,6 +319,30 @@ func play_turn() -> void:
 					if !_still_my_turn():
 						return
 
+	if queue_manager.draw_stack_amount > 0 and queue_manager.draw_stack_is_wild:
+		var playable_wild_stack := get_playable_cards()
+		if playable_wild_stack.size() > 0:
+			var best_wild_stack := choose_best_card(playable_wild_stack)
+			if best_wild_stack != null:
+				hand_card_holder.set_card(best_wild_stack)
+				return
+
+		queue_manager.force_wild_draw_continue(hand_card_holder)
+		await get_tree().create_timer(0.25).timeout
+		if !_still_my_turn():
+			return
+
+		playable_wild_stack = get_playable_cards()
+		if playable_wild_stack.size() > 0:
+			var best_after_wild := choose_best_card(playable_wild_stack)
+			if best_after_wild != null:
+				hand_card_holder.set_card(best_after_wild)
+				return
+
+		if _still_my_turn():
+			queue_manager.end_turn()
+		return
+
 	if queue_manager.draw_stack_amount > 0 and !queue_manager.draw_stack_is_wild:
 		var playable_stack := get_playable_cards()
 		if playable_stack.size() > 0:

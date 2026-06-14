@@ -362,8 +362,7 @@ func _run_play_turn() -> void:
 				hand_card_holder.set_card(best_wild_stack)
 				return
 
-		queue_manager.force_wild_draw_continue(hand_card_holder)
-		await get_tree().create_timer(0.25).timeout
+		await queue_manager.force_wild_draw_continue(hand_card_holder)
 		if !_still_my_turn():
 			return
 
@@ -386,8 +385,7 @@ func _run_play_turn() -> void:
 				hand_card_holder.set_card(best_stack)
 				return
 
-		queue_manager.force_draw_stack_continue(hand_card_holder)
-		await get_tree().create_timer(0.25).timeout
+		await queue_manager.force_draw_stack_continue(hand_card_holder)
 		if !_still_my_turn():
 			return
 
@@ -554,6 +552,8 @@ func score_card(card_view: CardView) -> int:
 
 			if queue_manager != null and queue_manager.draw_stack_amount > 0:
 				score += int(cfg["stack_skill"]) + int(card.value) * 10
+				if queue_manager.draw_stack_amount >= 20:
+					score -= 80000
 			else:
 				score += draw_power
 
@@ -587,6 +587,11 @@ func score_card(card_view: CardView) -> int:
 			score += int(cfg["save_wild_draw"])
 			score += int(pcfg["aggression"])
 			score += 40
+
+			if queue_manager != null and queue_manager.draw_stack_amount > 0:
+				score += int(cfg["stack_skill"]) + int(card.value) * 8
+				if queue_manager.draw_stack_amount >= 20:
+					score -= 80000
 
 			if next_is_threat:
 				score += (neighbor_focus * 2) + int(cfg["punish_low"]) * 2 + int(pcfg["punish"])

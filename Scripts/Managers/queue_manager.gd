@@ -896,6 +896,7 @@ func _clear_draw_stack() -> void:
 	draw_stack_is_wild = false
 	draw_stack_color = CardResource.CardColor.BLACK
 	draw_stack_source_slot = -1
+	_draw_stack_resolving = false
 
 
 ## Draw stack add/stack
@@ -919,11 +920,57 @@ func _advance_turn_after_draw_penalty() -> void:
 	end_turn()
 
 
-## True when this holder played the current +draw stack and must not resolve it.
+## True when this holder just stacked +draw on the same turn (must pass, not draw).
 func _holder_is_draw_stack_source(holder: HandCardHolder) -> bool:
 	if holder == null or draw_stack_source_slot < 0:
 		return false
 	return int(holder.player_index) == draw_stack_source_slot
+
+## Only block draw-stack resolution on the same turn a stack card was played.
+func _holder_blocked_from_resolving_draw_stack(holder: HandCardHolder) -> bool:
+	return _holder_is_draw_stack_source(holder) and has_played_this_turn
+
+## If a stack play failed to advance the turn, recover instead of soft-locking.
+func _try_recover_draw_stack_source_turn(holder: HandCardHolder) -> bool:
+	if draw_stack_amount <= 0:
+		return false
+	if !_holder_blocked_from_resolving_draw_stack(holder):
+		return false
+	end_turn()
+	return true
+
+var _draw_stack_resolving := false
+
+## Resolves an active draw stack for the current holder when they cannot counter-stack.
+func _resolve_draw_stack_for_holder(holder: HandCardHolder) -> void:
+	if _draw_stack_resolving:
+		return
+	if holder == null or !is_instance_valid(holder):
+		return
+	if draw_stack_amount <= 0:
+		return
+	if !is_players_turn(holder):
+		return
+	if has_drawn_this_turn or has_played_this_turn:
+		return
+	if card_manager != null and card_manager.waiting_for_color:
+		return
+	if roulette_active or place_all_resolving:
+		return
+	if _holder_blocked_from_resolving_draw_stack(holder):
+		return
+	if holder_has_playable_card(holder):
+		holder.refresh_playable_cards()
+		return
+
+	_draw_stack_resolving = true
+	if draw_stack_is_wild:
+		await force_wild_draw_continue(holder)
+	else:
+		await force_draw_stack_continue(holder)
+	_draw_stack_resolving = false
+	if _is_authoritative():
+		_server_sync_match_state()
 
 
 ## Returns how many cards the current +draw play adds to the active stack.
@@ -1208,7 +1255,9 @@ func on_draw_pressed() -> void:
 		return
 
 	if draw_stack_amount > 0:
-		if _holder_is_draw_stack_source(holder):
+		if _try_recover_draw_stack_source_turn(holder):
+			return
+		if _holder_blocked_from_resolving_draw_stack(holder):
 			return
 		if draw_stack_is_wild:
 			await force_wild_draw_continue(holder)
@@ -1433,16 +1482,13 @@ func _handle_start_of_turn_effects() -> void:
 	if _try_finish_empty_hand(holder):
 		return
 
-	if draw_stack_amount > 0 and draw_stack_is_wild:
+	if draw_stack_amount > 0:
+		if _try_recover_draw_stack_source_turn(holder):
+			return
 		if holder.is_bot:
 			call_deferred("_kick_bot_turn_if_needed", holder)
-		else:
-			holder.refresh_playable_cards()
-		return
-
-	if draw_stack_amount > 0 and !draw_stack_is_wild:
-		if holder.is_bot:
-			call_deferred("_kick_bot_turn_if_needed", holder)
+		elif not holder_has_playable_card(holder):
+			call_deferred("_resolve_draw_stack_for_holder", holder)
 		else:
 			holder.refresh_playable_cards()
 		return
@@ -2670,6 +2716,7 @@ func _reset_server_match_state() -> void:
 	draw_stack_is_wild = false
 	draw_stack_color = CardResource.CardColor.BLACK
 	draw_stack_source_slot = -1
+	_draw_stack_resolving = false
 	wild_color_owner = null
 	target_draw_active = false
 	target_draw_value = 0
@@ -3195,7 +3242,10 @@ func server_apply_draw(peer_id: int) -> void:
 	
 	# Handle draw stack
 	if draw_stack_amount > 0:
-		if _holder_is_draw_stack_source(holder):
+		if _try_recover_draw_stack_source_turn(holder):
+			_server_sync_match_state()
+			return
+		if _holder_blocked_from_resolving_draw_stack(holder):
 			return
 		if draw_stack_is_wild:
 			await force_wild_draw_continue(holder)

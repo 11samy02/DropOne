@@ -10,6 +10,8 @@ enum PendingAction { NONE, MAIN_MENU, QUIT_GAME }
 @onready var confirm_panel: PanelContainer = %ConfirmPanel
 @onready var confirm_label: Label = %ConfirmLabel
 @onready var fullscreen_check: CheckButton = %FullscreenCheck
+@onready var volume_slider: HSlider = %VolumeSlider
+@onready var volume_value_label: Label = %VolumeValueLabel
 @onready var resume_button: Button = %ResumeButton
 
 var _is_open := false
@@ -20,7 +22,7 @@ func _ready() -> void:
 	visible = false
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	confirm_panel.visible = false
-	_sync_fullscreen_toggle()
+	_sync_settings_ui()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -48,7 +50,7 @@ func open() -> void:
 		return
 	_is_open = true
 	_hide_confirm()
-	_sync_fullscreen_toggle()
+	_sync_settings_ui()
 	visible = true
 	if not _is_results_screen_visible():
 		get_tree().paused = true
@@ -85,13 +87,19 @@ func _find_queue_manager() -> QueueManager:
 	return root.get_node_or_null("QueueManager") as QueueManager
 
 
-func _sync_fullscreen_toggle() -> void:
-	var mode := DisplayServer.window_get_mode()
-	var fullscreen := mode == DisplayServer.WINDOW_MODE_FULLSCREEN \
-		or mode == DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN
+func _sync_settings_ui() -> void:
 	fullscreen_check.set_block_signals(true)
-	fullscreen_check.button_pressed = fullscreen
+	fullscreen_check.button_pressed = SettingsManager.fullscreen
 	fullscreen_check.set_block_signals(false)
+
+	volume_slider.set_block_signals(true)
+	volume_slider.value = SettingsManager.master_volume_linear * 100.0
+	volume_slider.set_block_signals(false)
+	_update_volume_label(volume_slider.value)
+
+
+func _update_volume_label(percent: float) -> void:
+	volume_value_label.text = "%d%%" % int(round(percent))
 
 
 func _show_confirm(action: PendingAction) -> void:
@@ -121,11 +129,15 @@ func _on_resume_pressed() -> void:
 
 
 func _on_fullscreen_toggled(toggled_on: bool) -> void:
-	if toggled_on:
-		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
-	else:
-		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
-	_sync_fullscreen_toggle()
+	SettingsManager.set_fullscreen(toggled_on)
+	fullscreen_check.set_block_signals(true)
+	fullscreen_check.button_pressed = SettingsManager.fullscreen
+	fullscreen_check.set_block_signals(false)
+
+
+func _on_volume_changed(value: float) -> void:
+	_update_volume_label(value)
+	SettingsManager.set_master_volume_linear(value / 100.0)
 
 
 func _on_main_menu_pressed() -> void:

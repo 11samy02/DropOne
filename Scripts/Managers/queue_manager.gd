@@ -136,11 +136,18 @@ func connect_signals() -> void:
 	Signals.COLOR_color_selected.connect(_on_roulette_color_selected)
 
 
-## Plays draw-card SFX locally and syncs it to remote clients on the server.
-func notify_card_drawn(from_slot: int, count: int = 1) -> void:
+## Plays draw-card SFX locally and optionally syncs deck/hand counts to all peers.
+func notify_card_drawn(from_slot: int, count: int = 1, sync_counts: bool = true) -> void:
 	SoundManager.play_draw_card(count)
 	if multiplayer.has_multiplayer_peer() and multiplayer.is_server():
 		NetworkManager.rpc("client_draw_sound", int(from_slot), int(count))
+	if sync_counts:
+		_sync_deck_counts()
+
+## Pushes authoritative deck + hand counts to every peer.
+func _sync_deck_counts() -> void:
+	if _is_authoritative():
+		_server_broadcast_counts()
 
 ## UI container resolver
 func get_container_for_holder(holder: HandCardHolder) -> Control:
@@ -453,17 +460,17 @@ func register_card_play(played_card: CardResource, player: HandCardHolder = null
 				end_turn()
 			return
 		CardResource.CardType.DRAW:
-			start_or_stack_draw(_draw_stack_value_for_play(played_card), false)
+			start_or_stack_draw(_draw_stack_value_for_play(played_card), false, played_card.value)
 			end_turn()
 			return
 		CardResource.CardType.WILD_DRAW:
-			start_or_stack_draw(played_card.value, true)
+			start_or_stack_draw(played_card.value, true, played_card.value)
 			end_turn()
 			return
 		CardResource.CardType.WILD_DRAW_REVERSE:
 			if turn_order.size() > 2:
 				apply_reverse()
-			start_or_stack_draw(played_card.value, true)
+			start_or_stack_draw(played_card.value, true, played_card.value)
 			end_turn()
 			return
 		CardResource.CardType.SWAP_HANDS:
@@ -541,6 +548,22 @@ func _build_ranking_results() -> Array:
 			"slot": int(h.player_index),
 			"place": i + 1,
 		})
+
+	var total := maxi(player_count, winners.size() + max_card_losers.size())
+	var last_place := total
+	for h in max_card_losers:
+		if h == null or !is_instance_valid(h):
+			continue
+		results.append({
+			"name": _holder_display_name(h),
+			"slot": int(h.player_index),
+			"place": last_place,
+		})
+		last_place -= 1
+
+	results.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return int(a.get("place", 999)) < int(b.get("place", 999))
+	)
 	return results
 
 
@@ -856,14 +879,15 @@ func apply_reverse() -> void:
 		_server_sync_match_state()
 
 ## Draw stack add/stack
-func start_or_stack_draw(value: int, is_wild: bool) -> void:
+func start_or_stack_draw(value: int, is_wild: bool, min_card_value: int = -1) -> void:
 	draw_stack_amount += value
-	draw_stack_min_value = max(draw_stack_min_value, value)
+	var card_min := min_card_value if min_card_value >= 0 else value
+	draw_stack_min_value = max(draw_stack_min_value, card_min)
 	if is_wild:
 		draw_stack_is_wild = true
 		if card_manager != null:
 			draw_stack_color = card_manager.current_color
-	elif draw_stack_color == CardResource.CardColor.BLACK and card_manager != null and card_manager.top_card != null:
+	elif card_manager != null and card_manager.top_card != null:
 		draw_stack_color = card_manager.top_card.color
 
 	# Synchronize draw stack changes
@@ -964,11 +988,10 @@ func _apply_player_eliminated_slot(slot: int, show_local_lose_ui: bool) -> void:
 
 	if _is_authoritative():
 		_check_max_card_lose_winner()
-		if multiplayer.is_server():
-			_server_broadcast_counts()
-			_server_sync_match_state()
+		_server_broadcast_counts()
+		_server_sync_match_state()
 
-	if winners.size() == 0:
+	if !turn_order.is_empty():
 		update_turn_state()
 		if card_manager != null:
 			card_manager.update_draw_button_state()
@@ -1071,7 +1094,7 @@ func _apply_active_turn_order_from_state(state: Dictionary) -> void:
 	var rebuilt: Array[HandCardHolder] = []
 	for slot_val in slots:
 		var h: HandCardHolder = _slot_to_holder.get(int(slot_val), null)
-		if h != null and is_instance_valid(h) and !is_holder_eliminated(h):
+		if h != null and is_instance_valid(h) and !is_holder_eliminated(h) and !is_holder_finished(h):
 			rebuilt.append(h)
 	if rebuilt.is_empty():
 		return
@@ -1133,7 +1156,6 @@ func on_draw_pressed() -> void:
 		else:
 			await force_draw_stack_continue(holder)
 		if _is_authoritative():
-			_server_broadcast_counts()
 			_server_sync_match_state()
 		return
 
@@ -1148,10 +1170,6 @@ func on_draw_pressed() -> void:
 	holder.sort_cards_full()
 	holder.refresh_playable_cards()
 	has_drawn_this_turn = true
-	
-	# Synchronize draw action
-	if _is_authoritative():
-		_server_broadcast_counts()
 
 	if !allow_play_after_draw:
 		end_turn()
@@ -1312,6 +1330,32 @@ func _try_pass_if_stuck(holder: HandCardHolder) -> bool:
 	end_turn()
 	return true
 
+## True while an async draw-stack resolve should still advance this holder's turn.
+func _is_holder_still_resolving_draw_stack(holder: HandCardHolder) -> bool:
+	if holder == null or !is_instance_valid(holder):
+		return false
+	if is_holder_eliminated(holder) or is_holder_finished(holder):
+		return false
+	return get_current_holder() == holder
+
+## Ensures the active bot resolves draw stacks even after eliminations reshuffle turn order.
+func _kick_bot_turn_if_needed(holder: HandCardHolder) -> void:
+	if holder == null or !is_instance_valid(holder) or !holder.is_bot:
+		return
+	if !_is_authoritative():
+		return
+	if get_current_holder() != holder:
+		return
+	if draw_stack_amount <= 0:
+		return
+	if card_manager != null and card_manager.waiting_for_color:
+		return
+	if place_all_resolving or _place_all_sequence_running or roulette_active:
+		return
+	var ki := _get_ki_for_holder(holder)
+	if ki != null:
+		ki.play_turn()
+
 ## Start-of-turn effects
 func _handle_start_of_turn_effects() -> void:
 	if place_all_resolving:
@@ -1331,12 +1375,16 @@ func _handle_start_of_turn_effects() -> void:
 		return
 
 	if draw_stack_amount > 0 and draw_stack_is_wild:
-		if !holder.is_bot:
+		if holder.is_bot:
+			call_deferred("_kick_bot_turn_if_needed", holder)
+		else:
 			holder.refresh_playable_cards()
 		return
 
 	if draw_stack_amount > 0 and !draw_stack_is_wild:
-		if !holder.is_bot:
+		if holder.is_bot:
+			call_deferred("_kick_bot_turn_if_needed", holder)
+		else:
 			holder.refresh_playable_cards()
 		return
 
@@ -1349,7 +1397,7 @@ func force_wild_draw_continue(holder: HandCardHolder) -> void:
 		var card := card_manager.draw_card()
 		if card == null:
 			break
-		notify_card_drawn(int(holder.player_index))
+		notify_card_drawn(int(holder.player_index), 1, false)
 		holder.add_card(card)
 
 	draw_stack_amount = 0
@@ -1357,6 +1405,7 @@ func force_wild_draw_continue(holder: HandCardHolder) -> void:
 	draw_stack_is_wild = false
 	draw_stack_color = CardResource.CardColor.BLACK
 
+	_sync_deck_counts()
 	# Synchronize draw stack reset
 	if multiplayer.is_server():
 		_server_sync_match_state()
@@ -1366,6 +1415,8 @@ func force_wild_draw_continue(holder: HandCardHolder) -> void:
 	has_drawn_this_turn = true
 
 	await get_tree().create_timer(0.25).timeout
+	if !_is_holder_still_resolving_draw_stack(holder):
+		return
 	if !holder_has_playable_card(holder):
 		end_turn()
 
@@ -1375,7 +1426,7 @@ func force_draw_stack_continue(holder: HandCardHolder) -> void:
 		var card := card_manager.draw_card()
 		if card == null:
 			break
-		notify_card_drawn(int(holder.player_index))
+		notify_card_drawn(int(holder.player_index), 1, false)
 		holder.add_card(card)
 
 	draw_stack_amount = 0
@@ -1383,6 +1434,7 @@ func force_draw_stack_continue(holder: HandCardHolder) -> void:
 	draw_stack_is_wild = false
 	draw_stack_color = CardResource.CardColor.BLACK
 
+	_sync_deck_counts()
 	# Synchronize draw stack reset
 	if multiplayer.is_server():
 		_server_sync_match_state()
@@ -1392,6 +1444,8 @@ func force_draw_stack_continue(holder: HandCardHolder) -> void:
 	has_drawn_this_turn = true
 
 	await get_tree().create_timer(0.25).timeout
+	if !_is_holder_still_resolving_draw_stack(holder):
+		return
 	if !holder_has_playable_card(holder):
 		end_turn()
 
@@ -1745,7 +1799,7 @@ func resolve_target_draw(target_holder: HandCardHolder) -> void:
 				var card := card_manager.draw_card()
 				if card == null:
 					break
-				notify_card_drawn(int(h.player_index))
+				notify_card_drawn(int(h.player_index), 1, false)
 				h.add_card(card)
 			h.sort_cards_full()
 			h.refresh_playable_cards()
@@ -1758,7 +1812,7 @@ func resolve_target_draw(target_holder: HandCardHolder) -> void:
 				var card := card_manager.draw_card()
 				if card == null:
 					break
-				notify_card_drawn(int(target_holder.player_index))
+				notify_card_drawn(int(target_holder.player_index), 1, false)
 				target_holder.add_card(card)
 			target_holder.sort_cards_full()
 			target_holder.refresh_playable_cards()
@@ -1770,8 +1824,7 @@ func resolve_target_draw(target_holder: HandCardHolder) -> void:
 	target_draw_color = CardResource.CardColor.BLACK
 	pending_target_draw_owner = null
 
-	if multiplayer.is_server():
-		_server_broadcast_counts()
+	_sync_deck_counts()
 
 	end_turn()
 
@@ -2027,7 +2080,6 @@ func _do_roulette_draw_step(holder: HandCardHolder) -> void:
 
 	if multiplayer.is_server():
 		_server_push_hand(holder)
-		_server_broadcast_counts()
 
 	await get_tree().create_timer(0.22).timeout
 
@@ -3116,7 +3168,6 @@ func server_apply_draw(peer_id: int) -> void:
 			if ch is CardView and ch.card_res != null:
 				hand_after_stack.append(_serialize_card(ch.card_res))
 		NetworkManager.rpc_id(peer_id, "client_set_hand", hand_after_stack)
-		_server_broadcast_counts()
 		_server_sync_match_state()
 		return
 	
@@ -3140,7 +3191,6 @@ func server_apply_draw(peer_id: int) -> void:
 			hand.append(_serialize_card(ch.card_res))
 	
 	NetworkManager.rpc_id(peer_id, "client_set_hand", hand)
-	_server_broadcast_counts()
 
 	if !allow_play_after_draw:
 		end_turn()

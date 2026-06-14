@@ -1708,6 +1708,7 @@ func _omega_try_cheat_draw() -> bool:
 	var best := _omega_find_perfect_draw_candidate(omega_cheat_draw_range)
 	if best != null:
 		hand_card_holder.add_card(best)
+		queue_manager.notify_card_drawn(int(hand_card_holder.player_index))
 		return true
 
 	return queue_manager.bot_draw_current()

@@ -41,6 +41,9 @@ var _draw_pulse_tween: Tween = null
 
 
 func _ready() -> void:
+	if top_card_view != null:
+		top_card_view.in_hand_card = false
+		top_card_view.is_top_card = true
 	connect_signals()
 	Signals.TURN_changed.connect(_on_turn_changed)
 	is_initialized = true

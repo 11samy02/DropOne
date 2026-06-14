@@ -192,6 +192,7 @@ stretch_mode = 5
 [node name="TopCard" parent="MarginContainer/CenterContainer/MarginContainer/HBoxContainer" instance=ExtResource("2_6eb2d")]
 layout_mode = 2
 size_flags_horizontal = 4
+in_hand_card = false
 is_top_card = true
 card_res = null
 

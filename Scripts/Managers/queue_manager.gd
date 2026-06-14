@@ -857,6 +857,7 @@ func _show_loser_overlay() -> void:
 		return
 	_local_loser_overlay_shown = true
 	_hide_loser_overlay()
+	_ensure_active_deck_on_card_manager()
 
 	var max_count := get_max_card_lose_count()
 	var layer := CanvasLayer.new()
@@ -1025,15 +1026,34 @@ func _draw_stack_value_for_play(played_card: CardResource) -> int:
 	return played_card.value
 
 ## Max-card-lose rule helpers (configured on DeckResource).
+func _resolve_active_deck() -> DeckResource:
+	var path := str(NetworkManager.lobby_deck_path)
+	if path != "":
+		var chosen := Globals.load_deck(path)
+		if chosen != null:
+			return chosen
+	if card_manager != null and card_manager.loaded_deck != null:
+		return card_manager.loaded_deck
+	return null
+
+func _ensure_active_deck_on_card_manager() -> void:
+	if card_manager == null:
+		return
+	var deck := _resolve_active_deck()
+	if deck != null:
+		card_manager.loaded_deck = deck
+
 func is_max_card_lose_enabled() -> bool:
-	if card_manager == null or card_manager.loaded_deck == null:
+	var deck := _resolve_active_deck()
+	if deck == null:
 		return false
-	return card_manager.loaded_deck.max_card_lose_enabled
+	return deck.max_card_lose_enabled
 
 func get_max_card_lose_count() -> int:
-	if card_manager == null or card_manager.loaded_deck == null:
+	var deck := _resolve_active_deck()
+	if deck == null:
 		return 0
-	return maxi(1, card_manager.loaded_deck.max_card_lose_count)
+	return maxi(1, deck.max_card_lose_count)
 
 func on_holder_hand_changed(holder: HandCardHolder) -> void:
 	if holder == null or !is_instance_valid(holder):
@@ -2544,6 +2564,7 @@ func _try_apply_pending_hand() -> void:
 	else:
 		_apply_local_visibility()
 		_try_finalize_client_sync()
+	_refresh_seat_names()
 
 ## Show only local hand front
 func _apply_local_visibility() -> void:
@@ -2569,6 +2590,7 @@ func _try_finalize_client_sync() -> void:
 		return
 	_match_deal_complete = true
 	_client_match_started = true
+	_ensure_active_deck_on_card_manager()
 	_apply_counts_to_ui()
 	_apply_local_visibility()
 
@@ -2790,21 +2812,25 @@ func _refresh_holder_layouts() -> void:
 ## ------------------------------------------------------------------
 ## Player name labels shown at each seat during a match.
 ## ------------------------------------------------------------------
+func _get_display_card_count(slot: int) -> int:
+	if slot >= 0 and slot < _last_hand_counts.size():
+		return int(_last_hand_counts[slot])
+	var holder: HandCardHolder = _slot_to_holder.get(slot, null)
+	if holder != null and is_instance_valid(holder):
+		return _count_cards_in_holder(holder)
+	return 0
+
 func _refresh_seat_names() -> void:
 	var used: Dictionary = {}
 	for h in turn_order:
 		if h == null or !is_instance_valid(h):
 			continue
 		var container := get_container_for_holder(h)
-		# Only opponent seats get a name label; the local seat is a full-width
-		# container at the bottom (and the local player knows their own name).
-		if container == null or container == player_container:
+		if container == null:
 			continue
 		_set_seat_name(container, h)
 		used[container] = true
 
-	if player_container != null:
-		_remove_seat_name(player_container)
 	for c in other_player_containers:
 		if c != null and not used.has(c):
 			_remove_seat_name(c)
@@ -2828,7 +2854,12 @@ func _set_seat_name(container: Control, holder: HandCardHolder) -> void:
 		label.add_theme_constant_override("shadow_offset_y", 3)
 		container.add_child(label)
 
-	label.text = holder.profile.player_name if holder.profile != null else ""
+	var name := holder.profile.player_name if holder.profile != null else ""
+	var count := _get_display_card_count(int(holder.player_index))
+	if name.strip_edges() != "":
+		label.text = "%s (%d)" % [name, count]
+	else:
+		label.text = "(%d)" % count
 
 	var info := container.get_node_or_null("SeatBotInfo") as Label
 	var info_text := _format_bot_seat_info(holder)
@@ -3055,7 +3086,7 @@ func _apply_match_state_snapshot(state: Dictionary, skip_top_card: bool = false)
 		var r := CardResource.from_sync_dict(top)
 		var same_top := card_manager.top_card != null and int(card_manager.top_card.uid) == int(r.uid)
 		if !same_top:
-			card_manager.set_top_card_runtime(r)
+			card_manager.set_top_card_runtime(r, false)
 
 	current_turn_index = int(state.get("turn_index", 0))
 	var new_direction := int(state.get("direction", 1))
@@ -3228,12 +3259,9 @@ func _server_start_match() -> void:
 
 	# Apply the deck chosen in the lobby (host-authoritative). Falls back to the
 	# card manager's default deck if none was selected / it fails to load.
-	var chosen_deck_path := str(NetworkManager.lobby_deck_path)
-	if chosen_deck_path != "":
-		var chosen_deck := Globals.load_deck(chosen_deck_path)
-		if chosen_deck != null:
-			card_manager.loaded_deck = chosen_deck
-			print("QueueManager: Using deck '%s'" % str(chosen_deck.deck_name))
+	_ensure_active_deck_on_card_manager()
+	if card_manager.loaded_deck != null:
+		print("QueueManager: Using deck '%s'" % str(card_manager.loaded_deck.deck_name))
 
 	card_manager.deck = card_manager.create_default_cards()
 	if card_manager.deck.is_empty():
@@ -3380,6 +3408,7 @@ func _apply_counts_to_ui() -> void:
 		holder.sort_cards_full()
 
 	_apply_local_visibility()
+	_refresh_seat_names()
 
 ## Deck count getter
 func get_synced_deck_count() -> int:

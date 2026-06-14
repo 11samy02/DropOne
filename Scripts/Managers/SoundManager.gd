@@ -2,9 +2,9 @@ extends Node
 
 const DRAW_CARD_SOUND := preload("res://Assets/sounds/draw_card.mp3")
 const PLAY_CARD_SOUND := preload("res://Assets/sounds/play_card.mp3")
-const DRAW_PITCH := 1.25
-const DRAW_PITCH_VARIANCE := 0.05
-const DRAW_VOLUME_DB := -5.0
+const DRAW_PITCH := 1.0
+const DRAW_PITCH_VARIANCE := 0.1
+const DRAW_VOLUME_DB := 0.0
 const PLAY_PITCH := 1.0
 const PLAY_PITCH_VARIANCE := 0.1
 const PLAY_VOLUME_DB := 0.0

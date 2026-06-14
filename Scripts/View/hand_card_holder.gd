@@ -18,6 +18,9 @@ const HAND_CARD_HOLDER = preload("uid://bpglgdslmw461")
 var player_index := -1
 ## Index into bot_profiles for offline bots.
 var bot_index := -1
+## AI settings shown under the seat name for bots (-1 = not set).
+var bot_difficulty := -1
+var bot_personality := -1
 var turn_active := false
 var _current_sep: float = 0.0
 

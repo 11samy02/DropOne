@@ -14,6 +14,9 @@ class_name QueueManager
 ## Bot AI profiles used when creating offline bots.
 @export var bot_profiles: Array[BotProfile] = []
 
+const BOT_DIFFICULTY_NAMES := ["Rookie", "Casual", "Smart", "Hard", "Master", "Omega"]
+const BOT_PERSONALITY_NAMES := ["Balanced", "Aggressor", "Collector", "Chaos", "Punisher", "Color Monarch"]
+
 ## Holders who emptied their hand and won the round.
 var winners: Array[HandCardHolder] = []
 ## Holders eliminated by the max-card-lose deck rule.
@@ -212,7 +215,10 @@ func create_bots() -> void:
 
 		holder.profile.player_index = max(0, player_count - 1) + i
 		holder.profile.is_bot = true
-		holder.profile.player_name = bot_profile.name if bot_profile.name.strip_edges() != "" else "Bot " + str(i + 1)
+		holder.bot_difficulty = bot_profile.difficulty
+		holder.bot_personality = bot_profile.personality
+		var fallback_name := bot_profile.name if bot_profile.name.strip_edges() != "" else "Bot " + str(i + 1)
+		holder.profile.player_name = _bot_display_name(bot_profile.difficulty, fallback_name)
 		holder.profile.holder = holder
 		holder.profile.ensure_picture()
 
@@ -2181,6 +2187,12 @@ func _build_holders_from_players(players_meta: Array) -> void:
 		if row is Dictionary:
 			nm = str(row.get("name", nm))
 			pic_id = int(row.get("picture_id", 0))
+			if is_bot_row:
+				var diff := int(row.get("difficulty", KIController.AIDifficulty.SMART))
+				var pers := int(row.get("personality", KIController.AIPersonality.BALANCED))
+				holder.bot_difficulty = diff
+				holder.bot_personality = pers
+				nm = _bot_display_name(diff, nm)
 
 		holder.profile.player_index = i
 		holder.profile.is_bot = is_bot_row
@@ -2336,12 +2348,57 @@ func _set_seat_name(container: Control, holder: HandCardHolder) -> void:
 	# Centered horizontally on the seat point, just above the card stack.
 	label.position = Vector2(-150, -290)
 
+	var info := container.get_node_or_null("SeatBotInfo") as Label
+	var info_text := _format_bot_seat_info(holder)
+	if info_text.strip_edges() == "":
+		if info != null:
+			info.queue_free()
+		return
+
+	if info == null:
+		info = Label.new()
+		info.name = "SeatBotInfo"
+		info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		info.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		info.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		info.z_index = 100
+		info.size = Vector2(300, 28)
+		info.add_theme_font_size_override("font_size", 18)
+		info.add_theme_color_override("font_color", Color(0.78, 0.82, 0.9, 0.95))
+		info.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.65))
+		info.add_theme_constant_override("shadow_offset_x", 2)
+		info.add_theme_constant_override("shadow_offset_y", 2)
+		container.add_child(info)
+
+	info.text = info_text
+	info.position = Vector2(-150, -248)
+
+
+func _bot_display_name(difficulty: int, fallback: String) -> String:
+	if difficulty == KIController.AIDifficulty.OMEGA:
+		return "Omega"
+	return fallback
+
+
+func _format_bot_seat_info(holder: HandCardHolder) -> String:
+	if holder == null or not holder.is_bot or holder.bot_difficulty < 0:
+		return ""
+	if holder.bot_difficulty == KIController.AIDifficulty.OMEGA:
+		return ""
+	var diff_name = BOT_DIFFICULTY_NAMES[holder.bot_difficulty] if holder.bot_difficulty < BOT_DIFFICULTY_NAMES.size() else "?"
+	var pers_name = BOT_PERSONALITY_NAMES[holder.bot_personality] if holder.bot_personality >= 0 and holder.bot_personality < BOT_PERSONALITY_NAMES.size() else "?"
+	return "%s / %s" % [diff_name, pers_name]
+
+
 func _remove_seat_name(container: Control) -> void:
 	if container == null:
 		return
 	var lbl := container.get_node_or_null("SeatName")
 	if lbl != null:
 		lbl.queue_free()
+	var info_lbl := container.get_node_or_null("SeatBotInfo")
+	if info_lbl != null:
+		info_lbl.queue_free()
 
 func _should_reset_server_match(players_in: Array) -> bool:
 	# Zähle alle Teilnehmer (Menschen + Bots). Unter 2 -> Match zurücksetzen.

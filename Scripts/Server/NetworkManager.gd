@@ -378,9 +378,11 @@ func add_lobby_bot(difficulty: int, personality: int) -> bool:
 	if participant_count() >= MAX_PLAYERS:
 		return false
 	var idx := _lobby_bots.size() + 1
+	var diff := int(difficulty)
+	var bot_name := "Omega" if diff == KIController.AIDifficulty.OMEGA else "Bot %d" % idx
 	_lobby_bots.append({
-		"name": "Bot %d" % idx,
-		"difficulty": int(difficulty),
+		"name": bot_name,
+		"difficulty": diff,
 		"personality": int(personality),
 	})
 	_broadcast_lobby_state()

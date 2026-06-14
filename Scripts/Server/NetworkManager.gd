@@ -514,6 +514,9 @@ func server_announce_winner(
 	is_final: bool = true,
 	all_results: Array = []
 ) -> void:
+	if not multiplayer.has_multiplayer_peer():
+		game_won.emit(winner_name, int(winner_slot), int(place), bool(is_final), all_results)
+		return
 	if not multiplayer.is_server():
 		return
 	for pid in multiplayer.get_peers():

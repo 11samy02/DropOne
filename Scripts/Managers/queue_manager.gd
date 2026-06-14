@@ -412,6 +412,9 @@ func register_card_play(played_card: CardResource, player: HandCardHolder = null
 
 	if _check_and_finish_current_holder():
 		_after_holder_finished()
+		if multiplayer.is_server():
+			_server_sync_match_state()
+			_server_broadcast_counts()
 		return
 
 	match played_card.type:
@@ -466,13 +469,16 @@ func _after_holder_finished() -> void:
 	has_played_this_turn = false
 	has_drawn_this_turn = false
 	if winners.size() > 0:
-		if multiplayer.is_server():
+		if _is_authoritative():
 			if _is_full_ranking_mode():
 				_server_on_new_winner()
 				if turn_order.size() <= 1:
 					_server_try_finish_ranking_match()
 				else:
 					update_turn_state()
+					if multiplayer.is_server():
+						_server_sync_match_state()
+						_server_broadcast_counts()
 					call_deferred("_handle_start_of_turn_effects")
 			else:
 				_server_handle_game_over()
@@ -516,7 +522,7 @@ func _build_ranking_results() -> Array:
 
 
 func _server_on_new_winner() -> void:
-	if not multiplayer.is_server() or _game_over_handled:
+	if not _is_authoritative() or _game_over_handled:
 		return
 	if winners.is_empty():
 		return
@@ -530,7 +536,7 @@ func _server_on_new_winner() -> void:
 
 
 func _server_try_finish_ranking_match() -> void:
-	if not multiplayer.is_server() or _game_over_handled:
+	if not _is_authoritative() or _game_over_handled:
 		return
 	if turn_order.size() == 1:
 		var last_holder: HandCardHolder = turn_order[0]
@@ -543,7 +549,7 @@ func _server_try_finish_ranking_match() -> void:
 
 
 func _server_handle_game_over() -> void:
-	if not multiplayer.is_server():
+	if not _is_authoritative():
 		return
 	if _game_over_handled:
 		return
@@ -1004,15 +1010,12 @@ func _dim_eliminated_holder(holder: HandCardHolder) -> void:
 			_smooth_modulate(c, Color(0.15, 0.15, 0.15, 1.0), 0.25)
 
 func _dim_all_cards_for_local_loser() -> void:
-	for slot in _slot_to_holder.keys():
-		var h: HandCardHolder = _slot_to_holder[slot]
-		if h != null and is_instance_valid(h):
-			_dim_eliminated_holder(h)
-	if card_manager != null:
-		if card_manager.draw_button != null:
-			_smooth_modulate(card_manager.draw_button, Color(0.15, 0.15, 0.15, 1.0), 0.25)
-		if card_manager.top_card_view != null:
-			_smooth_modulate(card_manager.top_card_view, Color(0.15, 0.15, 0.15, 1.0), 0.25)
+	var my_slot := int(NetworkManager.my_slot)
+	var my_holder: HandCardHolder = _slot_to_holder.get(my_slot, null)
+	if my_holder != null and is_instance_valid(my_holder):
+		_dim_eliminated_holder(my_holder)
+	if card_manager != null and card_manager.draw_button != null:
+		_smooth_modulate(card_manager.draw_button, Color(0.15, 0.15, 0.15, 1.0), 0.25)
 
 func _get_eliminated_slots() -> Array:
 	var slots: Array = []
@@ -1024,7 +1027,28 @@ func _get_eliminated_slots() -> Array:
 func _sync_eliminated_slots_from_state(state: Dictionary) -> void:
 	var slots: Array = state.get("eliminated_slots", [])
 	for slot_val in slots:
-		_apply_player_eliminated_slot(int(slot_val), true)
+		var show_ui := int(slot_val) == int(NetworkManager.my_slot)
+		_apply_player_eliminated_slot(int(slot_val), show_ui)
+
+
+## Rebuilds client turn order when winners/eliminations shrink the active player list.
+func _apply_active_turn_order_from_state(state: Dictionary) -> void:
+	if multiplayer.is_server():
+		return
+	if !state.has("active_turn_slots"):
+		return
+	var slots: Array = state.get("active_turn_slots", [])
+	if slots.is_empty():
+		return
+	var rebuilt: Array[HandCardHolder] = []
+	for slot_val in slots:
+		var h: HandCardHolder = _slot_to_holder.get(int(slot_val), null)
+		if h != null and is_instance_valid(h) and !is_holder_eliminated(h):
+			rebuilt.append(h)
+	if rebuilt.is_empty():
+		return
+	turn_order = rebuilt
+	current_turn_index = clampi(int(state.get("turn_index", current_turn_index)), 0, turn_order.size() - 1)
 
 func _check_max_card_lose_winner() -> void:
 	if !is_max_card_lose_enabled():
@@ -1037,7 +1061,7 @@ func _check_max_card_lose_winner() -> void:
 	if winners.has(winner):
 		return
 	winners.append(winner)
-	if multiplayer.is_server():
+	if _is_authoritative():
 		if _is_full_ranking_mode():
 			_server_on_new_winner()
 			_server_try_finish_ranking_match()
@@ -1151,7 +1175,13 @@ func next_turn(skip_next: bool = false) -> void:
 		return
 	if turn_order.size() == 1:
 		current_turn_index = 0
+		has_played_this_turn = false
+		has_drawn_this_turn = false
 		update_turn_state()
+		if multiplayer.is_server():
+			_server_sync_match_state()
+		if _is_authoritative():
+			call_deferred("_handle_start_of_turn_effects")
 		return
 
 	var steps := 1
@@ -2470,9 +2500,15 @@ func _build_match_state() -> Dictionary:
 	if pending_swap_owner != null and is_instance_valid(pending_swap_owner):
 		pending_swap_slot = int(pending_swap_owner.player_index)
 
+	var active_turn_slots: Array = []
+	for h in turn_order:
+		if h != null and is_instance_valid(h):
+			active_turn_slots.append(int(h.player_index))
+
 	return {
 		"top_card": top_card_dict,
 		"turn_index": int(current_turn_index),
+		"active_turn_slots": active_turn_slots,
 		"direction": int(direction),
 		"draw_stack": int(draw_stack_amount),
 		"draw_stack_min": int(draw_stack_min_value),
@@ -2587,6 +2623,7 @@ func _apply_match_state_snapshot(state: Dictionary, skip_top_card: bool = false)
 
 	_apply_match_state_flags(state)
 	_sync_eliminated_slots_from_state(state)
+	_apply_active_turn_order_from_state(state)
 
 	update_turn_state()
 

@@ -34,19 +34,6 @@ func _on_turn_changed(_holder: HandCardHolder) -> void:
 		return
 	_refresh()
 
-extends Control
-class_name PlayerSelector
-
-const PLAYER_PROFILE_CARD := preload("uid://h382lyh12543")
-
-@export var queue_manager: QueueManager
-
-@onready var profile_container: GridContainer = %profile_container
-
-var _active := false
-var _owner: HandCardHolder = null
-var _allow_self := false
-
 ## Rebuilds target cards when target selection is requested or turn changes.
 func _refresh() -> void:
 	if queue_manager == null:

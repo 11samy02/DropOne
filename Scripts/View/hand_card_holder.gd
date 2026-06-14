@@ -284,6 +284,7 @@ func set_card(card_view: CardView) -> void:
 		}
 		NetworkManager.rpc("client_play_event", int(player_index), ev)
 	
+	SoundManager.play_card_played()
 	card_view.set_clickable(false, true)
 	var animation_duration := 0.3
 	await card_view.fly_to_discard_pile(animation_duration)

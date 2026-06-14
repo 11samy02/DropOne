@@ -135,6 +135,13 @@ func connect_signals() -> void:
 	Signals.TARGET_target_selected.connect(resolve_target_draw)
 	Signals.COLOR_color_selected.connect(_on_roulette_color_selected)
 
+
+## Plays draw-card SFX locally and syncs it to remote clients on the server.
+func notify_card_drawn(from_slot: int, count: int = 1) -> void:
+	SoundManager.play_draw_card(count)
+	if multiplayer.has_multiplayer_peer() and multiplayer.is_server():
+		NetworkManager.rpc("client_draw_sound", int(from_slot), int(count))
+
 ## UI container resolver
 func get_container_for_holder(holder: HandCardHolder) -> Control:
 	if holder == null:
@@ -1119,6 +1126,7 @@ func on_draw_pressed() -> void:
 	if card == null:
 		return
 
+	notify_card_drawn(int(holder.player_index))
 	holder.add_card(card)
 	holder.sort_cards_full()
 	holder.refresh_playable_cards()
@@ -1160,6 +1168,7 @@ func bot_draw_current() -> bool:
 	if card == null:
 		return false
 
+	notify_card_drawn(int(holder.player_index))
 	holder.add_card(card)
 	holder.sort_cards_full()
 	holder.refresh_playable_cards()
@@ -1282,6 +1291,7 @@ func force_wild_draw_continue(holder: HandCardHolder) -> void:
 		var card := card_manager.draw_card()
 		if card == null:
 			break
+		notify_card_drawn(int(holder.player_index))
 		holder.add_card(card)
 
 	draw_stack_amount = 0
@@ -1307,6 +1317,7 @@ func force_draw_stack_continue(holder: HandCardHolder) -> void:
 		var card := card_manager.draw_card()
 		if card == null:
 			break
+		notify_card_drawn(int(holder.player_index))
 		holder.add_card(card)
 
 	draw_stack_amount = 0
@@ -1450,6 +1461,7 @@ func _place_all_play_color_cards_sequential(owner: HandCardHolder, place_all_vie
 
 		var res := next_card.card_res
 
+		SoundManager.play_card_played()
 		next_card.set_clickable(false, true)
 		next_card.smooth_move_button_to_top_card_juicy(duration)
 
@@ -1471,6 +1483,7 @@ func _place_all_play_final_place_all_card(owner: HandCardHolder, place_all_view:
 
 	var duration := 0.26
 
+	SoundManager.play_card_played()
 	place_all_view.set_clickable(false, true)
 	place_all_view.smooth_move_button_to_top_card_juicy(duration)
 
@@ -1642,6 +1655,7 @@ func resolve_target_draw(target_holder: HandCardHolder) -> void:
 				var card := card_manager.draw_card()
 				if card == null:
 					break
+				notify_card_drawn(int(h.player_index))
 				h.add_card(card)
 			h.sort_cards_full()
 			h.refresh_playable_cards()
@@ -1654,6 +1668,7 @@ func resolve_target_draw(target_holder: HandCardHolder) -> void:
 				var card := card_manager.draw_card()
 				if card == null:
 					break
+				notify_card_drawn(int(target_holder.player_index))
 				target_holder.add_card(card)
 			target_holder.sort_cards_full()
 			target_holder.refresh_playable_cards()
@@ -1915,6 +1930,7 @@ func _do_roulette_draw_step(holder: HandCardHolder) -> void:
 		_abort_roulette()
 		return
 
+	notify_card_drawn(int(holder.player_index))
 	holder.add_card(card)
 	holder.sort_cards_full()
 	holder.refresh_playable_cards()
@@ -3019,6 +3035,7 @@ func server_apply_draw(peer_id: int) -> void:
 	if card == null:
 		return
 
+	notify_card_drawn(int(slot))
 	holder.add_card(card)
 	holder.sort_cards_full()
 	holder.refresh_playable_cards()
@@ -3243,6 +3260,7 @@ func _on_play_event_received(from_slot: int, card: Dictionary) -> void:
 	if multiplayer.is_server():
 		return
 
+	SoundManager.play_card_played()
 	_client_play_animating = true
 	var anim_watchdog := get_tree().create_timer(5.0)
 	anim_watchdog.timeout.connect(func() -> void:

@@ -1009,6 +1009,12 @@ func server_request_draw() -> void:
 func client_play_event(from_slot: int, card: Dictionary) -> void:
 	play_event_received.emit(int(from_slot), card)
 
+@rpc("authority", "reliable")
+func client_draw_sound(_from_slot: int, count: int = 1) -> void:
+	if multiplayer.is_server():
+		return
+	SoundManager.play_draw_card(int(count))
+
 @rpc("authority", "reliable", "call_local")
 func client_set_counts(hand_counts: Array, deck_count: int) -> void:
 	counts_received.emit(hand_counts, int(deck_count))

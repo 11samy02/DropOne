@@ -15,7 +15,7 @@ compatibility/default_parent_skeleton_in_mesh_instance_3d=true
 [application]
 
 config/name="DropOne"
-config/version="v0.4.5-alpha"
+config/version="v0.4.6-alpha"
 run/main_scene="res://Scenes/UI/start_screen.tscn"
 config/features=PackedStringArray("4.6", "Forward Plus")
 config/icon="res://icon.svg"
@@ -26,6 +26,7 @@ Globals="*res://Scripts/Globals/Globals.gd"
 SteamManager="*res://Scripts/Steam/SteamManager.gd"
 NetworkManager="*res://Scripts/Server/NetworkManager.gd"
 Signals="*res://Scripts/Globals/Signals.gd"
+SoundManager="*res://Scripts/Managers/SoundManager.gd"
 
 [display]
 

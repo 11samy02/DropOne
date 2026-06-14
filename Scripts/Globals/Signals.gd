@@ -27,6 +27,7 @@ enum FeedbackKind {
 	COLOR,
 	WAIT,
 	ALREADY_PLAYED,
+	REVERSE,
 }
 
 ## Short-lived popup with text and icon chosen from FeedbackKind.

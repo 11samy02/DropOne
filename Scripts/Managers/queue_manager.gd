@@ -876,9 +876,18 @@ func _hide_loser_overlay() -> void:
 func apply_reverse() -> void:
 	direction *= -1
 	Signals.MATCH_direction_changed.emit(direction)
+	_show_direction_reversed_feedback()
 	# Synchronize direction change
 	if multiplayer.is_server():
 		_server_sync_match_state()
+
+
+## Popup when play direction reverses (Reverse card).
+func _show_direction_reversed_feedback() -> void:
+	var text := "Direction reversed"
+	if turn_order.size() == 2:
+		text = "Reverse!"
+	Signals.FEEDBACK_show.emit(text, Signals.FeedbackKind.REVERSE)
 
 ## Resets all draw-stack tracking fields.
 func _clear_draw_stack() -> void:
@@ -1200,7 +1209,6 @@ func on_draw_pressed() -> void:
 
 	if draw_stack_amount > 0:
 		if _holder_is_draw_stack_source(holder):
-			end_turn()
 			return
 		if draw_stack_is_wild:
 			await force_wild_draw_continue(holder)
@@ -1404,7 +1412,7 @@ func _kick_bot_turn_if_needed(holder: HandCardHolder) -> void:
 	if place_all_resolving or _place_all_sequence_running or roulette_active:
 		return
 	var ki := _get_ki_for_holder(holder)
-	if ki != null:
+	if ki != null and !ki.is_play_turn_running():
 		ki.play_turn()
 
 ## Start-of-turn effects
@@ -1426,9 +1434,6 @@ func _handle_start_of_turn_effects() -> void:
 		return
 
 	if draw_stack_amount > 0 and draw_stack_is_wild:
-		if _holder_is_draw_stack_source(holder):
-			end_turn()
-			return
 		if holder.is_bot:
 			call_deferred("_kick_bot_turn_if_needed", holder)
 		else:
@@ -1436,9 +1441,6 @@ func _handle_start_of_turn_effects() -> void:
 		return
 
 	if draw_stack_amount > 0 and !draw_stack_is_wild:
-		if _holder_is_draw_stack_source(holder):
-			end_turn()
-			return
 		if holder.is_bot:
 			call_deferred("_kick_bot_turn_if_needed", holder)
 		else:
@@ -2817,6 +2819,8 @@ func _apply_match_state_snapshot(state: Dictionary, skip_top_card: bool = false)
 	if direction != new_direction:
 		direction = new_direction
 		Signals.MATCH_direction_changed.emit(direction)
+		if !multiplayer.is_server():
+			_show_direction_reversed_feedback()
 	else:
 		direction = new_direction
 	if !multiplayer.is_server():
@@ -3214,6 +3218,8 @@ func server_apply_draw(peer_id: int) -> void:
 	
 	# Handle draw stack
 	if draw_stack_amount > 0:
+		if _holder_is_draw_stack_source(holder):
+			return
 		if draw_stack_is_wild:
 			await force_wild_draw_continue(holder)
 		else:

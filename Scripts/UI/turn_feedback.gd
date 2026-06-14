@@ -14,6 +14,7 @@ const _KIND_ICON := {
 	Signals.FeedbackKind.COLOR: CardResource.WILD_ICON,
 	Signals.FeedbackKind.WAIT: CardResource.REVERSE_ICON,
 	Signals.FeedbackKind.ALREADY_PLAYED: CardResource.REVERSE_ICON,
+	Signals.FeedbackKind.REVERSE: CardResource.REVERSE_ICON,
 }
 
 const _KIND_BORDER := {
@@ -24,6 +25,7 @@ const _KIND_BORDER := {
 	Signals.FeedbackKind.COLOR: Color(0.35, 0.75, 1.0, 0.95),
 	Signals.FeedbackKind.WAIT: Color(0.75, 0.75, 0.85, 0.95),
 	Signals.FeedbackKind.ALREADY_PLAYED: Color(1.0, 0.82, 0.15, 0.95),
+	Signals.FeedbackKind.REVERSE: Color(0.45, 0.85, 1.0, 0.95),
 }
 
 const _KIND_ICON_TINT := {
@@ -34,6 +36,7 @@ const _KIND_ICON_TINT := {
 	Signals.FeedbackKind.COLOR: Color(0.55, 0.9, 1.0, 1.0),
 	Signals.FeedbackKind.WAIT: Color(0.85, 0.85, 0.95, 1.0),
 	Signals.FeedbackKind.ALREADY_PLAYED: Color(1.0, 0.9, 0.4, 1.0),
+	Signals.FeedbackKind.REVERSE: Color(0.55, 0.95, 1.0, 1.0),
 }
 
 var _popup: Control = null

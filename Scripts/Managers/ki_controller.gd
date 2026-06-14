@@ -91,6 +91,7 @@ enum AIPersonality { BALANCED, AGGRESSOR, COLLECTOR, CHAOS, PUNISHER, COLOR_MONA
 
 var _diff_cfg := {}
 var _pers_cfg := {}
+var _play_turn_running := false
 
 ## Builds difficulty/personality score tables and connects turn signals.
 func _ready() -> void:
@@ -308,14 +309,28 @@ func _on_turn_changed(holder: HandCardHolder) -> void:
 		return
 	play_turn()
 
+func is_play_turn_running() -> bool:
+	return _play_turn_running
+
 ## Main bot turn: handles stacks, picks best card, or draws/ends turn.
 func play_turn() -> void:
+	if _play_turn_running:
+		return
 	if queue_manager != null and queue_manager.roulette_active:
 		return
 	if card_manager == null or queue_manager == null or hand_card_holder == null:
 		return
 	if card_manager.waiting_for_color:
 		return
+	if !_still_my_turn():
+		return
+
+	_play_turn_running = true
+	await _run_play_turn()
+	_play_turn_running = false
+
+## Bot turn body (single instance guarded by play_turn).
+func _run_play_turn() -> void:
 	if !_still_my_turn():
 		return
 
@@ -413,10 +428,8 @@ func play_turn() -> void:
 
 	if _still_my_turn():
 		var playable_after := get_playable_cards()
-		if playable_after.is_empty() and _still_my_turn():
+		if playable_after.is_empty():
 			queue_manager.end_turn()
-			return
-		queue_manager.end_turn()
 
 func _still_my_turn() -> bool:
 	return queue_manager != null and queue_manager.get_current_holder() == hand_card_holder

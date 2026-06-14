@@ -123,10 +123,6 @@ func set_top_card_runtime(card: CardResource) -> void:
 		discard_pile.append(top_card)
 
 	top_card = card
-	if top_card_view == null or !is_instance_valid(top_card_view):
-		update_draw_button_state()
-		return
-	top_card_view.card_res = top_card
 
 	if _card_requires_color_selection(card):
 		current_color = CardResource.CardColor.BLACK
@@ -138,6 +134,11 @@ func set_top_card_runtime(card: CardResource) -> void:
 		waiting_for_color = false
 		pending_wild_card = null
 
+	if top_card_view == null or !is_instance_valid(top_card_view):
+		update_draw_button_state()
+		return
+
+	top_card_view.card_res = top_card
 	sync_top_card_color_visual()
 	update_draw_button_state()
 

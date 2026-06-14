@@ -877,10 +877,16 @@ func get_prev_holder() -> HandCardHolder:
 func _on_color_request() -> void:
 	if queue_manager == null or hand_card_holder == null or card_manager == null:
 		return
+	if !card_manager.waiting_for_color:
+		return
 	if queue_manager.wild_color_owner != hand_card_holder:
 		return
 	await get_tree().create_timer(0.2).timeout
-	if queue_manager == null or hand_card_holder == null or queue_manager.wild_color_owner != hand_card_holder:
+	if queue_manager == null or hand_card_holder == null or card_manager == null:
+		return
+	if !card_manager.waiting_for_color:
+		return
+	if queue_manager.wild_color_owner != hand_card_holder:
 		return
 	var color := choose_best_wild_color()
 	if queue_manager.has_method("server_apply_local_wild_color"):

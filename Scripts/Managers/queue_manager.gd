@@ -98,6 +98,8 @@ var _server_last_players_change_ms := 0
 var _server_start_delay_active := false
 const SERVER_START_DELAY_MS := 300
 var _client_play_animating := false
+var _stuck_reconcile_running := false
+var _stuck_watchdog: Timer = null
 ## Uids whose special-card effects were already applied (prevents double skip etc.).
 var _resolved_effect_uids: Dictionary = {}
 
@@ -130,6 +132,13 @@ func _ready() -> void:
 	# Server will start match when players are received via _on_players_received()
 	if multiplayer.is_server():
 		call_deferred("_server_request_player_rebroadcast")
+
+	_stuck_watchdog = Timer.new()
+	_stuck_watchdog.wait_time = 1.5
+	_stuck_watchdog.one_shot = false
+	_stuck_watchdog.timeout.connect(_on_stuck_watchdog_timeout)
+	add_child(_stuck_watchdog)
+	_stuck_watchdog.start()
 
 ## Connect gameplay signals
 func connect_signals() -> void:
@@ -424,6 +433,29 @@ func _can_resolve_card_effect(played_card: CardResource) -> bool:
 	return true
 
 
+## Recovers when an effect uid was marked resolved but the turn never advanced.
+func _try_recover_stuck_card_play(played_card: CardResource, player: HandCardHolder = null) -> void:
+	if played_card == null or card_manager == null or card_manager.top_card == null:
+		return
+	var uid := int(played_card.uid)
+	if uid <= 0 or int(card_manager.top_card.uid) != uid:
+		return
+	if !_resolved_effect_uids.has(uid):
+		return
+	var actor := player if player != null else get_current_holder()
+	if actor == null or !is_players_turn(actor) or has_played_this_turn:
+		return
+	has_played_this_turn = true
+	if draw_stack_amount > 0 and played_card.type in [
+		CardResource.CardType.DRAW,
+		CardResource.CardType.WILD_DRAW,
+		CardResource.CardType.WILD_DRAW_REVERSE
+	]:
+		end_turn()
+	elif draw_stack_amount <= 0 and !holder_has_playable_card(actor):
+		end_turn()
+
+
 ## Register played card and advance rules
 func register_card_play(played_card: CardResource, player: HandCardHolder = null) -> void:
 	if played_card == null:
@@ -434,6 +466,7 @@ func register_card_play(played_card: CardResource, player: HandCardHolder = null
 		return
 
 	if not _can_resolve_card_effect(played_card):
+		_try_recover_stuck_card_play(played_card, player)
 		return
 
 	_resolved_effect_uids[int(played_card.uid)] = true
@@ -1475,6 +1508,11 @@ func _handle_start_of_turn_effects() -> void:
 		_handle_roulette_start()
 		return
 
+	if card_manager != null and card_manager.waiting_for_color:
+		if wild_color_owner != null and is_instance_valid(wild_color_owner):
+			call_deferred("_ensure_wild_color_resolved", wild_color_owner)
+		return
+
 	var holder := get_current_holder()
 	if holder == null:
 		return
@@ -1621,6 +1659,99 @@ func clear_wild_owner() -> void:
 
 func set_wild_color_owner(holder: HandCardHolder) -> void:
 	wild_color_owner = holder
+
+## Picks and applies wild color for a bot (also used as watchdog fallback).
+func _finish_bot_wild_color(holder: HandCardHolder) -> void:
+	if !_is_authoritative() or card_manager == null or holder == null or !is_instance_valid(holder):
+		return
+	if !card_manager.waiting_for_color:
+		return
+	if wild_color_owner != holder:
+		return
+	server_apply_local_wild_color(int(_bot_choose_wild_color(holder)))
+
+## Ensures a pending wild-color pick completes (bot auto-pick or human UI prompt).
+func _ensure_wild_color_resolved(owner: HandCardHolder) -> void:
+	if card_manager == null or owner == null or !is_instance_valid(owner):
+		return
+	if !card_manager.waiting_for_color:
+		owner._busy = false
+		return
+	if wild_color_owner != owner:
+		return
+	if owner.is_bot:
+		_finish_bot_wild_color(owner)
+	elif _is_local_human_owner(owner):
+		Signals.COLOR_request_color_select.emit()
+
+func _on_stuck_watchdog_timeout() -> void:
+	if !_is_authoritative() or !is_match_in_progress():
+		return
+	if _stuck_reconcile_running:
+		return
+	call_deferred("_reconcile_stuck_state")
+
+## Authoritative safety net for orphaned wild-color waits, draw stacks, and idle bot turns.
+func _reconcile_stuck_state() -> void:
+	if _stuck_reconcile_running or !_is_authoritative() or !is_match_in_progress():
+		return
+	if place_all_resolving or _place_all_sequence_running or roulette_active:
+		return
+	_stuck_reconcile_running = true
+
+	if card_manager != null and card_manager.waiting_for_color:
+		if wild_color_owner != null and is_instance_valid(wild_color_owner):
+			_ensure_wild_color_resolved(wild_color_owner)
+		elif card_manager.top_card != null and CardResource.is_neutral_wild_type(card_manager.top_card.type):
+			var fallback_holder := get_current_holder()
+			if fallback_holder != null:
+				set_wild_color_owner(fallback_holder)
+				_ensure_wild_color_resolved(fallback_holder)
+		_stuck_reconcile_running = false
+		return
+
+	if wild_color_owner != null and is_instance_valid(wild_color_owner) and card_manager != null:
+		var orphan := wild_color_owner
+		if orphan._waiting_color_turn_end and card_manager.top_card != null:
+			orphan._waiting_color_turn_end = false
+			orphan._pending_effect_card_uid = -1
+			orphan._busy = false
+			if _can_resolve_card_effect(card_manager.top_card):
+				register_card_play(card_manager.top_card, orphan)
+			clear_wild_owner()
+
+	var holder := get_current_holder()
+	if holder == null:
+		_stuck_reconcile_running = false
+		return
+
+	if draw_stack_amount > 0:
+		if _try_recover_draw_stack_source_turn(holder):
+			_stuck_reconcile_running = false
+			return
+		if holder.is_bot:
+			_kick_bot_turn_if_needed(holder)
+		elif not holder_has_playable_card(holder) and !_draw_stack_resolving:
+			if !_holder_blocked_from_resolving_draw_stack(holder):
+				call_deferred("_resolve_draw_stack_for_holder", holder)
+		_stuck_reconcile_running = false
+		return
+
+	if holder.is_bot and card_manager != null and !card_manager.waiting_for_color:
+		if !has_played_this_turn and !has_drawn_this_turn:
+			var ki := _get_ki_for_holder(holder)
+			if ki != null and !ki.is_play_turn_running():
+				if holder_has_playable_card(holder) or draw_stack_amount > 0:
+					ki.play_turn()
+				elif can_draw_from_pile():
+					if bot_draw_current():
+						pass
+					elif _try_pass_if_stuck(holder):
+						pass
+				elif _try_pass_if_stuck(holder):
+					pass
+
+	_stuck_reconcile_running = false
 
 ## Place-all sequence start
 func start_place_all(holder: HandCardHolder, color: CardResource.CardColor, played_card: CardResource, place_all_view: CardView) -> void:
@@ -3367,9 +3498,10 @@ func _apply_wild_color(color: int, owner_slot: int) -> void:
 			pass
 		elif wild_color_owner != null and is_instance_valid(wild_color_owner):
 			var owner := wild_color_owner
-			if owner._waiting_color_turn_end and card_manager.top_card != null:
-				owner._waiting_color_turn_end = false
-				owner._pending_effect_card_uid = -1
+			owner._waiting_color_turn_end = false
+			owner._pending_effect_card_uid = -1
+			owner._busy = false
+			if card_manager.top_card != null and _can_resolve_card_effect(card_manager.top_card):
 				register_card_play(card_manager.top_card, owner)
 			clear_wild_owner()
 		if multiplayer.has_multiplayer_peer():

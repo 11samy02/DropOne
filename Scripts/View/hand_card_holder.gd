@@ -302,14 +302,16 @@ func set_card(card_view: CardView) -> void:
 	
 	card_manager.set_top_card_runtime(played_card_res)
 	
-	_busy = false
-	refresh_playable_cards()
-	
 	if card_manager.waiting_for_color:
 		_waiting_color_turn_end = true
 		_pending_effect_card_uid = int(played_card_res.uid)
+		if queue_manager != null:
+			queue_manager.call_deferred("_ensure_wild_color_resolved", self)
 	else:
+		_busy = false
 		queue_manager.register_card_play(played_card_res, self)
+	
+	refresh_playable_cards()
 	
 	if _queued != null and is_instance_valid(_queued):
 		var next := _queued

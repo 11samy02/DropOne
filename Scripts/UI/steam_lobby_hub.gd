@@ -73,11 +73,23 @@ func _update_mode_label() -> void:
 func _on_steam_ready() -> void:
 	if use_steam:
 		status_label.text = "Connected to Steam as %s" % SteamManager.get_persona_name()
+		_check_steam_network_async()
 	else:
 		status_label.text = "Step 1: Instance 1 → 'Start Host'. Step 2: Instance 2+ → 'Join as Client'."
 	_refresh_lobby_list()
 	if use_steam:
 		refresh_timer.start()
+
+
+func _check_steam_network_async() -> void:
+	if not use_steam:
+		return
+	var ready := await SteamManager.ensure_relay_ready(12.0)
+	if not is_inside_tree():
+		return
+	if ready:
+		return
+	status_label.text = SteamManager.get_relay_status_message()
 
 
 func _on_steam_init_failed(reason: String) -> void:
@@ -223,11 +235,17 @@ func _on_join_id_pressed() -> void:
 	var text := lobby_id_input.text.strip_edges()
 	if text == "":
 		status_label.text = "Please enter a lobby ID."
+		_set_ui_locked(false)
 		return
 	if not text.is_valid_int():
 		status_label.text = "Lobby ID must be a number."
+		_set_ui_locked(false)
 		return
 	var lobby_id := int(text)
+	if lobby_id <= 0:
+		status_label.text = "Invalid lobby ID."
+		_set_ui_locked(false)
+		return
 	status_label.text = "Joining lobby %d..." % lobby_id
 	SteamManager.join_lobby(lobby_id)
 

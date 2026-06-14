@@ -89,14 +89,23 @@ func _ready() -> void:
 		await SteamManager.ensure_relay_ready(15.0)
 		if not is_inside_tree():
 			return
+		if not SteamManager.relay_ready:
+			status_label.text = SteamManager.get_relay_status_message()
+			await get_tree().create_timer(4.0).timeout
+			_leave_and_go_hub()
+			return
+		SteamManager.refresh_host_lobby_settings()
 		status_label.text = "Lobby created – waiting for players..."
 		ok = NetworkManager.enter_lobby_host(use_steam, SteamManager.current_lobby_id)
 	else:
 		status_label.text = "Preparing Steam network..."
-		# Best-effort wait for the relay network; the client connect below also
-		# retries on its own, so we proceed even if this times out.
-		await SteamManager.ensure_relay_ready()
+		await SteamManager.ensure_relay_ready(15.0)
 		if not is_inside_tree():
+			return
+		if not SteamManager.relay_ready:
+			status_label.text = SteamManager.get_relay_status_message()
+			await get_tree().create_timer(4.0).timeout
+			_leave_and_go_hub()
 			return
 		status_label.text = "Connecting to lobby..."
 		# enter_lobby_client retries the P2P connect internally and only returns

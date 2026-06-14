@@ -12,10 +12,12 @@ enum LobbyOp { NONE, CREATE, JOIN }
 
 var use_steam: bool = true
 
-const GAME_VERSION := "v0.5.2-alpha"
+const GAME_VERSION := "v0.5.3-alpha"
 const MAX_LOBBY_PLAYERS := 8
 const LOCAL_LOBBY_ID := 4242
 const LOBBY_ROOM_SCENE := preload("res://Scenes/UI/steam_lobby_room.tscn")
+const MAX_JOIN_ATTEMPTS := 3
+const JOIN_RETRY_DELAY_SEC := 1.25
 
 var steam_ready := false
 var current_lobby_id: int = 0
@@ -43,6 +45,8 @@ var _lobby_op: LobbyOp = LobbyOp.NONE
 var _target_lobby_id: int = 0
 var _lobby_busy := false
 var _steam_disabled_for_solo := false
+var _join_attempt := 0
+var _join_retry_timer: SceneTreeTimer = null
 
 
 func _ready() -> void:
@@ -96,9 +100,6 @@ func _init_steam() -> void:
 		var verbal := str(init_result.get("verbal", "Unbekannter Fehler"))
 		steam_init_failed.emit("Steam could not be initialized: %s" % verbal)
 		return
-	# ZWINGEND für P2P: ohne Relay-Netzwerkzugang können sich Host und Client
-	# über SteamMultiplayerPeer nicht verbinden (Client bleibt auf "Connecting",
-	# der Host sieht den Beitritt nie).
 	if not Steam.relay_network_status.is_connected(_on_relay_network_status):
 		Steam.relay_network_status.connect(_on_relay_network_status)
 	Steam.initRelayNetworkAccess()
@@ -122,21 +123,16 @@ func _refresh_relay_ready() -> void:
 	if not use_steam:
 		relay_ready = true
 		return
-	# getRelayNetworkStatus() returns the summary availability enum (int).
 	var avail := int(Steam.getRelayNetworkStatus())
 	relay_ready = (avail == Steam.NETWORKING_AVAILABILITY_CURRENT)
 
 
-## Wait until the Steam relay network is ready so P2P connections can actually be
-## established. Returns true once ready (or immediately in local mode), false on
-## timeout. Without this, joining a lobby by ID/list often hangs forever.
-func ensure_relay_ready(timeout_sec: float = 12.0) -> bool:
+func ensure_relay_ready(timeout_sec: float = 15.0) -> bool:
 	if not use_steam:
 		return true
 	_refresh_relay_ready()
 	if relay_ready:
 		return true
-	# Force a (re)try; the first attempt may have failed or still be pending.
 	Steam.initRelayNetworkAccess()
 	var deadline := Time.get_ticks_msec() + int(timeout_sec * 1000.0)
 	while Time.get_ticks_msec() < deadline:
@@ -146,6 +142,12 @@ func ensure_relay_ready(timeout_sec: float = 12.0) -> bool:
 		if relay_ready:
 			return true
 	return relay_ready
+
+
+func get_relay_status_message() -> String:
+	if relay_ready:
+		return ""
+	return "Steam network not ready. Check your internet connection and allow DropOne through Windows Firewall."
 
 
 func get_local_player_name() -> String:
@@ -169,8 +171,13 @@ func is_lobby_busy() -> bool:
 	return _lobby_busy
 
 
+func _cancel_join_retry() -> void:
+	_join_retry_timer = null
+
+
 func _prepare_fresh_lobby_session() -> void:
-	# Alte Multiplayer-Session immer verwerfen (auch ohne aktive Steam-Lobby).
+	_cancel_join_retry()
+	_join_attempt = 0
 	if NetworkManager != null:
 		NetworkManager.leave_lobby()
 	_leave_steam_lobby_silent()
@@ -192,16 +199,26 @@ func create_lobby(lobby_name: String = "DropOne Lobby", max_players: int = MAX_L
 	_prepare_fresh_lobby_session()
 	_pending_lobby_name = lobby_name
 	if use_steam:
-		_lobby_op = LobbyOp.CREATE
-		_target_lobby_id = 0
-		Steam.createLobby(Steam.LobbyType.LOBBY_TYPE_PUBLIC, max_players)
+		_create_lobby_async(max_players)
 	else:
 		_lobby_op = LobbyOp.CREATE
 		local_role = LocalRole.HOST
 		_create_local_lobby(lobby_name)
 
 
-## Einzelspieler gegen Bots – immer eigener lokaler Host, ohne Steam.
+func _create_lobby_async(max_players: int) -> void:
+	_lobby_op = LobbyOp.CREATE
+	_target_lobby_id = 0
+	if not await ensure_relay_ready(15.0):
+		_lobby_op = LobbyOp.NONE
+		_lobby_busy = false
+		lobby_join_failed.emit(get_relay_status_message())
+		return
+	if not _lobby_busy:
+		return
+	Steam.createLobby(Steam.LobbyType.LOBBY_TYPE_PUBLIC, max_players)
+
+
 func start_solo() -> void:
 	if _lobby_busy:
 		return
@@ -232,13 +249,9 @@ func join_lobby(lobby_id: int) -> void:
 			_lobby_busy = false
 			lobby_join_failed.emit("Invalid lobby ID.")
 			return
-		_lobby_op = LobbyOp.JOIN
-		_target_lobby_id = lobby_id
-		is_lobby_owner = false
-		Steam.joinLobby(lobby_id)
+		_join_lobby_async(lobby_id)
 	else:
 		_lobby_op = LobbyOp.JOIN
-		# Lokal: immer Client zu 127.0.0.1 – ID ist nur Anzeige.
 		local_role = LocalRole.CLIENT
 		current_lobby_id = LOCAL_LOBBY_ID
 		is_lobby_owner = false
@@ -247,7 +260,41 @@ func join_lobby(lobby_id: int) -> void:
 		_go_to_lobby_room()
 
 
+func _join_lobby_async(lobby_id: int) -> void:
+	_join_attempt = 0
+	_target_lobby_id = lobby_id
+	if not await ensure_relay_ready(15.0):
+		_lobby_busy = false
+		lobby_join_failed.emit(get_relay_status_message())
+		return
+	if not _lobby_busy:
+		return
+	_request_join_lobby(lobby_id)
+
+
+func _request_join_lobby(lobby_id: int) -> void:
+	_lobby_op = LobbyOp.JOIN
+	_target_lobby_id = lobby_id
+	is_lobby_owner = false
+	Steam.joinLobby(lobby_id)
+
+
+func _schedule_join_retry(lobby_id: int) -> void:
+	_cancel_join_retry()
+	var tree := get_tree()
+	if tree == null:
+		return
+	_join_retry_timer = tree.create_timer(JOIN_RETRY_DELAY_SEC)
+	_join_retry_timer.timeout.connect(func() -> void:
+		_join_retry_timer = null
+		if not _lobby_busy or _lobby_op != LobbyOp.JOIN:
+			return
+		_request_join_lobby(lobby_id)
+	, CONNECT_ONE_SHOT)
+
+
 func leave_lobby() -> void:
+	_cancel_join_retry()
 	var had_lobby := current_lobby_id != 0 or local_role != LocalRole.NONE or _lobby_op != LobbyOp.NONE
 	_leave_steam_lobby_silent()
 	current_lobby_id = 0
@@ -257,6 +304,7 @@ func leave_lobby() -> void:
 	_lobby_op = LobbyOp.NONE
 	_target_lobby_id = 0
 	_lobby_busy = false
+	_join_attempt = 0
 	if _steam_disabled_for_solo:
 		use_steam = true
 		_steam_disabled_for_solo = false
@@ -271,6 +319,15 @@ func leave_lobby() -> void:
 func _leave_steam_lobby_silent() -> void:
 	if use_steam and current_lobby_id != 0:
 		Steam.leaveLobby(current_lobby_id)
+
+
+func refresh_host_lobby_settings() -> void:
+	if not use_steam or current_lobby_id == 0 or not is_lobby_owner:
+		return
+	Steam.setLobbyJoinable(current_lobby_id, true)
+	Steam.setLobbyData(current_lobby_id, "name", _pending_lobby_name)
+	Steam.setLobbyData(current_lobby_id, "version", GAME_VERSION)
+	Steam.setLobbyData(current_lobby_id, "host_id", str(host_steam_id))
 
 
 func request_lobby_list() -> void:
@@ -299,7 +356,6 @@ func is_host() -> bool:
 # -------------------------------------------------------------------
 func _on_lobby_created(result: int, lobby_id: int) -> void:
 	if _lobby_op != LobbyOp.CREATE:
-		# Veralteter Create-Callback (z. B. nach abgebrochenem Join) – Lobby verwerfen.
 		if lobby_id != 0:
 			Steam.leaveLobby(lobby_id)
 		_lobby_busy = false
@@ -312,19 +368,35 @@ func _on_lobby_created(result: int, lobby_id: int) -> void:
 	current_lobby_id = lobby_id
 	is_lobby_owner = true
 	host_steam_id = int(Steam.getSteamID())
+	_apply_lobby_metadata(lobby_id)
+	# Keep _lobby_op == CREATE until _on_lobby_joined confirms host self-enter.
+	# Resetting to NONE too early caused leaveLobby on the follow-up callback.
+	lobby_created.emit(lobby_id)
+	_go_to_lobby_room()
+	_schedule_create_op_fallback()
+
+
+func _apply_lobby_metadata(lobby_id: int) -> void:
 	Steam.setLobbyData(lobby_id, "name", _pending_lobby_name)
 	Steam.setLobbyData(lobby_id, "version", GAME_VERSION)
 	Steam.setLobbyData(lobby_id, "host_id", str(host_steam_id))
 	Steam.setLobbyJoinable(lobby_id, true)
-	_lobby_op = LobbyOp.NONE
-	lobby_created.emit(lobby_id)
-	_go_to_lobby_room()
+
+
+func _schedule_create_op_fallback() -> void:
+	var tree := get_tree()
+	if tree == null:
+		return
+	tree.create_timer(3.0).timeout.connect(func() -> void:
+		if _lobby_op == LobbyOp.CREATE:
+			_lobby_op = LobbyOp.NONE
+	, CONNECT_ONE_SHOT)
 
 
 func _lobby_join_response_message(response: int) -> String:
 	match response:
 		Steam.CHAT_ROOM_ENTER_RESPONSE_DOESNT_EXIST:
-			return "Lobby does not exist — the host may have left."
+			return "Lobby does not exist — host may still be starting or already left."
 		Steam.CHAT_ROOM_ENTER_RESPONSE_NOT_ALLOWED:
 			return "Join denied — you do not have permission to enter this lobby."
 		Steam.CHAT_ROOM_ENTER_RESPONSE_FULL:
@@ -336,32 +408,47 @@ func _lobby_join_response_message(response: int) -> String:
 
 
 func _on_lobby_joined(lobby_id: int, _permissions: int, _locked: bool, response: int) -> void:
+	if _lobby_op == LobbyOp.CREATE:
+		if response == Steam.CHAT_ROOM_ENTER_RESPONSE_SUCCESS:
+			if current_lobby_id == 0:
+				current_lobby_id = lobby_id
+			_apply_lobby_metadata(current_lobby_id)
+			_lobby_op = LobbyOp.NONE
+		return
+
 	if _lobby_op != LobbyOp.JOIN:
-		# createLobby also fires lobby_joined for the host — must not leave that lobby.
-		if _lobby_op == LobbyOp.CREATE and response == Steam.CHAT_ROOM_ENTER_RESPONSE_SUCCESS:
+		if response == Steam.CHAT_ROOM_ENTER_RESPONSE_SUCCESS and lobby_id != 0:
 			if lobby_id == current_lobby_id:
 				return
-		if response == Steam.CHAT_ROOM_ENTER_RESPONSE_SUCCESS and lobby_id != 0:
 			Steam.leaveLobby(lobby_id)
-		if _lobby_op != LobbyOp.CREATE:
-			_lobby_busy = false
+		_lobby_busy = false
 		return
+
 	if response != Steam.CHAT_ROOM_ENTER_RESPONSE_SUCCESS:
+		if response == Steam.CHAT_ROOM_ENTER_RESPONSE_DOESNT_EXIST and _join_attempt < MAX_JOIN_ATTEMPTS - 1:
+			_join_attempt += 1
+			_schedule_join_retry(_target_lobby_id)
+			return
 		_lobby_op = LobbyOp.NONE
 		_target_lobby_id = 0
 		_lobby_busy = false
+		_join_attempt = 0
 		lobby_join_failed.emit(_lobby_join_response_message(response))
 		return
+
 	if _target_lobby_id != 0 and lobby_id != _target_lobby_id:
 		Steam.leaveLobby(lobby_id)
 		_lobby_op = LobbyOp.NONE
 		_target_lobby_id = 0
 		_lobby_busy = false
+		_join_attempt = 0
 		lobby_join_failed.emit("Joined wrong lobby – please try again.")
 		return
+
 	current_lobby_id = lobby_id
 	is_lobby_owner = (int(Steam.getLobbyOwner(lobby_id)) == int(Steam.getSteamID()))
 	host_steam_id = int(Steam.getLobbyOwner(lobby_id))
+	_join_attempt = 0
 	lobby_joined.emit(lobby_id)
 	_go_to_lobby_room()
 

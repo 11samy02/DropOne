@@ -127,6 +127,7 @@ func _ready() -> void:
 func _finalize_lobby_ui() -> void:
 	if NetworkManager.is_server:
 		NetworkManager.refresh_lobby_display()
+	_configure_platform_ui()
 	_update_bot_controls_visibility()
 	_init_deck_state()
 	_init_game_settings_state()
@@ -135,7 +136,17 @@ func _finalize_lobby_ui() -> void:
 
 func _update_mode_label() -> void:
 	if mode_label:
-		mode_label.text = "Steam" if use_steam else "Local (Test)"
+		if use_steam:
+			mode_label.text = "Steam Multiplayer"
+		else:
+			mode_label.text = "Local (Test)"
+
+
+func _configure_platform_ui() -> void:
+	_update_mode_label()
+	var invite := find_child("Invite", true, false) as Button
+	if invite:
+		invite.visible = use_steam
 
 
 func _setup_bot_options() -> void:

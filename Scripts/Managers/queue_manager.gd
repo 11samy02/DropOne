@@ -85,6 +85,8 @@ var _last_applied_hand: Array = []
 
 var _server_match_started := false
 var _server_match_starting := false
+var _match_deal_in_progress := false
+var _match_deal_complete := false
 var _client_has_hand := false
 var _client_has_state := false
 var _client_match_started := false
@@ -298,7 +300,10 @@ func start_game() -> void:
 	await get_tree().process_frame
 	await get_tree().process_frame
 
+	_match_deal_in_progress = true
 	deal_starting_cards(start_card_count)
+	_match_deal_in_progress = false
+	_match_deal_complete = true
 
 	await get_tree().process_frame
 	update_turn_state()
@@ -1028,6 +1033,8 @@ func on_holder_hand_changed(holder: HandCardHolder) -> void:
 		return
 	if !_is_authoritative():
 		return
+	if _match_deal_in_progress:
+		return
 	_check_max_card_lose(holder)
 
 func _check_max_card_lose(holder: HandCardHolder) -> bool:
@@ -1538,6 +1545,8 @@ func _kick_bot_turn_if_needed(holder: HandCardHolder) -> void:
 
 ## Start-of-turn effects
 func _handle_start_of_turn_effects() -> void:
+	if multiplayer.is_server() and !_match_deal_complete:
+		return
 	if place_all_resolving:
 		return
 	if _place_all_sequence_running:
@@ -1669,6 +1678,8 @@ func _check_and_finish_current_holder() -> bool:
 
 ## Detect and resolve a player who still sits in turn order but has no cards left.
 func _try_finish_empty_hand(holder: HandCardHolder) -> bool:
+	if multiplayer.is_server() and !_match_deal_complete:
+		return false
 	if holder == null or !is_instance_valid(holder):
 		return false
 	if not turn_order.has(holder):
@@ -2513,6 +2524,8 @@ func _try_apply_pending_hand() -> void:
 	_pending_hand = []
 	NetworkManager.clear_last_hand()
 	_client_has_hand = true
+	if !multiplayer.is_server() and _client_has_state:
+		_client_match_started = true
 	if !multiplayer.is_server() and my_holder._busy:
 		my_holder.notify_remote_play_finished()
 	if multiplayer.is_server():
@@ -2544,6 +2557,8 @@ func _try_finalize_client_sync() -> void:
 		return
 	if !_client_has_hand or !_client_has_state:
 		return
+	_match_deal_complete = true
+	_client_match_started = true
 	_apply_counts_to_ui()
 	_apply_local_visibility()
 
@@ -2879,6 +2894,8 @@ func _should_reset_server_match(players_in: Array) -> bool:
 func _reset_server_match_state() -> void:
 	_server_match_started = false
 	_server_match_starting = false
+	_match_deal_in_progress = false
+	_match_deal_complete = false
 	_client_match_started = false
 	current_turn_index = 0
 	has_played_this_turn = false
@@ -3009,7 +3026,8 @@ func _try_apply_pending_match_state() -> void:
 	NetworkManager.clear_last_match_state()
 	_client_has_state = true
 	if !multiplayer.is_server():
-		_client_match_started = true
+		if _client_has_hand:
+			_client_match_started = true
 		_try_finalize_client_sync()
 
 ## Apply a server match-state snapshot on clients (optionally defer top card).
@@ -3142,6 +3160,8 @@ func _server_start_match() -> void:
 	print("QueueManager: Starting match with %d players" % turn_order.size())
 	_server_match_started = true
 	_server_match_starting = false
+	_match_deal_in_progress = false
+	_match_deal_complete = false
 	_game_over_handled = false
 	_lobby_return_requested = false
 
@@ -3173,30 +3193,16 @@ func _server_start_match() -> void:
 			print("QueueManager: Using deck '%s'" % str(chosen_deck.deck_name))
 
 	card_manager.deck = card_manager.create_default_cards()
+	if card_manager.deck.is_empty():
+		push_error("QueueManager: Cannot start match – deck is empty.")
+		_reset_server_match_state()
+		return
 	card_manager.deck.shuffle()
 	card_manager.set_top_card()
 
-	var state := {
-		"top_card": _serialize_card(card_manager.top_card),
-		"turn_index": int(current_turn_index),
-		"direction": 1,
-		"draw_stack": 0,
-		"draw_stack_min": 0,
-		"draw_stack_is_wild": false,
-		"draw_stack_color": int(CardResource.CardColor.BLACK),
-		"draw_stack_source_slot": -1,
-		"current_color": int(card_manager.current_color),
-		"waiting_for_color": bool(card_manager.waiting_for_color)
-	}
-
-	# Broadcast match state to all clients first
-	NetworkManager.rpc("client_set_match_state", state)
-	_on_match_state_received(state)
-
-	# Wait a frame to ensure state is received
-	await get_tree().process_frame
-
-	# Distribute cards to all players
+	# Deal starting hands before any match-state sync so empty-hand win checks
+	# never run against undistributed cards.
+	_match_deal_in_progress = true
 	for holder in turn_order:
 		if holder == null:
 			continue
@@ -3211,12 +3217,17 @@ func _server_start_match() -> void:
 		_apply_hand_to_holder(holder, hand)
 
 		var peer_id := _slot_to_peer_id(holder.player_index)
-		if peer_id != 0:
-			# Send hand to specific client
+		if peer_id != 0 and int(peer_id) != 1:
 			NetworkManager.rpc_id(peer_id, "client_set_hand", hand)
-		# For bots, hand is already applied locally via _apply_hand_to_holder
+	_match_deal_in_progress = false
+	_match_deal_complete = true
 
-	# Wait a frame to ensure hands are received
+	await get_tree().process_frame
+
+	var state := _build_match_state()
+	NetworkManager.rpc("client_set_match_state", state)
+	_on_match_state_received(state)
+
 	await get_tree().process_frame
 
 	update_turn_state()

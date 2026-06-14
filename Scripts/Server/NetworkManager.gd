@@ -415,6 +415,13 @@ func request_start_game() -> void:
 		return
 	if not all_lobby_ready():
 		return
+	_broadcast_players_to_all()
+	call_deferred("_deferred_launch_game_scene")
+
+
+func _deferred_launch_game_scene() -> void:
+	if not multiplayer.is_server():
+		return
 	for pid in multiplayer.get_peers():
 		rpc_id(int(pid), "client_start_game")
 	client_start_game()

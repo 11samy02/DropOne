@@ -313,28 +313,42 @@ func is_human_turn() -> bool:
 
 ## Local player turn check (multiplayer)
 func is_local_turn() -> bool:
-	if is_local_eliminated():
+	if is_local_spectating():
 		return false
-	var my_slot := int(NetworkManager.my_slot)
-	if my_slot < 0:
-		return false
-	var my_holder: HandCardHolder = _slot_to_holder.get(my_slot, null)
+	var my_holder := _get_local_holder()
 	return my_holder != null and is_players_turn(my_holder)
 
 ## True when the local human was eliminated by the max-card rule.
 func is_local_eliminated() -> bool:
+	var my_holder := _get_local_holder()
+	return is_holder_eliminated(my_holder)
+
+## True when the local human finished their hand and is spectating (full ranking).
+func is_local_spectating() -> bool:
+	if is_local_eliminated():
+		return true
+	if not _is_full_ranking_mode():
+		return false
+	var my_holder := _get_local_holder()
+	return is_holder_finished(my_holder)
+
+func _get_local_holder() -> HandCardHolder:
 	var my_slot := int(NetworkManager.my_slot)
 	if my_slot < 0:
-		return false
-	var my_holder: HandCardHolder = _slot_to_holder.get(my_slot, null)
-	return is_holder_eliminated(my_holder)
+		my_slot = 0
+	return _slot_to_holder.get(my_slot, null)
 
 func is_holder_eliminated(holder: HandCardHolder) -> bool:
 	return holder != null and max_card_losers.has(holder)
 
+func is_holder_finished(holder: HandCardHolder) -> bool:
+	if holder == null or !is_instance_valid(holder):
+		return false
+	return winners.has(holder) and not turn_order.has(holder)
+
 ## Play permission check
 func can_play_now(holder: HandCardHolder) -> bool:
-	if is_holder_eliminated(holder):
+	if is_holder_eliminated(holder) or is_holder_finished(holder):
 		return false
 	if place_all_resolving:
 		return false
@@ -420,7 +434,7 @@ func register_card_play(played_card: CardResource, player: HandCardHolder = null
 
 	if _check_and_finish_current_holder():
 		_after_holder_finished()
-		if multiplayer.is_server():
+		if _is_authoritative():
 			_server_sync_match_state()
 			_server_broadcast_counts()
 		return
@@ -477,6 +491,8 @@ func _after_holder_finished() -> void:
 	has_played_this_turn = false
 	has_drawn_this_turn = false
 	if winners.size() > 0:
+		var finished: HandCardHolder = winners[-1]
+		_finalize_finished_holder_ui(finished)
 		if _is_authoritative():
 			if _is_full_ranking_mode():
 				_server_on_new_winner()
@@ -484,9 +500,8 @@ func _after_holder_finished() -> void:
 					_server_try_finish_ranking_match()
 				else:
 					update_turn_state()
-					if multiplayer.is_server():
-						_server_sync_match_state()
-						_server_broadcast_counts()
+					_server_sync_match_state()
+					_server_broadcast_counts()
 					call_deferred("_handle_start_of_turn_effects")
 			else:
 				_server_handle_game_over()
@@ -1086,7 +1101,7 @@ func on_draw_pressed() -> void:
 	var holder := get_current_holder()
 	if holder == null:
 		return
-	if is_holder_eliminated(holder):
+	if is_holder_eliminated(holder) or is_holder_finished(holder):
 		return
 	if holder.is_bot:
 		return
@@ -1229,6 +1244,13 @@ func update_turn_state() -> void:
 		if eliminated_ui != null:
 			_smooth_modulate(eliminated_ui, Color(0.2, 0.2, 0.2, 1.0), 0.25)
 
+	for holder in winners:
+		if holder == null or !is_instance_valid(holder):
+			continue
+		if turn_order.has(holder):
+			continue
+		_finalize_finished_holder_ui(holder)
+
 	for holder in turn_order:
 		var active := is_players_turn(holder)
 		holder.set_turn_active(active)
@@ -1303,6 +1325,9 @@ func _handle_start_of_turn_effects() -> void:
 
 	var holder := get_current_holder()
 	if holder == null:
+		return
+
+	if _try_finish_empty_hand(holder):
 		return
 
 	if draw_stack_amount > 0 and draw_stack_is_wild:
@@ -1385,7 +1410,7 @@ func _check_and_finish_current_holder() -> bool:
 	var holder := get_current_holder()
 	if holder == null:
 		return false
-	if holder.get_child_count() > 0:
+	if _count_cards_in_holder(holder) > 0:
 		return false
 
 	winners.append(holder)
@@ -1404,6 +1429,38 @@ func _check_and_finish_current_holder() -> bool:
 			current_turn_index += turn_order.size()
 
 	return true
+
+## Detect and resolve a player who still sits in turn order but has no cards left.
+func _try_finish_empty_hand(holder: HandCardHolder) -> bool:
+	if holder == null or !is_instance_valid(holder):
+		return false
+	if not turn_order.has(holder):
+		return false
+	if _count_cards_in_holder(holder) > 0:
+		return false
+	if get_current_holder() != holder:
+		return false
+	if _check_and_finish_current_holder():
+		_after_holder_finished()
+		if _is_authoritative():
+			_server_sync_match_state()
+			_server_broadcast_counts()
+		return true
+	return false
+
+## Dims a seat that finished their hand and clears blocking interaction state.
+func _finalize_finished_holder_ui(holder: HandCardHolder) -> void:
+	if holder == null or !is_instance_valid(holder):
+		return
+	_clear_blocking_state_for_holder(holder)
+	holder.set_turn_active(false)
+	_dim_eliminated_holder(holder)
+	var ui_container := get_container_for_holder(holder)
+	if ui_container != null:
+		_smooth_modulate(ui_container, Color(0.45, 0.45, 0.45, 1.0), 0.25)
+	var local := _get_local_holder()
+	if local == holder and !holder.is_bot and card_manager != null:
+		card_manager.update_draw_button_state()
 
 ## Wild owner helpers
 func clear_wild_owner() -> void:

@@ -198,7 +198,7 @@ func _on_draw_deck_pressed() -> void:
 	if waiting_for_color:
 		return
 	if queue_manager != null:
-		if queue_manager.is_local_eliminated():
+		if queue_manager.is_local_spectating():
 			return
 		var allowed := false
 		if multiplayer.has_multiplayer_peer():
@@ -263,7 +263,7 @@ func update_draw_button_state() -> void:
 	var allow := true
 	if waiting_for_color:
 		allow = false
-	elif queue_manager != null and queue_manager.is_local_eliminated():
+	elif queue_manager != null and queue_manager.is_local_spectating():
 		allow = false
 
 	draw_button.disabled = !allow
@@ -289,7 +289,7 @@ func _update_draw_hint() -> void:
 		else:
 			my_turn = queue_manager.is_human_turn()
 
-	if !my_turn or waiting_for_color or (queue_manager != null and queue_manager.is_local_eliminated()):
+	if !my_turn or waiting_for_color or (queue_manager != null and queue_manager.is_local_spectating()):
 		_stop_draw_pulse()
 		_smooth_modulate(draw_button, Color(0.35, 0.35, 0.35, 1.0), 0.25)
 		return

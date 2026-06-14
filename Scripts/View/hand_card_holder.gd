@@ -397,7 +397,7 @@ func sort_cards_full() -> void:
 
 ## Refreshes clickable state and visuals for all cards in this hand
 func refresh_playable_cards() -> void:
-	if queue_manager != null and queue_manager.is_holder_eliminated(self):
+	if queue_manager != null and (queue_manager.is_holder_eliminated(self) or queue_manager.is_holder_finished(self)):
 		for c in get_children():
 			if c is CardView:
 				c.set_clickable(false, true)

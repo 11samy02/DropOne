@@ -5,6 +5,7 @@ const LOBBY_HUB := "res://Scenes/UI/steam_lobby_hub.tscn"
 
 @onready var customize_button: Button = %CustomizeButton
 @onready var play_button: Button = %PlayButton
+@onready var exit_button: Button = %ExitButton
 @onready var profile_panel: Panel = %ProfilePanel
 @onready var profile_name: Label = %ProfileName
 @onready var profile_picture: TextureRect = %ProfilePicture
@@ -44,3 +45,7 @@ func _on_play_pressed() -> void:
 		hint_label.text = "Please customize your profile first."
 		return
 	Globals.change_scene_file(LOBBY_HUB)
+
+
+func _on_exit_pressed() -> void:
+	get_tree().quit()

@@ -284,6 +284,7 @@ func start_game() -> void:
 
 	await get_tree().process_frame
 	update_turn_state()
+	_server_broadcast_counts()
 	call_deferred("_handle_start_of_turn_effects")
 
 ## Current holder getter
@@ -1116,7 +1117,7 @@ func on_draw_pressed() -> void:
 			await force_wild_draw_continue(holder)
 		else:
 			await force_draw_stack_continue(holder)
-		if multiplayer.is_server():
+		if _is_authoritative():
 			_server_broadcast_counts()
 			_server_sync_match_state()
 		return
@@ -1124,6 +1125,7 @@ func on_draw_pressed() -> void:
 	# Server-side or offline draw
 	var card := card_manager.draw_card()
 	if card == null:
+		_try_pass_if_stuck(holder)
 		return
 
 	notify_card_drawn(int(holder.player_index))
@@ -1133,7 +1135,7 @@ func on_draw_pressed() -> void:
 	has_drawn_this_turn = true
 	
 	# Synchronize draw action
-	if multiplayer.is_server():
+	if _is_authoritative():
 		_server_broadcast_counts()
 
 	if !allow_play_after_draw:
@@ -1166,7 +1168,7 @@ func bot_draw_current() -> bool:
 
 	var card := card_manager.draw_card()
 	if card == null:
-		return false
+		return _try_pass_if_stuck(holder)
 
 	notify_card_drawn(int(holder.player_index))
 	holder.add_card(card)
@@ -1260,6 +1262,34 @@ func holder_has_playable_card(holder: HandCardHolder) -> bool:
 			return true
 	return false
 
+## True when at least one card can still be drawn (deck or refillable discard).
+func can_draw_from_pile() -> bool:
+	if card_manager == null:
+		return false
+	if card_manager.deck.size() > 0:
+		return true
+	return card_manager.get_discard_size() > 1
+
+## Pass the turn when the player cannot play and the draw pile is exhausted.
+func _try_pass_if_stuck(holder: HandCardHolder) -> bool:
+	if holder == null:
+		return false
+	if has_played_this_turn:
+		return false
+	if draw_stack_amount > 0:
+		return false
+	if card_manager != null and card_manager.waiting_for_color:
+		return false
+	if roulette_active or place_all_resolving:
+		return false
+	if holder_has_playable_card(holder):
+		return false
+	if can_draw_from_pile():
+		return false
+	has_drawn_this_turn = true
+	end_turn()
+	return true
+
 ## Start-of-turn effects
 func _handle_start_of_turn_effects() -> void:
 	if place_all_resolving:
@@ -1283,6 +1313,9 @@ func _handle_start_of_turn_effects() -> void:
 	if draw_stack_amount > 0 and !draw_stack_is_wild:
 		if !holder.is_bot:
 			holder.refresh_playable_cards()
+		return
+
+	if _try_pass_if_stuck(holder):
 		return
 
 ## Force wild draw resolve
@@ -1531,13 +1564,13 @@ func get_valid_target_holders(exclude: HandCardHolder) -> Array[HandCardHolder]:
 		res.append(h)
 	return res
 
-## Count CardView nodes in a holder (ignores UI / animation children).
+## Count CardView nodes in a holder (ignores transient animation cards).
 func _count_cards_in_holder(holder: HandCardHolder) -> int:
 	if holder == null:
 		return 0
 	var n := 0
 	for c in holder.get_children():
-		if c is CardView:
+		if c is CardView and not c.get_meta("anim_temp", false):
 			n += 1
 	return n
 
@@ -2883,7 +2916,7 @@ func _apply_counts_to_ui() -> void:
 
 	var my_slot := int(NetworkManager.my_slot)
 	if my_slot < 0:
-		return
+		my_slot = 0
 
 	for i in range(_last_hand_counts.size()):
 		if i == my_slot:
@@ -3033,6 +3066,8 @@ func server_apply_draw(peer_id: int) -> void:
 	# Normal draw
 	var card := card_manager.draw_card()
 	if card == null:
+		if _try_pass_if_stuck(holder):
+			_server_sync_match_state()
 		return
 
 	notify_card_drawn(int(slot))
@@ -3216,9 +3251,9 @@ func _server_sync_match_state() -> void:
 	# Do not apply the snapshot on the server — it is authoritative and
 	# re-applying (especially mid wild-color pick) can clobber draw_stack.
 
-## Server broadcast counts
+## Broadcast hand + deck counts to every peer (offline applies locally too).
 func _server_broadcast_counts() -> void:
-	if not multiplayer.is_server():
+	if not _is_authoritative():
 		return
 
 	var counts: Array = []
@@ -3234,7 +3269,10 @@ func _server_broadcast_counts() -> void:
 	if card_manager != null and card_manager.deck != null:
 		deck_count = int(card_manager.deck.size())
 
-	NetworkManager.rpc("client_set_counts", counts, deck_count)
+	if multiplayer.has_multiplayer_peer() and multiplayer.is_server():
+		NetworkManager.rpc("client_set_counts", counts, deck_count)
+	else:
+		_on_counts_received(counts, deck_count)
 
 ## Push a holder's authoritative hand to its owning client. Many special-card
 ## effects (target/multi draw, swap, roulette, place-all) change a hand purely

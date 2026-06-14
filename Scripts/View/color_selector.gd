@@ -40,6 +40,12 @@ func _pick_color(color: CardResource.CardColor) -> void:
 		return
 	hide()
 	if multiplayer.has_multiplayer_peer() and !multiplayer.is_server():
+		if queue_manager != null and queue_manager.card_manager != null:
+			var cm := queue_manager.card_manager
+			cm.waiting_for_color = false
+			cm.pending_wild_card = null
+			cm.current_color = color
+			cm.sync_top_card_color_visual()
 		NetworkManager.request_wild_color(int(color))
 		return
 	if queue_manager != null and queue_manager.has_method("server_apply_local_wild_color"):

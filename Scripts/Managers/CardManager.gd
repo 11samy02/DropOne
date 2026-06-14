@@ -99,18 +99,18 @@ func begin_top_card_suppression() -> void:
 func is_top_card_suppressed() -> bool:
 	return _top_card_suppressed
 
-func end_top_card_suppression(fallback: CardResource = null) -> void:
+func end_top_card_suppression(fallback: CardResource = null, prompt_color: bool = true) -> void:
 	_top_card_suppressed = false
 	var buffered := _suppressed_top_card
 	_suppressed_top_card = null
 	if buffered != null:
-		set_top_card_runtime(buffered)
+		set_top_card_runtime(buffered, prompt_color)
 	elif fallback != null:
-		set_top_card_runtime(fallback)
+		set_top_card_runtime(fallback, prompt_color)
 
 
 ## Applies a new top card, handles wild color prompt, and updates UI.
-func set_top_card_runtime(card: CardResource) -> void:
+func set_top_card_runtime(card: CardResource, prompt_color: bool = true) -> void:
 	if card == null:
 		return
 
@@ -126,9 +126,13 @@ func set_top_card_runtime(card: CardResource) -> void:
 
 	if _card_requires_color_selection(card):
 		current_color = CardResource.CardColor.BLACK
-		waiting_for_color = true
-		pending_wild_card = card
-		Signals.COLOR_request_color_select.emit()
+		if prompt_color:
+			waiting_for_color = true
+			pending_wild_card = card
+			Signals.COLOR_request_color_select.emit()
+		else:
+			waiting_for_color = false
+			pending_wild_card = null
 	else:
 		current_color = card.color
 		waiting_for_color = false
@@ -195,7 +199,7 @@ func sync_top_card_color_visual() -> void:
 		return
 
 	if CardResource.is_neutral_wild_type(top_card.type):
-		if waiting_for_color:
+		if waiting_for_color or current_color == CardResource.CardColor.BLACK:
 			top_card_view.override_color_enabled = false
 		else:
 			top_card_view.override_color_enabled = true

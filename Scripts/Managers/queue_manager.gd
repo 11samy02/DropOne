@@ -2958,6 +2958,10 @@ func _build_match_state() -> Dictionary:
 	if pending_swap_owner != null and is_instance_valid(pending_swap_owner):
 		pending_swap_slot = int(pending_swap_owner.player_index)
 
+	var wild_owner_slot := -1
+	if wild_color_owner != null and is_instance_valid(wild_color_owner):
+		wild_owner_slot = int(wild_color_owner.player_index)
+
 	var active_turn_slots: Array = []
 	for h in turn_order:
 		if h != null and is_instance_valid(h):
@@ -2983,6 +2987,7 @@ func _build_match_state() -> Dictionary:
 		"place_all_active": bool(place_all_active),
 		"target_draw_active": bool(target_draw_active),
 		"pending_swap_slot": pending_swap_slot,
+		"wild_owner_slot": wild_owner_slot,
 		"eliminated_slots": _get_eliminated_slots(),
 	}
 
@@ -3070,7 +3075,6 @@ func _apply_match_state_snapshot(state: Dictionary, skip_top_card: bool = false)
 
 	if state.has("current_color") and card_manager != null:
 		card_manager.current_color = int(state.get("current_color", card_manager.current_color))
-		card_manager.sync_top_card_color_visual()
 	# Clients mirror server snapshots; the server must not reconcile
 	# waiting_for_color from its own broadcasts or a pending wild play can be
 	# auto-resolved without register_card_play (stacked +4 stays at +4).
@@ -3078,8 +3082,13 @@ func _apply_match_state_snapshot(state: Dictionary, skip_top_card: bool = false)
 		var waiting := bool(state.get("waiting_for_color", card_manager.waiting_for_color))
 		if waiting and !card_manager.waiting_for_color:
 			card_manager.waiting_for_color = true
+			card_manager.pending_wild_card = card_manager.top_card
 		if !waiting and card_manager.waiting_for_color:
-			card_manager.select_color(card_manager.current_color)
+			card_manager.waiting_for_color = false
+			card_manager.pending_wild_card = null
+	_sync_wild_owner_from_state(state)
+	if card_manager != null:
+		card_manager.sync_top_card_color_visual()
 
 	_apply_match_state_flags(state)
 	_sync_eliminated_slots_from_state(state)
@@ -3094,6 +3103,30 @@ func _apply_match_state_snapshot(state: Dictionary, skip_top_card: bool = false)
 		_try_prompt_local_roulette_color()
 	elif not multiplayer.is_server() and not roulette_waiting_for_color:
 		Signals.COLOR_color_select_dismissed.emit()
+	_try_prompt_wild_color_from_state(state)
+
+func _sync_wild_owner_from_state(state: Dictionary) -> void:
+	if multiplayer.is_server():
+		return
+	var wild_slot := int(state.get("wild_owner_slot", -1))
+	if wild_slot >= 0:
+		var owner: HandCardHolder = _slot_to_holder.get(wild_slot, null)
+		if owner != null and is_instance_valid(owner):
+			set_wild_color_owner(owner)
+			return
+	if card_manager == null or !card_manager.waiting_for_color:
+		clear_wild_owner()
+
+func _try_prompt_wild_color_from_state(state: Dictionary) -> void:
+	if multiplayer.is_server():
+		return
+	if card_manager == null or !card_manager.waiting_for_color:
+		return
+	if wild_color_owner == null or !is_instance_valid(wild_color_owner):
+		return
+	if !_is_local_human_owner(wild_color_owner):
+		return
+	call_deferred("_ensure_wild_color_resolved", wild_color_owner)
 
 ## Serialize card
 func _serialize_card(r: CardResource) -> Dictionary:
@@ -3398,8 +3431,10 @@ func server_apply_play(peer_id: int, card_id: int) -> void:
 
 	if card_manager != null and card_manager.waiting_for_color and wild_color_owner == holder:
 		var owner_peer := _slot_to_peer_id(holder.player_index)
-		if owner_peer != 0:
+		if owner_peer > 1:
 			NetworkManager.rpc_id(owner_peer, "client_request_color", int(holder.player_index))
+		elif owner_peer == 1:
+			call_deferred("_ensure_wild_color_resolved", holder)
 
 	# Synchronize match state after card play
 	_server_sync_match_state()
@@ -3571,13 +3606,19 @@ func _apply_wild_color(color: int, owner_slot: int) -> void:
 func client_apply_wild_color(color: int, owner_slot: int) -> void:
 	if card_manager == null:
 		return
-	if card_manager.waiting_for_color:
-		card_manager.select_color(color)
-	else:
-		card_manager.current_color = color
-		card_manager.sync_top_card_color_visual()
+	var chosen := int(color) as CardResource.CardColor
+	card_manager.waiting_for_color = false
+	card_manager.pending_wild_card = null
+	card_manager.current_color = chosen
+	card_manager.sync_top_card_color_visual()
+	card_manager.update_draw_button_state()
 	if not roulette_active:
-		Signals.COLOR_color_selected.emit(color)
+		Signals.COLOR_color_selected.emit(chosen)
+	var owner: HandCardHolder = _slot_to_holder.get(int(owner_slot), null)
+	if owner != null and is_instance_valid(owner):
+		owner._waiting_color_turn_end = false
+		owner._pending_effect_card_uid = -1
+		owner._busy = false
 	clear_wild_owner()
 	Signals.COLOR_color_select_dismissed.emit()
 
@@ -3603,6 +3644,7 @@ func client_request_color(owner_slot: int) -> void:
 		return
 	if card_manager != null:
 		card_manager.waiting_for_color = true
+		card_manager.pending_wild_card = card_manager.top_card
 	set_wild_color_owner(holder)
 	Signals.COLOR_request_color_select.emit()
 
@@ -3722,17 +3764,26 @@ func _on_play_event_received(from_slot: int, card: Dictionary) -> void:
 					cv.get_parent().remove_child(cv)
 				cv.queue_free()
 
+		var is_wild_play := r.type in [
+			CardResource.CardType.WILD,
+			CardResource.CardType.WILD_DRAW,
+			CardResource.CardType.WILD_DRAW_REVERSE,
+		]
+		if is_wild_play:
+			set_wild_color_owner(holder)
+			holder._waiting_color_turn_end = true
+			holder._pending_effect_card_uid = int(r.uid)
+
 		if card_manager != null:
-			card_manager.end_top_card_suppression(r)
+			card_manager.end_top_card_suppression(r, false)
 
 		update_turn_state()
 
-		if r.type in [
-			CardResource.CardType.WILD,
-			CardResource.CardType.WILD_DRAW,
-			CardResource.CardType.WILD_DRAW_REVERSE
-		]:
-			set_wild_color_owner(holder)
+		if is_wild_play:
+			if card_manager != null:
+				card_manager.waiting_for_color = true
+				card_manager.pending_wild_card = card_manager.top_card
+			call_deferred("_ensure_wild_color_resolved", holder)
 
 		holder.sort_cards_full()
 		holder.refresh_playable_cards()
@@ -3769,7 +3820,7 @@ func _on_play_event_received(from_slot: int, card: Dictionary) -> void:
 		temp.queue_free()
 
 	if card_manager != null:
-		card_manager.end_top_card_suppression(r)
+		card_manager.end_top_card_suppression(r, false)
 
 	update_turn_state()
 	_finish_client_play_animation()

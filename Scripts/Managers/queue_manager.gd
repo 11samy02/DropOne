@@ -45,6 +45,8 @@ var draw_stack_min_value := 0
 var draw_stack_is_wild := false
 ## Color constraint for stacking colored +draw cards.
 var draw_stack_color: CardResource.CardColor = CardResource.CardColor.BLACK
+## Seat that played the current +draw stack; that player must never resolve it.
+var draw_stack_source_slot: int = -1
 ## Holder who must pick wild color after playing a wild card.
 var wild_color_owner: HandCardHolder = null
 
@@ -461,17 +463,17 @@ func register_card_play(played_card: CardResource, player: HandCardHolder = null
 			return
 		CardResource.CardType.DRAW:
 			start_or_stack_draw(_draw_stack_value_for_play(played_card), false, played_card.value)
-			end_turn()
+			_advance_turn_after_draw_penalty()
 			return
 		CardResource.CardType.WILD_DRAW:
 			start_or_stack_draw(played_card.value, true, played_card.value)
-			end_turn()
+			_advance_turn_after_draw_penalty()
 			return
 		CardResource.CardType.WILD_DRAW_REVERSE:
 			if turn_order.size() > 2:
 				apply_reverse()
 			start_or_stack_draw(played_card.value, true, played_card.value)
-			end_turn()
+			_advance_turn_after_draw_penalty()
 			return
 		CardResource.CardType.SWAP_HANDS:
 			if swap_color_pending:
@@ -878,11 +880,23 @@ func apply_reverse() -> void:
 	if multiplayer.is_server():
 		_server_sync_match_state()
 
+## Resets all draw-stack tracking fields.
+func _clear_draw_stack() -> void:
+	draw_stack_amount = 0
+	draw_stack_min_value = 0
+	draw_stack_is_wild = false
+	draw_stack_color = CardResource.CardColor.BLACK
+	draw_stack_source_slot = -1
+
+
 ## Draw stack add/stack
 func start_or_stack_draw(value: int, is_wild: bool, min_card_value: int = -1) -> void:
 	draw_stack_amount += value
 	var card_min := min_card_value if min_card_value >= 0 else value
 	draw_stack_min_value = max(draw_stack_min_value, card_min)
+	var stacker := get_current_holder()
+	if stacker != null:
+		draw_stack_source_slot = int(stacker.player_index)
 	if is_wild:
 		draw_stack_is_wild = true
 		if card_manager != null:
@@ -890,28 +904,24 @@ func start_or_stack_draw(value: int, is_wild: bool, min_card_value: int = -1) ->
 	elif card_manager != null and card_manager.top_card != null:
 		draw_stack_color = card_manager.top_card.color
 
-	# Synchronize draw stack changes
-	if multiplayer.is_server():
-		_server_sync_match_state()
 
-## When a higher-value colored draw is played on a lower-value draw of the
-## same color, include the previous top card's value (e.g. +3 on +2 → 5).
+## Ends the turn after a +draw card; sync happens in next_turn().
+func _advance_turn_after_draw_penalty() -> void:
+	end_turn()
+
+
+## True when this holder played the current +draw stack and must not resolve it.
+func _holder_is_draw_stack_source(holder: HandCardHolder) -> bool:
+	if holder == null or draw_stack_source_slot < 0:
+		return false
+	return int(holder.player_index) == draw_stack_source_slot
+
+
+## Returns how many cards the current +draw play adds to the active stack.
 func _draw_stack_value_for_play(played_card: CardResource) -> int:
 	if played_card == null:
 		return 0
-	var value := played_card.value
-	if draw_stack_amount > 0:
-		return value
-	if card_manager == null or card_manager.discard_pile.is_empty():
-		return value
-	var prev: CardResource = card_manager.discard_pile[-1]
-	if prev.type != CardResource.CardType.DRAW:
-		return value
-	if prev.color != played_card.color:
-		return value
-	if played_card.value <= prev.value:
-		return value
-	return value + prev.value
+	return played_card.value
 
 ## Max-card-lose rule helpers (configured on DeckResource).
 func is_max_card_lose_enabled() -> bool:
@@ -965,6 +975,7 @@ func _apply_player_eliminated_slot(slot: int, show_local_lose_ui: bool) -> void:
 		return
 
 	max_card_losers.append(holder)
+	_recycle_eliminated_holder_cards(holder)
 	_clear_blocking_state_for_holder(holder)
 
 	var removed_index := turn_order.find(holder)
@@ -997,6 +1008,43 @@ func _apply_player_eliminated_slot(slot: int, show_local_lose_ui: bool) -> void:
 			card_manager.update_draw_button_state()
 		if _is_authoritative():
 			call_deferred("_handle_start_of_turn_effects")
+
+## Returns eliminated hand cards to the discard pile while keeping ghost visuals in the seat.
+func _recycle_eliminated_holder_cards(holder: HandCardHolder) -> void:
+	if holder == null or !is_instance_valid(holder):
+		return
+	if holder.get_meta("cards_recycled", false):
+		return
+	holder.set_meta("cards_recycled", true)
+
+	var to_discard: Array[CardResource] = []
+	for c in holder.get_children():
+		if c is CardView and not c.get_meta("anim_temp", false):
+			var res: CardResource = c.card_res
+			if res == null or c.get_meta("eliminated_ghost", false):
+				continue
+			if _is_authoritative() and card_manager != null:
+				to_discard.append(res)
+			_set_card_view_eliminated_ghost(c as CardView, res)
+
+	if _is_authoritative() and card_manager != null and !to_discard.is_empty():
+		for res in to_discard:
+			card_manager.discard_pile.append(res)
+		_sync_deck_counts()
+
+
+func _set_card_view_eliminated_ghost(cv: CardView, res: CardResource) -> void:
+	if cv == null or res == null:
+		return
+	var ghost := CardResource.new()
+	ghost.color = res.color
+	ghost.type = res.type
+	ghost.value = res.value
+	ghost.uid = -maxi(1, int(res.uid))
+	cv.card_res = ghost
+	cv.set_meta("eliminated_ghost", true)
+	cv.load_card()
+
 
 ## Clears in-progress special states owned by an eliminated holder.
 func _clear_blocking_state_for_holder(holder: HandCardHolder) -> void:
@@ -1151,6 +1199,9 @@ func on_draw_pressed() -> void:
 		return
 
 	if draw_stack_amount > 0:
+		if _holder_is_draw_stack_source(holder):
+			end_turn()
+			return
 		if draw_stack_is_wild:
 			await force_wild_draw_continue(holder)
 		else:
@@ -1375,6 +1426,9 @@ func _handle_start_of_turn_effects() -> void:
 		return
 
 	if draw_stack_amount > 0 and draw_stack_is_wild:
+		if _holder_is_draw_stack_source(holder):
+			end_turn()
+			return
 		if holder.is_bot:
 			call_deferred("_kick_bot_turn_if_needed", holder)
 		else:
@@ -1382,6 +1436,9 @@ func _handle_start_of_turn_effects() -> void:
 		return
 
 	if draw_stack_amount > 0 and !draw_stack_is_wild:
+		if _holder_is_draw_stack_source(holder):
+			end_turn()
+			return
 		if holder.is_bot:
 			call_deferred("_kick_bot_turn_if_needed", holder)
 		else:
@@ -1400,10 +1457,7 @@ func force_wild_draw_continue(holder: HandCardHolder) -> void:
 		notify_card_drawn(int(holder.player_index), 1, false)
 		holder.add_card(card)
 
-	draw_stack_amount = 0
-	draw_stack_min_value = 0
-	draw_stack_is_wild = false
-	draw_stack_color = CardResource.CardColor.BLACK
+	_clear_draw_stack()
 
 	_sync_deck_counts()
 	# Synchronize draw stack reset
@@ -1429,10 +1483,7 @@ func force_draw_stack_continue(holder: HandCardHolder) -> void:
 		notify_card_drawn(int(holder.player_index), 1, false)
 		holder.add_card(card)
 
-	draw_stack_amount = 0
-	draw_stack_min_value = 0
-	draw_stack_is_wild = false
-	draw_stack_color = CardResource.CardColor.BLACK
+	_clear_draw_stack()
 
 	_sync_deck_counts()
 	# Synchronize draw stack reset
@@ -2626,6 +2677,7 @@ func _reset_server_match_state() -> void:
 	draw_stack_min_value = 0
 	draw_stack_is_wild = false
 	draw_stack_color = CardResource.CardColor.BLACK
+	draw_stack_source_slot = -1
 	wild_color_owner = null
 	target_draw_active = false
 	target_draw_value = 0
@@ -2677,6 +2729,7 @@ func _build_match_state() -> Dictionary:
 		"draw_stack_min": int(draw_stack_min_value),
 		"draw_stack_is_wild": bool(draw_stack_is_wild),
 		"draw_stack_color": int(draw_stack_color),
+		"draw_stack_source_slot": int(draw_stack_source_slot),
 		"current_color": int(card_manager.current_color) if card_manager != null else 0,
 		"waiting_for_color": bool(card_manager.waiting_for_color) if card_manager != null else false,
 		"has_played": bool(has_played_this_turn),
@@ -2771,6 +2824,7 @@ func _apply_match_state_snapshot(state: Dictionary, skip_top_card: bool = false)
 		draw_stack_min_value = int(state.get("draw_stack_min", draw_stack_min_value))
 		draw_stack_is_wild = bool(state.get("draw_stack_is_wild", draw_stack_is_wild))
 		draw_stack_color = int(state.get("draw_stack_color", draw_stack_color))
+		draw_stack_source_slot = int(state.get("draw_stack_source_slot", draw_stack_source_slot))
 
 	if state.has("current_color") and card_manager != null:
 		card_manager.current_color = int(state.get("current_color", card_manager.current_color))
@@ -2885,6 +2939,7 @@ func _server_start_match() -> void:
 	draw_stack_min_value = 0
 	draw_stack_is_wild = false
 	draw_stack_color = CardResource.CardColor.BLACK
+	draw_stack_source_slot = -1
 	has_played_this_turn = false
 	has_drawn_this_turn = false
 	winners.clear()
@@ -2914,6 +2969,7 @@ func _server_start_match() -> void:
 		"draw_stack_min": 0,
 		"draw_stack_is_wild": false,
 		"draw_stack_color": int(CardResource.CardColor.BLACK),
+		"draw_stack_source_slot": -1,
 		"current_color": int(card_manager.current_color),
 		"waiting_for_color": bool(card_manager.waiting_for_color)
 	}

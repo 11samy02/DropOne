@@ -16,6 +16,21 @@ signal TARGET_target_selected(target_holder: HandCardHolder)
 signal DECK_draw_pressed
 ## Emitted whenever the active turn holder changes.
 signal TURN_changed(holder)
+## Emitted when play direction reverses (+1 forward, -1 reverse).
+signal MATCH_direction_changed(direction: int)
+
+enum FeedbackKind {
+	BLOCKED,
+	SKIPPED,
+	INVALID,
+	ELIMINATED,
+	COLOR,
+	WAIT,
+	ALREADY_PLAYED,
+}
+
+## Short-lived popup with text and icon chosen from FeedbackKind.
+signal FEEDBACK_show(text: String, kind: int)
 
 ## Emitted when the profile creator picks an avatar texture and index.
 signal PROFILE_set_picture(texture: Texture2D, id: int)

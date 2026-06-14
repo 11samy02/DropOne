@@ -1,4 +1,4 @@
-[gd_scene load_steps=17 format=3 uid="uid://b3cbm8norl5h7"]
+[gd_scene load_steps=19 format=3 uid="uid://b3cbm8norl5h7"]
 
 [ext_resource type="Script" uid="uid://dr0t8llnaw7ml" path="res://Scripts/Managers/CardManager.gd" id="1_4bhoy"]
 [ext_resource type="PackedScene" uid="uid://0lhp5dikyv3u" path="res://Scenes/Managers/queue_manager.tscn" id="2_1vgeo"]
@@ -12,6 +12,8 @@
 [ext_resource type="Shader" uid="uid://corv0pvqk7gru" path="res://Shaders/Background.gdshader" id="6_abt31"]
 [ext_resource type="Script" uid="uid://da686y68ol6iv" path="res://Scripts/View/plus_stack_label.gd" id="7_luibc"]
 [ext_resource type="Texture2D" uid="uid://xspumfxdwrqn" path="res://Assets/card-theme/default/black.png" id="9_xhqx2"]
+[ext_resource type="Script" path="res://Scripts/UI/turn_feedback.gd" id="10_tfback"]
+[ext_resource type="Script" path="res://Scripts/View/turn_direction_indicator.gd" id="11_tdir"]
 
 [sub_resource type="Resource" id="Resource_xhqx2"]
 script = ExtResource("3_c0tlk")
@@ -48,6 +50,30 @@ loaded_deck = ExtResource("2_xhqx2")
 
 [node name="CanvasLayer" type="CanvasLayer" parent="."]
 layer = 31
+
+[node name="TurnDirectionIndicator" type="Control" parent="CanvasLayer" node_paths=PackedStringArray("queue_manager")]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+z_index = 12
+script = ExtResource("11_tdir")
+queue_manager = NodePath("../../QueueManager")
+
+[node name="TurnFeedback" type="Control" parent="CanvasLayer"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+z_index = 400
+process_mode = 3
+script = ExtResource("10_tfback")
 
 [node name="player Selector" parent="CanvasLayer" node_paths=PackedStringArray("queue_manager") instance=ExtResource("5_abt31")]
 z_index = 500

@@ -85,12 +85,16 @@ var _client_has_state := false
 var _client_match_started := false
 var _game_over_handled := false
 var _winner_overlay: CanvasLayer = null
+var _lobby_return_requested := false
+var _placement_toast: CanvasLayer = null
 var _loser_overlay: CanvasLayer = null
 var _local_loser_overlay_shown := false
 var _server_last_players_change_ms := 0
 var _server_start_delay_active := false
 const SERVER_START_DELAY_MS := 300
 var _client_play_animating := false
+## Uids whose special-card effects were already applied (prevents double skip etc.).
+var _resolved_effect_uids: Dictionary = {}
 
 ## Init networking + buffered snapshots
 func _ready() -> void:
@@ -340,6 +344,49 @@ func can_play_now(holder: HandCardHolder) -> bool:
 		return false
 	return true
 
+## Holder that would be skipped if next_turn(true) runs now.
+func _peek_skipped_holder() -> HandCardHolder:
+	if turn_order.size() <= 1:
+		return null
+	var skipped_index := current_turn_index + direction
+	skipped_index = skipped_index % turn_order.size()
+	if skipped_index < 0:
+		skipped_index += turn_order.size()
+	return turn_order[skipped_index]
+
+## Notifies the skipped human player on their client (server sends targeted RPC).
+func _notify_player_skipped(skipped_holder: HandCardHolder) -> void:
+	if skipped_holder == null or skipped_holder.is_bot:
+		return
+
+	var slot := int(skipped_holder.player_index)
+
+	if !multiplayer.has_multiplayer_peer():
+		if _is_local_human_owner(skipped_holder):
+			Signals.FEEDBACK_show.emit("Skipped", Signals.FeedbackKind.SKIPPED)
+		return
+
+	if !multiplayer.is_server():
+		return
+
+	NetworkManager.server_notify_player_skipped(slot)
+
+
+## Returns false when this card's effects were already resolved or the card is not the current top.
+func _can_resolve_card_effect(played_card: CardResource) -> bool:
+	if played_card == null:
+		return false
+	var uid := int(played_card.uid)
+	if uid <= 0:
+		return false
+	if _resolved_effect_uids.has(uid):
+		return false
+	if card_manager != null and card_manager.top_card != null:
+		if uid != int(card_manager.top_card.uid):
+			return false
+	return true
+
+
 ## Register played card and advance rules
 func register_card_play(played_card: CardResource, player: HandCardHolder = null) -> void:
 	if played_card == null:
@@ -348,6 +395,11 @@ func register_card_play(played_card: CardResource, player: HandCardHolder = null
 
 	if place_all_active:
 		return
+
+	if not _can_resolve_card_effect(played_card):
+		return
+
+	_resolved_effect_uids[int(played_card.uid)] = true
 
 	var actor := player if player != null else get_current_holder()
 	has_played_this_turn = true
@@ -358,7 +410,9 @@ func register_card_play(played_card: CardResource, player: HandCardHolder = null
 
 	match played_card.type:
 		CardResource.CardType.SKIP:
+			var skipped_holder := _peek_skipped_holder()
 			next_turn(true)
+			_notify_player_skipped(skipped_holder)
 			return
 		CardResource.CardType.REVERSE:
 			if turn_order.size() == 2:
@@ -407,7 +461,15 @@ func _after_holder_finished() -> void:
 	has_drawn_this_turn = false
 	if winners.size() > 0:
 		if multiplayer.is_server():
-			_server_handle_game_over()
+			if _is_full_ranking_mode():
+				_server_on_new_winner()
+				if turn_order.size() <= 1:
+					_server_try_finish_ranking_match()
+				else:
+					update_turn_state()
+					call_deferred("_handle_start_of_turn_effects")
+			else:
+				_server_handle_game_over()
 		return
 	if current_turn_index >= turn_order.size():
 		current_turn_index = 0
@@ -420,8 +482,60 @@ func _restart_match() -> void:
 	await get_tree().create_timer(1.0).timeout
 	get_tree().reload_current_scene()
 
-## Server: Spielende behandeln – Gewinner ansagen, dann zurück in die Lobby
 ## Server: announce winner RPC, wait, then return all peers to lobby.
+func _is_full_ranking_mode() -> bool:
+	return int(NetworkManager.lobby_end_mode) == NetworkManager.LobbyEndMode.FULL_RANKING
+
+
+func _holder_display_name(holder: HandCardHolder) -> String:
+	if holder == null or !is_instance_valid(holder):
+		return "Player"
+	if holder.profile != null:
+		return str(holder.profile.player_name)
+	return "Player"
+
+
+func _build_ranking_results() -> Array:
+	var results: Array = []
+	for i in range(winners.size()):
+		var h: HandCardHolder = winners[i]
+		if h == null or !is_instance_valid(h):
+			continue
+		results.append({
+			"name": _holder_display_name(h),
+			"slot": int(h.player_index),
+			"place": i + 1,
+		})
+	return results
+
+
+func _server_on_new_winner() -> void:
+	if not multiplayer.is_server() or _game_over_handled:
+		return
+	if winners.is_empty():
+		return
+
+	var winner: HandCardHolder = winners[-1]
+	var winner_name := _holder_display_name(winner)
+	var winner_slot := int(winner.player_index)
+	var place := winners.size()
+	var results := _build_ranking_results()
+	NetworkManager.server_announce_winner(winner_name, winner_slot, place, false, results)
+
+
+func _server_try_finish_ranking_match() -> void:
+	if not multiplayer.is_server() or _game_over_handled:
+		return
+	if turn_order.size() == 1:
+		var last_holder: HandCardHolder = turn_order[0]
+		if last_holder != null and is_instance_valid(last_holder) and not winners.has(last_holder):
+			winners.append(last_holder)
+		turn_order.clear()
+	if not turn_order.is_empty():
+		return
+	_server_handle_game_over()
+
+
 func _server_handle_game_over() -> void:
 	if not multiplayer.is_server():
 		return
@@ -429,32 +543,42 @@ func _server_handle_game_over() -> void:
 		return
 	_game_over_handled = true
 
+	var results := _build_ranking_results()
 	var winner_name := "Player"
 	var winner_slot := -1
-	if winners.size() > 0 and winners[0] != null and is_instance_valid(winners[0]):
+	var place := 1
+	if results.size() > 0:
+		var first: Dictionary = results[0]
+		winner_name = str(first.get("name", "Player"))
+		winner_slot = int(first.get("slot", -1))
+		place = int(first.get("place", 1))
+	elif winners.size() > 0 and winners[0] != null and is_instance_valid(winners[0]):
 		winner_slot = int(winners[0].player_index)
-		if winners[0].profile != null:
-			winner_name = str(winners[0].profile.player_name)
+		winner_name = _holder_display_name(winners[0])
 
-	NetworkManager.server_announce_winner(winner_name, winner_slot)
+	NetworkManager.server_announce_winner(winner_name, winner_slot, place, true, results)
 
-	# Gewinner kurz anzeigen, dann alle zurück in die Lobby holen.
-	await get_tree().create_timer(4.5).timeout
-	NetworkManager.server_return_to_lobby()
 
-## Gewinner-Overlay anzeigen + Spiel pausieren (Client + Server)
-## Shows winner overlay on all peers and pauses the scene tree.
-func _on_game_won(winner_name: String, winner_slot: int = -1) -> void:
-	# Let the winning card's fly/placement animation finish first. Pausing the
-	# tree immediately froze the in-flight tween and the 0.3s await that removes
-	# the card, so the winner's last card visually stayed in hand and it looked
-	# like they still had a card left.
+## Shows winner overlay on all peers and pauses the scene tree (final only).
+func _on_game_won(
+	winner_name: String,
+	winner_slot: int = -1,
+	place: int = 1,
+	is_final: bool = true,
+	all_results: Array = []
+) -> void:
 	await get_tree().create_timer(0.45).timeout
-	# Guarantee the winner shows an empty hand on EVERY peer, regardless of how
-	# the last card's animation/counts resolved locally.
 	_force_clear_winner_hand(winner_slot)
-	_show_winner_overlay(winner_name)
-	get_tree().paused = true
+	if is_final:
+		var results := all_results if all_results.size() > 0 else [{
+			"name": winner_name,
+			"slot": winner_slot,
+			"place": place,
+		}]
+		_show_results_overlay(results)
+		get_tree().paused = true
+	else:
+		_show_placement_toast(winner_name, place)
 
 ## Remove every card view from the winner's seat so they visibly have no cards.
 ## Clears winner hand visuals on every peer after the last card animation.
@@ -473,14 +597,16 @@ func _force_clear_winner_hand(winner_slot: int) -> void:
 ## Unpauses and navigates back to steam_lobby_room while keeping connection.
 func _on_return_to_lobby() -> void:
 	get_tree().paused = false
+	_lobby_return_requested = false
 	_hide_winner_overlay()
+	_hide_placement_toast()
 	_hide_loser_overlay()
 	_local_loser_overlay_shown = false
 	NetworkManager.mark_rejoin_from_match()
 	Globals.change_scene_file("res://Scenes/UI/steam_lobby_room.tscn")
 
-## Creates full-screen winner overlay with name and lobby-return hint.
-func _show_winner_overlay(winner_name: String) -> void:
+## Creates full-screen final results overlay with all placements.
+func _show_results_overlay(results: Array) -> void:
 	_hide_winner_overlay()
 
 	var layer := CanvasLayer.new()
@@ -499,31 +625,115 @@ func _show_winner_overlay(winner_name: String) -> void:
 
 	var vbox := VBoxContainer.new()
 	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	vbox.add_theme_constant_override("separation", 24)
+	vbox.add_theme_constant_override("separation", 16)
 	center.add_child(vbox)
 
-	var crown := Label.new()
-	crown.text = "🏆 WINNER 🏆"
-	crown.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	crown.add_theme_font_size_override("font_size", 48)
-	crown.modulate = Color(1.0, 0.85, 0.3)
-	vbox.add_child(crown)
+	var title := Label.new()
+	title.text = "🏆 MATCH RESULTS 🏆"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 44)
+	title.modulate = Color(1.0, 0.85, 0.3)
+	vbox.add_child(title)
 
-	var name_label := Label.new()
-	name_label.text = winner_name
-	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	name_label.add_theme_font_size_override("font_size", 80)
-	vbox.add_child(name_label)
+	for entry in results:
+		if not (entry is Dictionary):
+			continue
+		var place_num := int(entry.get("place", 0))
+		var suffix := _place_suffix(place_num)
+		var row := Label.new()
+		row.text = "%d%s – %s" % [place_num, suffix, str(entry.get("name", "Player"))]
+		row.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		row.add_theme_font_size_override("font_size", 36 if place_num == 1 else 28)
+		if place_num == 1:
+			row.modulate = Color(1.0, 0.9, 0.4)
+		vbox.add_child(row)
 
-	var hint := Label.new()
-	hint.text = "Returning to lobby..."
-	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hint.add_theme_font_size_override("font_size", 28)
-	hint.modulate = Color(0.8, 0.8, 0.8)
-	vbox.add_child(hint)
+	var btn := Button.new()
+	btn.text = "Zurück zur Lobby"
+	btn.custom_minimum_size = Vector2(380, 70)
+	btn.process_mode = Node.PROCESS_MODE_ALWAYS
+	btn.add_theme_font_size_override("font_size", 32)
+	var btn_normal := load("res://Themes/ui_button.tres") as StyleBox
+	var btn_hover := load("res://Themes/ui_button_hover.tres") as StyleBox
+	var btn_pressed := load("res://Themes/ui_button_pressed.tres") as StyleBox
+	if btn_normal:
+		btn.add_theme_stylebox_override("normal", btn_normal)
+	if btn_hover:
+		btn.add_theme_stylebox_override("hover", btn_hover)
+	if btn_pressed:
+		btn.add_theme_stylebox_override("pressed", btn_pressed)
+	btn.pressed.connect(_on_results_lobby_button_pressed)
+	vbox.add_child(btn)
 
 	get_tree().root.add_child(layer)
 	_winner_overlay = layer
+
+
+func _on_results_lobby_button_pressed() -> void:
+	if _lobby_return_requested:
+		return
+	_lobby_return_requested = true
+
+	if not multiplayer.has_multiplayer_peer():
+		_on_return_to_lobby()
+		return
+	if multiplayer.is_server():
+		NetworkManager.server_return_to_lobby()
+	else:
+		NetworkManager.request_return_to_lobby()
+
+
+func _place_suffix(place: int) -> String:
+	match place:
+		1: return "st"
+		2: return "nd"
+		3: return "rd"
+		_: return "th"
+
+
+## Brief non-blocking toast when a player secures a place in full-ranking mode.
+func _show_placement_toast(player_name: String, place: int) -> void:
+	_hide_placement_toast()
+
+	var layer := CanvasLayer.new()
+	layer.layer = 120
+	layer.process_mode = Node.PROCESS_MODE_ALWAYS
+
+	var panel := PanelContainer.new()
+	panel.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	panel.offset_top = 80.0
+	panel.custom_minimum_size = Vector2(520, 0)
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 24)
+	margin.add_theme_constant_override("margin_right", 24)
+	margin.add_theme_constant_override("margin_top", 16)
+	margin.add_theme_constant_override("margin_bottom", 16)
+	panel.add_child(margin)
+
+	var label := Label.new()
+	label.text = "%s – %d%s place!" % [player_name, place, _place_suffix(place)]
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.add_theme_font_size_override("font_size", 32)
+	margin.add_child(label)
+
+	get_tree().root.add_child(layer)
+	layer.add_child(panel)
+	_placement_toast = layer
+
+	var timer := get_tree().create_timer(2.0, true)
+	timer.timeout.connect(_hide_placement_toast)
+
+
+func _hide_placement_toast() -> void:
+	if _placement_toast != null and is_instance_valid(_placement_toast):
+		_placement_toast.queue_free()
+	_placement_toast = null
+
+
+## Creates full-screen winner overlay with name and lobby-return hint.
+func _show_winner_overlay(winner_name: String) -> void:
+	_show_results_overlay([{"name": winner_name, "slot": -1, "place": 1}])
 
 ## Removes winner overlay if present.
 func _hide_winner_overlay() -> void:
@@ -600,6 +810,7 @@ func _hide_loser_overlay() -> void:
 ## Reverse direction
 func apply_reverse() -> void:
 	direction *= -1
+	Signals.MATCH_direction_changed.emit(direction)
 	# Synchronize direction change
 	if multiplayer.is_server():
 		_server_sync_match_state()
@@ -821,7 +1032,11 @@ func _check_max_card_lose_winner() -> void:
 		return
 	winners.append(winner)
 	if multiplayer.is_server():
-		_server_handle_game_over()
+		if _is_full_ranking_mode():
+			_server_on_new_winner()
+			_server_try_finish_ranking_match()
+		else:
+			_server_handle_game_over()
 
 ## Human draw action
 func on_draw_pressed() -> void:
@@ -1463,6 +1678,8 @@ func _resolve_swap_with_target(owner: HandCardHolder, target: HandCardHolder) ->
 		card_manager.waiting_for_color = true
 	swap_color_pending = true
 	owner._waiting_color_turn_end = true
+	if card_manager != null and card_manager.top_card != null:
+		owner._pending_effect_card_uid = int(card_manager.top_card.uid)
 	set_wild_color_owner(owner)
 	if owner.is_bot:
 		call_deferred("_finish_bot_swap_color", owner)
@@ -1490,10 +1707,7 @@ func _finish_bot_swap_color(owner: HandCardHolder) -> void:
 	if !card_manager.waiting_for_color or !swap_color_pending:
 		return
 	var color := _bot_choose_wild_color(owner)
-	card_manager.select_color(color)
-	owner._waiting_color_turn_end = false
-	register_card_play(card_manager.top_card)
-	clear_wild_owner()
+	server_apply_local_wild_color(int(color))
 
 func _bot_choose_wild_color(holder: HandCardHolder) -> CardResource.CardColor:
 	var ki := _get_ki_for_holder(holder)
@@ -2147,6 +2361,7 @@ func _reset_server_match_state() -> void:
 	has_drawn_this_turn = false
 	winners.clear()
 	max_card_losers.clear()
+	_lobby_return_requested = false
 	_local_loser_overlay_shown = false
 	_hide_loser_overlay()
 	draw_stack_amount = 0
@@ -2174,6 +2389,7 @@ func _reset_server_match_state() -> void:
 	roulette_step_running = false
 	pending_swap_owner = null
 	swap_color_pending = false
+	_resolved_effect_uids.clear()
 	if card_manager != null:
 		card_manager.waiting_for_color = false
 		card_manager.pending_wild_card = null
@@ -2280,7 +2496,12 @@ func _apply_match_state_snapshot(state: Dictionary, skip_top_card: bool = false)
 			card_manager.set_top_card_runtime(r)
 
 	current_turn_index = int(state.get("turn_index", 0))
-	direction = int(state.get("direction", 1))
+	var new_direction := int(state.get("direction", 1))
+	if direction != new_direction:
+		direction = new_direction
+		Signals.MATCH_direction_changed.emit(direction)
+	else:
+		direction = new_direction
 	if !multiplayer.is_server():
 		draw_stack_amount = int(state.get("draw_stack", 0))
 		draw_stack_min_value = int(state.get("draw_stack_min", draw_stack_min_value))
@@ -2388,6 +2609,9 @@ func _server_start_match() -> void:
 	_server_match_started = true
 	_server_match_starting = false
 	_game_over_handled = false
+	_lobby_return_requested = false
+
+	start_card_count = NetworkManager.normalize_start_card_count(NetworkManager.lobby_start_card_count)
 
 	randomize()
 	current_turn_index = randi() % turn_order.size()
@@ -2402,6 +2626,7 @@ func _server_start_match() -> void:
 	max_card_losers.clear()
 	_local_loser_overlay_shown = false
 	_hide_loser_overlay()
+	_resolved_effect_uids.clear()
 
 	# Apply the deck chosen in the lobby (host-authoritative). Falls back to the
 	# card manager's default deck if none was selected / it fails to load.
@@ -2790,16 +3015,14 @@ func _apply_wild_color(color: int, owner_slot: int) -> void:
 	if multiplayer.is_server():
 		if roulette_active:
 			pass
-		elif wild_color_owner != null and !card_manager.waiting_for_color:
-			# The COLOR_color_selected emit above already scheduled the owning
-			# holder's _after_color_selected(), which would call register_card_play
-			# a SECOND time. For a +4 that meant the draw effect ran twice and hit
-			# another player too. Clear the holder's flag so the effect resolves
-			# exactly once here.
+		elif wild_color_owner != null and is_instance_valid(wild_color_owner):
 			var owner := wild_color_owner
-			if is_instance_valid(owner):
-				owner._waiting_color_turn_end = false
-			register_card_play(card_manager.top_card, owner)
+			if owner._waiting_color_turn_end and card_manager.top_card != null:
+				var pending := int(owner._pending_effect_card_uid)
+				if pending < 0 or pending == int(card_manager.top_card.uid):
+					owner._waiting_color_turn_end = false
+					owner._pending_effect_card_uid = -1
+					register_card_play(card_manager.top_card, owner)
 			clear_wild_owner()
 		NetworkManager.rpc("client_set_wild_color", int(color), int(owner_slot))
 		_server_sync_match_state()

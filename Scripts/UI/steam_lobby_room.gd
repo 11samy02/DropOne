@@ -7,6 +7,7 @@ const GAME_SCENE_PATH := "res://Scenes/Managers/card_manager.tscn"
 
 const DIFFICULTY_NAMES := ["Rookie", "Casual", "Smart", "Hard", "Master", "Omega"]
 const PERSONALITY_NAMES := ["Balanced", "Aggressor", "Collector", "Chaos", "Punisher", "Color Monarch"]
+const END_MODE_NAMES := ["First Winner", "Full Ranking"]
 
 ## Wird vom Hub übernommen; hier nur falls Szene direkt gestartet wird.
 @export var use_steam: bool = true
@@ -24,12 +25,16 @@ const PERSONALITY_NAMES := ["Balanced", "Aggressor", "Collector", "Chaos", "Puni
 @onready var add_bot_button: Button = %add_bot_button
 @onready var remove_bot_button: Button = %remove_bot_button
 @onready var deck_option: OptionButton = %deck_option
+@onready var start_cards_option: OptionButton = %start_cards_option
+@onready var end_mode_option: OptionButton = %end_mode_option
+@onready var game_settings: VBoxContainer = %game_settings
 
 var _is_ready := false
 var _did_start := false
 var _start_requested := false
 var _deck_paths: Array[String] = []
 var _applying_deck_selection := false
+var _applying_settings_selection := false
 
 
 func _ready() -> void:
@@ -37,8 +42,10 @@ func _ready() -> void:
 	_update_mode_label()
 	_setup_bot_options()
 	_setup_deck_options()
+	_setup_game_settings_options()
 
 	NetworkManager.lobby_deck_changed.connect(_on_lobby_deck_changed)
+	NetworkManager.lobby_settings_changed.connect(_on_lobby_settings_changed)
 
 	if SteamManager.current_lobby_id == 0:
 		_go_to_hub()
@@ -122,6 +129,7 @@ func _finalize_lobby_ui() -> void:
 		NetworkManager.refresh_lobby_display()
 	_update_bot_controls_visibility()
 	_init_deck_state()
+	_init_game_settings_state()
 	_on_lobby_state_changed(NetworkManager.get_lobby_players())
 
 
@@ -169,6 +177,22 @@ func _setup_deck_options() -> void:
 		deck_option.disabled = true
 
 
+func _setup_game_settings_options() -> void:
+	if start_cards_option == null:
+		return
+	start_cards_option.clear()
+	for n in NetworkManager.ALLOWED_START_CARDS:
+		start_cards_option.add_item(str(n), n)
+	start_cards_option.select(start_cards_option.get_item_index(NetworkManager.DEFAULT_START_CARDS))
+
+	if end_mode_option == null:
+		return
+	end_mode_option.clear()
+	for i in range(END_MODE_NAMES.size()):
+		end_mode_option.add_item(END_MODE_NAMES[i], i)
+	end_mode_option.selected = NetworkManager.LobbyEndMode.FIRST_WINNER
+
+
 ## Once connected we know our role: the host picks the deck (and seeds the
 ## default), everyone else sees a read-only selection.
 func _init_deck_state() -> void:
@@ -188,6 +212,58 @@ func _init_deck_state() -> void:
 		# Clients can see the deck but not change it.
 		deck_option.disabled = true
 	_select_deck_in_ui(str(NetworkManager.lobby_deck_path))
+
+
+func _init_game_settings_state() -> void:
+	if start_cards_option == null or end_mode_option == null:
+		return
+	var is_host := NetworkManager.is_server or (not use_steam and SteamManager.local_role == SteamManager.LocalRole.HOST) or (use_steam and SteamManager.is_host())
+	if is_host:
+		start_cards_option.disabled = false
+		end_mode_option.disabled = false
+		NetworkManager.set_lobby_settings(
+			NetworkManager.normalize_start_card_count(NetworkManager.lobby_start_card_count),
+			NetworkManager.lobby_end_mode
+		)
+	else:
+		start_cards_option.disabled = true
+		end_mode_option.disabled = true
+	_apply_settings_in_ui(NetworkManager.lobby_start_card_count, NetworkManager.lobby_end_mode)
+
+
+func _apply_settings_in_ui(start_cards: int, end_mode: int) -> void:
+	if start_cards_option == null or end_mode_option == null:
+		return
+	_applying_settings_selection = true
+	var card_idx := start_cards_option.get_item_index(int(start_cards))
+	if card_idx >= 0:
+		start_cards_option.selected = card_idx
+	var mode_idx := end_mode_option.get_item_index(int(end_mode))
+	if mode_idx >= 0:
+		end_mode_option.selected = mode_idx
+	_applying_settings_selection = false
+
+
+func _on_start_cards_selected(_index: int) -> void:
+	if _applying_settings_selection:
+		return
+	if not NetworkManager.is_server:
+		return
+	var count := start_cards_option.get_selected_id()
+	NetworkManager.set_lobby_settings(count, NetworkManager.lobby_end_mode)
+
+
+func _on_end_mode_selected(_index: int) -> void:
+	if _applying_settings_selection:
+		return
+	if not NetworkManager.is_server:
+		return
+	var mode := end_mode_option.get_selected_id()
+	NetworkManager.set_lobby_settings(NetworkManager.lobby_start_card_count, mode)
+
+
+func _on_lobby_settings_changed(start_cards: int, end_mode: int) -> void:
+	_apply_settings_in_ui(start_cards, end_mode)
 
 
 func _select_deck_in_ui(path: String) -> void:
@@ -226,6 +302,10 @@ func _update_bot_controls_visibility() -> void:
 	if deck_option:
 		# Everyone sees the deck; only the host can change it.
 		deck_option.disabled = (not is_host) or _deck_paths.is_empty()
+	if start_cards_option:
+		start_cards_option.disabled = not is_host
+	if end_mode_option:
+		end_mode_option.disabled = not is_host
 
 
 func _on_add_bot_pressed() -> void:
@@ -381,3 +461,5 @@ func _exit_tree() -> void:
 		SteamManager.lobby_left.disconnect(_go_to_hub)
 	if NetworkManager.lobby_deck_changed.is_connected(_on_lobby_deck_changed):
 		NetworkManager.lobby_deck_changed.disconnect(_on_lobby_deck_changed)
+	if NetworkManager.lobby_settings_changed.is_connected(_on_lobby_settings_changed):
+		NetworkManager.lobby_settings_changed.disconnect(_on_lobby_settings_changed)

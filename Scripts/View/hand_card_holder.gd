@@ -24,6 +24,7 @@ var _current_sep: float = 0.0
 var _busy := false
 var _queued: CardView = null
 var _waiting_color_turn_end := false
+var _pending_effect_card_uid := -1
 
 const SCALED_CARD_WIDTH := 126.5625
 
@@ -233,8 +234,12 @@ func set_card(card_view: CardView) -> void:
 	if queue_manager == null:
 		return
 	if !queue_manager.can_play_now(self):
+		if !is_bot and card_view != null:
+			notify_play_blocked(card_view)
 		return
 	if !can_play_card(card_view.card_res):
+		if !is_bot:
+			Signals.FEEDBACK_show.emit("Invalid", Signals.FeedbackKind.INVALID)
 		return
 	
 	if multiplayer.has_multiplayer_peer() and !multiplayer.is_server():
@@ -298,6 +303,7 @@ func set_card(card_view: CardView) -> void:
 	
 	if card_manager.waiting_for_color:
 		_waiting_color_turn_end = true
+		_pending_effect_card_uid = int(played_card_res.uid)
 	else:
 		queue_manager.register_card_play(played_card_res, self)
 	
@@ -399,15 +405,27 @@ func refresh_playable_cards() -> void:
 			if c is CardView:
 				if !c.show_front:
 					c.set_clickable(false, true)
+					c.set_meta("play_blocked", false)
 					smooth_modulate(c, Color.WHITE, 0.3)
 					continue
 
 				var playable := can_play_card(c.card_res)
-				var allowed = turn_active and !is_bot and c.show_front and playable
-				c.set_clickable(allowed)
+				var allowed := turn_active and playable
+				var can_click = c.show_front
+				c.set_clickable(can_click)
+				c.set_meta("play_blocked", can_click and !allowed)
 
 				var target_color := Color.WHITE if allowed else Color.DIM_GRAY
 				smooth_modulate(c, target_color, 0.3)
+
+## Shows feedback when the local player clicks an unplayable card on their turn.
+func notify_play_blocked(card_view: CardView = null) -> void:
+	if is_bot or queue_manager == null or card_view == null or card_view.card_res == null:
+		return
+	if !turn_active:
+		return
+	if !can_play_card(card_view.card_res):
+		Signals.FEEDBACK_show.emit("Invalid", Signals.FeedbackKind.INVALID)
 
 ## Smoothly transitions node modulate color for playable feedback
 func smooth_modulate(node: CanvasItem, target: Color, duration: float = 0.15) -> void:
@@ -429,13 +447,30 @@ func _after_color_selected() -> void:
 	refresh_playable_cards()
 	if multiplayer.has_multiplayer_peer() and !multiplayer.is_server():
 		_waiting_color_turn_end = false
+		_pending_effect_card_uid = -1
 		if queue_manager != null:
 			queue_manager.clear_wild_owner()
 		return
-	if _waiting_color_turn_end:
+	if not _waiting_color_turn_end:
+		return
+	# Server resolves pending wild/swap effects in queue_manager._apply_wild_color.
+	if queue_manager != null and queue_manager.wild_color_owner == self:
 		_waiting_color_turn_end = false
-		queue_manager.register_card_play(card_manager.top_card, self)
-		queue_manager.clear_wild_owner()
+		_pending_effect_card_uid = -1
+		return
+	_waiting_color_turn_end = false
+	var pending_uid := _pending_effect_card_uid
+	_pending_effect_card_uid = -1
+	if card_manager == null or card_manager.top_card == null:
+		if queue_manager != null:
+			queue_manager.clear_wild_owner()
+		return
+	if pending_uid >= 0 and int(card_manager.top_card.uid) != pending_uid:
+		if queue_manager != null:
+			queue_manager.clear_wild_owner()
+		return
+	queue_manager.register_card_play(card_manager.top_card, self)
+	queue_manager.clear_wild_owner()
 
 	# Keep target turn UI in sync after wild color selection
 	if queue_manager != null and multiplayer.is_server():

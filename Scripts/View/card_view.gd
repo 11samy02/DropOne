@@ -265,8 +265,12 @@ func set_clickable(active: bool, stop_hover: bool = false) -> void:
 		button.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 func _on_button_pressed() -> void:
-	if hand_card_holder != null:
-		hand_card_holder.set_card(self)
+	if hand_card_holder == null:
+		return
+	if get_meta("play_blocked", false):
+		hand_card_holder.notify_play_blocked(self)
+		return
+	hand_card_holder.set_card(self)
 
 ## Update clickable state based on holder rules
 func update_playable_visuals() -> void:

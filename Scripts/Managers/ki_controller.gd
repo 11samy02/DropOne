@@ -862,7 +862,13 @@ func _on_color_request() -> void:
 	if queue_manager.wild_color_owner != hand_card_holder:
 		return
 	await get_tree().create_timer(0.2).timeout
-	Signals.COLOR_color_selected.emit(choose_best_wild_color())
+	if queue_manager == null or hand_card_holder == null or queue_manager.wild_color_owner != hand_card_holder:
+		return
+	var color := choose_best_wild_color()
+	if queue_manager.has_method("server_apply_local_wild_color"):
+		queue_manager.server_apply_local_wild_color(int(color))
+	else:
+		Signals.COLOR_color_selected.emit(color)
 
 ## Wild color pick using hand counts and opponent color pressure.
 func choose_best_wild_color() -> CardResource.CardColor:

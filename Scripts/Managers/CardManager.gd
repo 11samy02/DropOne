@@ -198,10 +198,14 @@ func _on_draw_deck_pressed() -> void:
 	if waiting_for_color:
 		return
 	if queue_manager != null:
+		if queue_manager.is_local_eliminated():
+			return
+		var allowed := false
 		if multiplayer.has_multiplayer_peer():
-			if !queue_manager.is_local_turn():
-				return
-		elif !queue_manager.is_human_turn():
+			allowed = queue_manager.is_local_turn()
+		else:
+			allowed = queue_manager.is_human_turn()
+		if !allowed:
 			return
 	Signals.DECK_draw_pressed.emit()
 
@@ -259,11 +263,8 @@ func update_draw_button_state() -> void:
 	var allow := true
 	if waiting_for_color:
 		allow = false
-	elif queue_manager != null:
-		if multiplayer.has_multiplayer_peer():
-			allow = queue_manager.is_local_turn()
-		else:
-			allow = queue_manager.is_human_turn()
+	elif queue_manager != null and queue_manager.is_local_eliminated():
+		allow = false
 
 	draw_button.disabled = !allow
 

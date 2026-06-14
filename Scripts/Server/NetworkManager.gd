@@ -36,6 +36,30 @@ var _lobby_bots: Array = []          # [{name, difficulty, personality}] (nur Ho
 ## Host-selected deck path synced to all lobby peers.
 var lobby_deck_path: String = ""     # Vom Host gewähltes Deck (an alle gesynct)
 
+enum LobbyEndMode {
+	FIRST_WINNER,
+	FULL_RANKING,
+}
+
+const DEFAULT_START_CARDS := 7
+const ALLOWED_START_CARDS: Array[int] = [3, 5, 7, 9, 12]
+
+
+func normalize_start_card_count(count: int) -> int:
+	var best := DEFAULT_START_CARDS
+	var best_dist := 999999
+	for n in ALLOWED_START_CARDS:
+		var dist := absi(int(n) - int(count))
+		if dist < best_dist:
+			best_dist = dist
+			best = int(n)
+	return best
+
+## Cards dealt to each player at match start (host setting, synced to all peers).
+var lobby_start_card_count: int = DEFAULT_START_CARDS
+## FIRST_WINNER = lobby after first empty hand; FULL_RANKING = play until all places are set.
+var lobby_end_mode: int = LobbyEndMode.FIRST_WINNER
+
 signal status_changed(message: String)
 signal match_state_received(state: Dictionary)
 signal hand_received(hand: Array)
@@ -46,10 +70,11 @@ signal play_event_received(from_slot: int, card: Dictionary)
 signal lobby_state_changed(players: Array)  # [{peer_id, name, is_ready, is_host, is_bot}]
 signal lobby_start_game
 signal lobby_disconnected
-signal game_won(winner_name: String, winner_slot: int)
+signal game_won(winner_name: String, winner_slot: int, place: int, is_final: bool, all_results: Array)
 signal player_eliminated(slot: int)
 signal return_to_lobby
 signal lobby_deck_changed(deck_path: String)
+signal lobby_settings_changed(start_cards: int, end_mode: int)
 
 
 
@@ -258,6 +283,9 @@ func leave_lobby() -> void:
 	_server_profiles_by_peer.clear()
 	_server_slot_order.clear()
 	_lobby_bots.clear()
+	lobby_deck_path = ""
+	lobby_start_card_count = DEFAULT_START_CARDS
+	lobby_end_mode = LobbyEndMode.FIRST_WINNER
 	is_server = false
 	my_slot = -1
 	last_slot = -1
@@ -319,6 +347,26 @@ func set_lobby_deck(deck_path: String) -> void:
 func client_set_lobby_deck(deck_path: String) -> void:
 	lobby_deck_path = str(deck_path)
 	lobby_deck_changed.emit(lobby_deck_path)
+
+
+# -------------------------------------------------------------------
+# GAME SETTINGS (nur Host wählt; an alle synchronisiert)
+# -------------------------------------------------------------------
+func set_lobby_settings(start_cards: int, end_mode: int) -> void:
+	if not multiplayer.is_server():
+		return
+	lobby_start_card_count = normalize_start_card_count(int(start_cards))
+	lobby_end_mode = clampi(int(end_mode), LobbyEndMode.FIRST_WINNER, LobbyEndMode.FULL_RANKING)
+	for pid in multiplayer.get_peers():
+		rpc_id(int(pid), "client_set_lobby_settings", lobby_start_card_count, lobby_end_mode)
+	client_set_lobby_settings(lobby_start_card_count, lobby_end_mode)
+
+
+@rpc("authority", "reliable", "call_local")
+func client_set_lobby_settings(start_cards: int, end_mode: int) -> void:
+	lobby_start_card_count = normalize_start_card_count(int(start_cards))
+	lobby_end_mode = clampi(int(end_mode), LobbyEndMode.FIRST_WINNER, LobbyEndMode.FULL_RANKING)
+	lobby_settings_changed.emit(lobby_start_card_count, lobby_end_mode)
 
 
 # -------------------------------------------------------------------
@@ -417,8 +465,9 @@ func _broadcast_lobby_state() -> void:
 	var arr := _build_lobby_player_array()
 	for pid in multiplayer.get_peers():
 		rpc_id(int(pid), "client_lobby_state", arr)
-		# Keep late joiners in sync with the host's chosen deck.
+		# Keep late joiners in sync with the host's chosen deck and game settings.
 		rpc_id(int(pid), "client_set_lobby_deck", lobby_deck_path)
+		rpc_id(int(pid), "client_set_lobby_settings", lobby_start_card_count, lobby_end_mode)
 	client_lobby_state(arr)
 
 
@@ -456,12 +505,18 @@ func has_active_connection() -> bool:
 	return multiplayer.multiplayer_peer != null and _is_peer_connected()
 
 
-func server_announce_winner(winner_name: String, winner_slot: int = -1) -> void:
+func server_announce_winner(
+	winner_name: String,
+	winner_slot: int = -1,
+	place: int = 1,
+	is_final: bool = true,
+	all_results: Array = []
+) -> void:
 	if not multiplayer.is_server():
 		return
 	for pid in multiplayer.get_peers():
-		rpc_id(int(pid), "client_on_winner", winner_name, int(winner_slot))
-	client_on_winner(winner_name, int(winner_slot))
+		rpc_id(int(pid), "client_on_winner", winner_name, int(winner_slot), int(place), bool(is_final), all_results)
+	client_on_winner(winner_name, int(winner_slot), int(place), bool(is_final), all_results)
 
 
 func server_return_to_lobby() -> void:
@@ -473,6 +528,23 @@ func server_return_to_lobby() -> void:
 	for pid in multiplayer.get_peers():
 		rpc_id(int(pid), "client_return_to_lobby")
 	client_return_to_lobby()
+
+
+## Client or host pressed "Back to Lobby" on the match results screen.
+func request_return_to_lobby() -> void:
+	if not has_active_connection():
+		return
+	if multiplayer.is_server():
+		server_return_to_lobby()
+	else:
+		rpc_id(1, "server_request_return_to_lobby")
+
+
+@rpc("any_peer", "reliable")
+func server_request_return_to_lobby() -> void:
+	if not multiplayer.is_server():
+		return
+	server_return_to_lobby()
 
 
 ## Wird vom Lobby-Raum aufgerufen, wenn nach einem Spiel die Verbindung
@@ -493,8 +565,14 @@ func reset_for_lobby_return() -> void:
 
 
 @rpc("authority", "reliable", "call_local")
-func client_on_winner(winner_name: String, winner_slot: int = -1) -> void:
-	game_won.emit(winner_name, int(winner_slot))
+func client_on_winner(
+	winner_name: String,
+	winner_slot: int = -1,
+	place: int = 1,
+	is_final: bool = true,
+	all_results: Array = []
+) -> void:
+	game_won.emit(winner_name, int(winner_slot), int(place), bool(is_final), all_results)
 
 
 @rpc("authority", "reliable", "call_local")
@@ -505,6 +583,31 @@ func client_on_player_eliminated(slot: int) -> void:
 @rpc("authority", "reliable", "call_local")
 func client_return_to_lobby() -> void:
 	return_to_lobby.emit()
+
+
+## Server: show "Skipped" popup on the human peer that was skipped.
+func server_notify_player_skipped(skipped_slot: int) -> void:
+	if not multiplayer.is_server():
+		return
+	var slot := int(skipped_slot)
+	var qm := get_tree().get_first_node_in_group("queue_manager")
+	if qm == null or not qm.has_method("_slot_to_peer_id"):
+		return
+	var peer_id: int = int(qm.call("_slot_to_peer_id", slot))
+	if peer_id == 0:
+		return
+	if peer_id == multiplayer.get_unique_id():
+		client_skip_feedback(slot)
+	else:
+		rpc_id(peer_id, "client_skip_feedback", slot)
+
+
+@rpc("authority", "reliable")
+func client_skip_feedback(skipped_slot: int) -> void:
+	# RPC is peer-targeted; ignore stray deliveries if slot mapping drifted.
+	if NetworkManager.my_slot >= 0 and int(NetworkManager.my_slot) != int(skipped_slot):
+		return
+	Signals.FEEDBACK_show.emit("Skipped", Signals.FeedbackKind.SKIPPED)
 
 
 # -------------------------------------------------------------------

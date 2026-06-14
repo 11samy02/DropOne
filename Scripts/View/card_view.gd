@@ -2,10 +2,12 @@
 extends Control
 class_name CardView
 
+## Reference to the top card used as fly-to target for play animations.
 static var current_top_card: CardView
 
 var hand_card_holder: HandCardHolder
 
+## True when this view represents a card in a player's hand.
 var in_hand_card := true
 
 @export var is_top_card := false
@@ -67,6 +69,7 @@ const COLOR_RED := Color("#ad0000")
 const COLOR_GREEN := Color("#0ca500")
 const COLOR_BLACK_TEXT := Color.WHITE
 
+## Scene setup: load visuals, play appear animation, track top card ref.
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	button.mouse_filter = Control.MOUSE_FILTER_STOP

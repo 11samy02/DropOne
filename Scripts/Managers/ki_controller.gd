@@ -4,7 +4,20 @@ class_name KIController
 @export var hand_card_holder: HandCardHolder
 @export var queue_manager: QueueManager
 @export var card_manager: CardManager
+## Delay before the bot plays after its turn begins.
 @export var think_time := 0.3
+
+@export_group("Omega Cheat Tuning")
+## Deck peek depth when Omega cheats a favorable draw.
+@export_range(0, 20, 1) var omega_cheat_draw_range: int = 6
+## How many upcoming deck cards Omega considers for planning bonuses.
+@export_range(0, 20, 1) var omega_peek_planning_depth: int = 4
+## Peek depth to decide defensive draw vs next-player threat.
+@export_range(0, 10, 1) var omega_threat_peek_range: int = 1
+## Peek depth when drawing during color roulette.
+@export_range(0, 20, 1) var omega_roulette_peek_range: int = 3
+## Peek depth when choosing roulette target color.
+@export_range(0, 20, 1) var omega_roulette_color_peek_range: int = 6
 
 enum AIDifficulty { ROOKIE, CASUAL, SMART, HARD, MASTER, OMEGA }
 enum AIPersonality { BALANCED, AGGRESSOR, COLLECTOR, CHAOS, PUNISHER, COLOR_MONARCH }
@@ -79,6 +92,7 @@ enum AIPersonality { BALANCED, AGGRESSOR, COLLECTOR, CHAOS, PUNISHER, COLOR_MONA
 var _diff_cfg := {}
 var _pers_cfg := {}
 
+## Builds difficulty/personality score tables and connects turn signals.
 func _ready() -> void:
 	_build_configs()
 	Signals.TURN_changed.connect(_on_turn_changed)
@@ -294,6 +308,7 @@ func _on_turn_changed(holder: HandCardHolder) -> void:
 		return
 	play_turn()
 
+## Main bot turn: handles stacks, picks best card, or draws/ends turn.
 func play_turn() -> void:
 	if queue_manager != null and queue_manager.roulette_active:
 		return
@@ -308,16 +323,21 @@ func play_turn() -> void:
 	if !_still_my_turn():
 		return
 
-	if difficulty == AIDifficulty.OMEGA and queue_manager.draw_stack_amount <= 0:
+	if _is_omega() and queue_manager.draw_stack_amount <= 0 and omega_threat_peek_range > 0:
 		var next_cards := _omega_next_player_card_count()
-		if next_cards <= 2 and card_manager != null and card_manager.has_method("peek_next_card"):
-			var peek := card_manager.peek_next_card(0)
-			if peek != null:
-				if peek.type == CardResource.CardType.DRAW or peek.type == CardResource.CardType.WILD_DRAW or peek.type == CardResource.CardType.SKIP:
-					queue_manager.bot_draw_current()
-					await get_tree().create_timer(0.15).timeout
-					if !_still_my_turn():
-						return
+		if next_cards <= 2 and card_manager != null:
+			var should_draw := false
+			for peek_card in _get_peek_cards(omega_threat_peek_range):
+				if peek_card == null:
+					continue
+				if peek_card.type == CardResource.CardType.DRAW or peek_card.type == CardResource.CardType.WILD_DRAW or peek_card.type == CardResource.CardType.SKIP:
+					should_draw = true
+					break
+			if should_draw:
+				queue_manager.bot_draw_current()
+				await get_tree().create_timer(0.15).timeout
+				if !_still_my_turn():
+					return
 
 	if queue_manager.draw_stack_amount > 0 and queue_manager.draw_stack_is_wild:
 		var playable_wild_stack := get_playable_cards()
@@ -401,6 +421,7 @@ func play_turn() -> void:
 func _still_my_turn() -> bool:
 	return queue_manager != null and queue_manager.get_current_holder() == hand_card_holder
 
+## Returns all CardViews in hand that are legal to play now.
 func get_playable_cards() -> Array[CardView]:
 	var arr: Array[CardView] = []
 	for c in hand_card_holder.get_children():
@@ -409,6 +430,7 @@ func get_playable_cards() -> Array[CardView]:
 				arr.append(c)
 	return arr
 
+## Picks highest-scoring playable card for current difficulty/personality.
 func choose_best_card(playable: Array[CardView]) -> CardView:
 	if playable.is_empty():
 		return null
@@ -427,6 +449,7 @@ func choose_best_card(playable: Array[CardView]) -> CardView:
 
 	return best
 
+## Heuristic score for playing a given card view.
 func score_card(card_view: CardView) -> int:
 	if card_view == null or card_view.card_res == null:
 		return -999999
@@ -668,6 +691,7 @@ func score_card(card_view: CardView) -> int:
 
 	return score
 
+## Picks the best follow-up card after PLACE_ALL among same-color cards.
 func choose_best_place_all_finisher(color: CardResource.CardColor) -> CardView:
 	var candidates: Array[CardView] = []
 	for c in hand_card_holder.get_children():
@@ -840,6 +864,7 @@ func _on_color_request() -> void:
 	await get_tree().create_timer(0.2).timeout
 	Signals.COLOR_color_selected.emit(choose_best_wild_color())
 
+## Wild color pick using hand counts and opponent color pressure.
 func choose_best_wild_color() -> CardResource.CardColor:
 	if difficulty == AIDifficulty.OMEGA:
 		return _omega_choose_best_wild_color()
@@ -928,6 +953,144 @@ func choose_opponents_least_common_color() -> CardResource.CardColor:
 ## ===========================
 ## OMEGA EXTENSIONS (FULL)
 ## ===========================
+
+func _is_omega() -> bool:
+	return difficulty == AIDifficulty.OMEGA
+
+func _get_peek_cards(amount: int) -> Array[CardResource]:
+	if card_manager == null or amount <= 0:
+		return []
+	if !card_manager.has_method("peek_next_cards"):
+		return []
+	return card_manager.peek_next_cards(amount)
+
+func _omega_draw_from_range(range: int, score_fn: Callable) -> CardResource:
+	if card_manager == null:
+		return null
+	if range <= 0:
+		return card_manager.draw_card()
+	if card_manager.has_method("draw_specific_card_from_top_range"):
+		return card_manager.draw_specific_card_from_top_range(range, score_fn)
+	return card_manager.draw_card()
+
+func omega_choose_roulette_color() -> CardResource.CardColor:
+	if omega_roulette_color_peek_range <= 0:
+		return _omega_fallback_roulette_color_by_hand()
+
+	var peek := _get_peek_cards(omega_roulette_color_peek_range)
+	if peek.is_empty():
+		return _omega_fallback_roulette_color_by_hand()
+
+	var hand_counts := count_colors_in_hand()
+	var best_color := CardResource.CardColor.RED
+	var best_score := -999999
+
+	for color in [CardResource.CardColor.RED, CardResource.CardColor.GREEN, CardResource.CardColor.BLUE, CardResource.CardColor.YELLOW]:
+		var score := 0
+		var hand_count := int(hand_counts.get(color, 0))
+		score += hand_count * 5000
+
+		var first_match_index := -1
+		for i in range(peek.size()):
+			var peek_card: CardResource = peek[i]
+			if peek_card != null and peek_card.color == color:
+				first_match_index = i
+				break
+
+		if first_match_index >= 0:
+			score += (omega_roulette_color_peek_range - first_match_index) * 8000
+		else:
+			score -= 15000
+
+		if hand_count > 0:
+			score += (5 - hand_count) * 200
+
+		if score > best_score:
+			best_score = score
+			best_color = color
+
+	return best_color
+
+func _omega_fallback_roulette_color_by_hand() -> CardResource.CardColor:
+	var counts := {
+		CardResource.CardColor.RED: 0,
+		CardResource.CardColor.GREEN: 0,
+		CardResource.CardColor.BLUE: 0,
+		CardResource.CardColor.YELLOW: 0
+	}
+	for c in hand_card_holder.get_children():
+		if c is CardView and c.card_res != null and c.card_res.color != CardResource.CardColor.BLACK:
+			counts[c.card_res.color] += 1
+
+	var best := CardResource.CardColor.RED
+	var best_count := 999999
+	for col in counts.keys():
+		if int(counts[col]) < best_count:
+			best_count = int(counts[col])
+			best = col
+	return best
+
+func omega_roulette_draw_card(chosen_color: CardResource.CardColor) -> CardResource:
+	if card_manager == null:
+		return null
+	if omega_roulette_peek_range <= 0:
+		return card_manager.draw_card()
+
+	var peek := _get_peek_cards(omega_roulette_peek_range)
+	if peek.is_empty():
+		return card_manager.draw_card()
+
+	return _omega_draw_from_range(omega_roulette_peek_range, func(c: CardResource) -> int:
+		if c == null:
+			return -999999
+		var idx := peek.find(c)
+		if idx < 0:
+			idx = 0
+		if c.color == chosen_color and c.color != CardResource.CardColor.BLACK:
+			return 500000 - idx * 1000
+		return 1000 - idx * 100
+	)
+
+func omega_choose_target_draw_target() -> HandCardHolder:
+	if queue_manager == null:
+		return null
+	var draw_value := queue_manager.target_draw_value if queue_manager.target_draw_active else 2
+	return _omega_pick_max_card_target(draw_value)
+
+func _omega_pick_max_card_target(draw_value: int) -> HandCardHolder:
+	if queue_manager == null:
+		return null
+
+	var valid := queue_manager.get_valid_target_holders(hand_card_holder)
+	if valid.is_empty():
+		return null
+
+	if queue_manager.is_max_card_lose_enabled():
+		var max_count := queue_manager.get_max_card_lose_count()
+		var best_elim: HandCardHolder = null
+		var best_elim_count := -1
+
+		for h in valid:
+			var card_count := h.get_child_count()
+			var gap := max_count - card_count
+			if gap > 0 and draw_value >= gap and card_count > best_elim_count:
+				best_elim_count = card_count
+				best_elim = h
+
+		if best_elim != null:
+			return best_elim
+
+		var best: HandCardHolder = null
+		var best_count := -1
+		for h in valid:
+			var card_count := h.get_child_count()
+			if card_count > best_count:
+				best_count = card_count
+				best = h
+		if best != null:
+			return best
+
+	return queue_manager.get_most_threatening_target(hand_card_holder)
 
 func _omega_choose_best_card(playable: Array[CardView]) -> CardView:
 	var best := playable[0]
@@ -1210,15 +1373,103 @@ func _omega_score_move(card_view: CardView) -> int:
 		if card.type == CardResource.CardType.PLACE_ALL and same_color_count >= 2:
 			s += 120000
 
+	s += _omega_max_card_bonus(card)
+
 	return s
+
+func _omega_estimate_cards_added_to_next(card: CardResource) -> int:
+	if card == null:
+		return 0
+	match card.type:
+		CardResource.CardType.DRAW, CardResource.CardType.WILD_DRAW, CardResource.CardType.WILD_DRAW_REVERSE:
+			var base := int(card.value)
+			if queue_manager != null and queue_manager.draw_stack_amount > 0:
+				return queue_manager.draw_stack_amount + base
+			return base
+		_:
+			return 0
+
+func _omega_estimate_draws_until_color(color: CardResource.CardColor) -> int:
+	var depth := maxi(omega_roulette_color_peek_range, omega_peek_planning_depth)
+	if depth <= 0:
+		depth = 6
+	var peek := _get_peek_cards(depth)
+	if peek.is_empty():
+		return 5
+	for i in range(peek.size()):
+		var peek_card: CardResource = peek[i]
+		if peek_card != null and peek_card.color == color:
+			return i + 1
+	return peek.size() + 5
+
+func _omega_estimate_roulette_victim_draws(victim: HandCardHolder) -> int:
+	if victim == null:
+		return 5
+	var best_draws := 999999
+	for color in [CardResource.CardColor.RED, CardResource.CardColor.GREEN, CardResource.CardColor.BLUE, CardResource.CardColor.YELLOW]:
+		best_draws = mini(best_draws, _omega_estimate_draws_until_color(color))
+	return best_draws if best_draws < 999999 else 5
+
+func _omega_max_card_bonus(card: CardResource) -> int:
+	if queue_manager == null or !queue_manager.is_max_card_lose_enabled():
+		return 0
+	if card == null:
+		return 0
+
+	var max_count := queue_manager.get_max_card_lose_count()
+	var bonus := 0
+
+	var cards_added_next := _omega_estimate_cards_added_to_next(card)
+	var next_holder := get_next_holder()
+	if next_holder != null:
+		var next_count := next_holder.get_child_count()
+		var gap := max_count - next_count
+		if gap > 0 and cards_added_next >= gap:
+			bonus += 500000
+		elif gap > 0 and gap <= 4 and cards_added_next > 0:
+			bonus += 80000 + cards_added_next * 15000
+
+	match card.type:
+		CardResource.CardType.TARGET_DRAW:
+			var target := _omega_pick_max_card_target(int(card.value))
+			if target != null:
+				var target_count := target.get_child_count()
+				var gap := max_count - target_count
+				if gap > 0 and int(card.value) >= gap:
+					bonus += 500000
+				elif gap > 0 and gap <= 4:
+					bonus += 60000
+
+		CardResource.CardType.MULTI_TARGET_DRAW:
+			for h in queue_manager.get_valid_target_holders(hand_card_holder):
+				var holder_count := h.get_child_count()
+				var gap := max_count - holder_count
+				if gap > 0 and int(card.value) >= gap:
+					bonus += 400000
+				elif gap > 0 and gap <= 4:
+					bonus += 40000
+
+		CardResource.CardType.WILD_COLOR_ROULET:
+			var victim := get_next_holder()
+			if victim != null:
+				var est := _omega_estimate_roulette_victim_draws(victim)
+				var gap := max_count - victim.get_child_count()
+				if gap > 0 and est >= gap:
+					bonus += 450000
+				elif gap > 0 and gap <= 6:
+					bonus += est * 12000
+
+	return bonus
 
 func _omega_peek_bonus_for_card(card: CardResource) -> int:
 	if card_manager == null:
 		return 0
+	if omega_peek_planning_depth <= 0:
+		return 0
 	if !card_manager.has_method("peek_next_cards"):
 		return 0
 
-	var peek := card_manager.peek_next_cards(4)
+	var peek := _get_peek_cards(omega_peek_planning_depth)
 	var bonus := 0
 
 	for c in peek:
@@ -1445,7 +1696,10 @@ func _omega_try_cheat_draw() -> bool:
 	if !card_manager.has_method("draw_specific_card_from_top_range"):
 		return queue_manager.bot_draw_current()
 
-	var best := _omega_find_perfect_draw_candidate(6)
+	if omega_cheat_draw_range <= 0:
+		return queue_manager.bot_draw_current()
+
+	var best := _omega_find_perfect_draw_candidate(omega_cheat_draw_range)
 	if best != null:
 		hand_card_holder.add_card(best)
 		return true
@@ -1461,6 +1715,14 @@ func _omega_find_perfect_draw_candidate(range: int = 6) -> CardResource:
 			return -999999
 
 		var score := 0
+
+		if queue_manager != null and queue_manager.is_max_card_lose_enabled():
+			var max_count := queue_manager.get_max_card_lose_count()
+			var my_count := hand_card_holder.get_child_count()
+			if my_count + 1 >= max_count:
+				score -= 500000
+			elif my_count >= max_count - 3:
+				score -= 50000
 
 		if hand_card_holder.can_play_card(c):
 			score += 100000

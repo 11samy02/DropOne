@@ -11,11 +11,13 @@ const AVATAR_COUNT := 36
 ## Global avatar pool (built on first access)
 static var _avatar_pool: Array[Texture2D] = []
 
+## Returns lazily built list of all available avatar textures.
 static func get_avatar_pool() -> Array[Texture2D]:
 	if _avatar_pool.is_empty():
 		_build_avatar_pool()
 	return _avatar_pool
 
+## Loads avatar PNGs from AVATAR_DIR into the static pool.
 static func _build_avatar_pool() -> void:
 	_avatar_pool.clear()
 	for i in range(1, AVATAR_COUNT + 1):
@@ -26,9 +28,13 @@ static func _build_avatar_pool() -> void:
 		if tex != null:
 			_avatar_pool.append(tex)
 
+## Display name shown at seats and in the lobby.
 @export var player_name: String = "Player"
+## Avatar texture for UI profile cards.
 @export var picture: Texture2D
+## Seat/slot index assigned by QueueManager or NetworkManager.
 @export var player_index: int = -1
+## True for AI-controlled seats.
 @export var is_bot: bool = false
 
 ## Runtime reference (not exported)

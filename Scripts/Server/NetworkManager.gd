@@ -12,11 +12,13 @@ var _rejoin_from_match := false
 var _session_had_remote_peers := false
 var _host_alone_lobby_return_pending := false
 
+## True when this peer is the authoritative server/host.
 var is_server := false
 var _signals_connected := false
 var _connected := false
 
 # Client-side
+## Local player's seat index assigned by the server (-1 until known).
 var my_slot: int = -1
 var last_hand: Array = []
 var last_match_state: Dictionary = {}
@@ -31,6 +33,7 @@ var _server_slot_order: Array[int] = []
 var _ready_by_peer: Dictionary = {} # { peer_id:int : bool }
 var last_lobby_players: Array = []   # Cache für Lobby-UI
 var _lobby_bots: Array = []          # [{name, difficulty, personality}] (nur Host)
+## Host-selected deck path synced to all lobby peers.
 var lobby_deck_path: String = ""     # Vom Host gewähltes Deck (an alle gesynct)
 
 signal status_changed(message: String)
@@ -50,6 +53,7 @@ signal lobby_deck_changed(deck_path: String)
 
 
 
+## Logs to console; includes sensitive detail only when DEV_MODE is true.
 func _safe_log(msg: String, sensitive: String = "") -> void:
 	if DEV_MODE and sensitive != "":
 		print(msg, sensitive)
@@ -62,6 +66,7 @@ func _ready() -> void:
 	print("NetworkManager BUILD_ID:", BUILD_ID)
 
 
+## Closes the multiplayer peer and clears connection state.
 func _reset_peer() -> void:
 	_connected = false
 	if multiplayer.multiplayer_peer != null:
@@ -928,21 +933,25 @@ func get_last_slot() -> int:
 func _is_dedicated_server() -> bool:
 	return multiplayer.is_server() and (OS.has_feature("dedicated_server") or DisplayServer.get_name() == "headless")
 
+## Client requests the server to play a card by uid.
 func request_play(card_id: int) -> void:
 	if not _is_peer_connected():
 		return
 	rpc_id(1, "server_request_play", int(card_id))
 
+## Client requests wild color selection on the server.
 func request_wild_color(color: int) -> void:
 	if not _is_peer_connected():
 		return
 	rpc_id(1, "server_set_wild_color", int(color))
 
+## Client requests a draw from the server.
 func request_draw() -> void:
 	if not _is_peer_connected():
 		return
 	rpc_id(1, "server_request_draw")
 
+## Client sends target slot for swap/target-draw resolution.
 func request_target_select(target_slot: int) -> void:
 	if not _is_peer_connected():
 		return

@@ -2,9 +2,12 @@
 extends Resource
 class_name CardResource
 
+## Playable card colors including BLACK for wild cards.
 enum CardColor { RED, GREEN, BLUE, YELLOW, BLACK }
+## Colorblind symbol shapes mapped to each color.
 enum CardSymbol { HEART, CLUB, SPADE, DIAMOND }
-enum CardType { 
+## All card effect types supported by the rules engine.
+enum CardType {
 	NUMBER, 
 	SKIP, 
 	REVERSE, 
@@ -19,6 +22,7 @@ enum CardType {
 	MULTI_TARGET_DRAW 
 }
 
+## Background texture for black/wild cards.
 const BLACK: Texture2D = preload("uid://xspumfxdwrqn")
 const BLUE: Texture2D = preload("uid://cxov74crw1ujc")
 const GREEN: Texture2D = preload("uid://yywrx2q6xxab")
@@ -42,9 +46,13 @@ const HEART: Texture2D = preload("uid://8p7uyuv60l14")
 const DIAMOND: Texture2D = preload("uid://d0buk1j22pbu1")
 const SPADE: Texture2D = preload("uid://b7a4n3o1ildc7")
 
+## Card face color on the resource.
 @export var color: CardColor = CardColor.RED
+## Effect type determining rules and visuals.
 @export var type: CardType = CardType.NUMBER
+## Number or +draw value; 0 for non-valued action cards.
 @export var value: int = 0
+## Unique runtime id used for multiplayer sync and hand reconciliation.
 @export var uid: int = 0
 
 ## Get background texture (or back side if hidden)

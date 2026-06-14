@@ -5,6 +5,7 @@ extends Control
 @onready var picture: TextureRect = %picture
 @onready var save_button: Button = %Save
 
+## Selected avatar index from the picture grid.
 var picture_id: int = 0
 
 
@@ -29,11 +30,13 @@ func _on_steam_ready() -> void:
 		player_name.text = SteamManager.get_persona_name()
 
 
+## Updates preview when user picks an avatar in the grid.
 func change_picture(texture: Texture2D, id: int) -> void:
 	picture.texture = texture
 	picture_id = id
 
 
+## Writes profile into Globals.client_profile; returns false if name empty.
 func _save_profile() -> bool:
 	var name := player_name.text.strip_edges()
 	if name == "":

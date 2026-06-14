@@ -1,6 +1,7 @@
 extends VBoxContainer
 class_name ProfileCardDisplay
 
+## Emitted when the player clicks a selectable target profile card.
 signal pressed(holder: HandCardHolder)
 
 @onready var profile: TextureRect = %profile
@@ -29,6 +30,7 @@ func _ready() -> void:
 
 	scale = normal_scale
 
+## Binds profile data and clickability for target selection UI.
 func setup(p: PlayerProfile, count: int, holder: HandCardHolder, disabled: bool = false) -> void:
 	_holder = holder
 	_disabled = disabled

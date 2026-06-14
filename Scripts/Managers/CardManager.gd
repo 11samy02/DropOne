@@ -2,20 +2,32 @@ extends Node
 class_name CardManager
 
 @export_group("Ui Elements")
+## Authoritative top card on the discard pile.
 @export var top_card: CardResource
+## Scene node displaying the current top card.
 @export var top_card_view: CardView
+## Turn and draw rules coordinator.
 @export var queue_manager: QueueManager
+## Button that triggers drawing from the deck.
 @export var draw_button: TextureButton
 
 @export_group("Deck")
+## Deck definition used to build the runtime card array.
 @export var loaded_deck: DeckResource
 
+## Shuffled draw pile; cards are popped from the front.
 var deck: Array[CardResource] = []
+## Previously played cards kept under the current top card.
 var discard_pile: Array[CardResource] = []
+## Active play color after wild resolution or top number card.
 var current_color: CardResource.CardColor
+## True while waiting for a wild color pick before the play resolves.
 var waiting_for_color := false
+## Wild card pending color selection on the discard pile.
 var pending_wild_card: CardResource = null
+## True after _ready has connected signals.
 var is_initialized: bool = false
+## Monotonic id source for newly created cards.
 var _uid_counter: int = 1
 
 ## While suppressed, runtime top-card updates are buffered instead of applied,
@@ -38,10 +50,12 @@ func connect_signals() -> void:
 	Signals.COLOR_color_selected.connect(select_color)
 
 
+## Builds the runtime deck array from loaded_deck (or empty if unset).
 func create_default_cards() -> Array[CardResource]:
 	return create_cards_from_deck(loaded_deck)
 
 
+## Creates a new CardResource with a fresh uid.
 func create_card(color: CardResource.CardColor, type: CardResource.CardType, value: int) -> CardResource:
 	var card := CardResource.new()
 	card.color = color
@@ -51,6 +65,7 @@ func create_card(color: CardResource.CardColor, type: CardResource.CardType, val
 	_uid_counter += 1
 	return card
 
+## Draws until a valid starting NUMBER card is found and sets it as top.
 func set_top_card() -> void:
 	if deck.is_empty():
 		return
@@ -91,6 +106,7 @@ func end_top_card_suppression(fallback: CardResource = null) -> void:
 		set_top_card_runtime(fallback)
 
 
+## Applies a new top card, handles wild color prompt, and updates UI.
 func set_top_card_runtime(card: CardResource) -> void:
 	if card == null:
 		return
@@ -123,6 +139,7 @@ func set_top_card_runtime(card: CardResource) -> void:
 
 	update_draw_button_state()
 
+## Sets top card without triggering wild/color side effects (place-all steps).
 func set_top_card_no_effect(card: CardResource) -> void:
 	if card == null:
 		return
@@ -146,6 +163,7 @@ func set_top_card_no_effect(card: CardResource) -> void:
 	update_draw_button_state()
 
 
+## True if this card type requires a color pick when played to the top.
 func _card_requires_color_selection(card: CardResource) -> bool:
 	if card == null:
 		return false
@@ -156,6 +174,7 @@ func _card_requires_color_selection(card: CardResource) -> bool:
 	]
 
 
+## Resolves wild color selection and updates top card visuals.
 func select_color(color: CardResource.CardColor) -> void:
 	if !waiting_for_color:
 		return
@@ -174,6 +193,7 @@ func select_color(color: CardResource.CardColor) -> void:
 	update_draw_button_state()
 
 
+## Draw button handler: validates turn then emits DECK_draw_pressed.
 func _on_draw_deck_pressed() -> void:
 	if waiting_for_color:
 		return
@@ -186,6 +206,7 @@ func _on_draw_deck_pressed() -> void:
 	Signals.DECK_draw_pressed.emit()
 
 
+## Removes and returns the next card from the deck; refills from discard if empty.
 func draw_card() -> CardResource:
 	if deck.is_empty():
 		refill_deck_from_discard()
@@ -194,6 +215,7 @@ func draw_card() -> CardResource:
 	return deck.pop_front()
 
 
+## Returns a card at offset from the top of the deck without drawing it.
 func peek_next_card(offset: int = 0) -> CardResource:
 	if deck.is_empty():
 		return null
@@ -203,6 +225,7 @@ func peek_next_card(offset: int = 0) -> CardResource:
 	return deck[offset]
 
 
+## Returns up to `amount` cards from the top of the deck without drawing.
 func peek_next_cards(amount: int = 3) -> Array[CardResource]:
 	var res: Array[CardResource] = []
 	for i in range(min(amount, deck.size())):
@@ -210,6 +233,7 @@ func peek_next_cards(amount: int = 3) -> Array[CardResource]:
 	return res
 
 
+## Shuffles discard back into deck, keeping the current top on the discard pile.
 func refill_deck_from_discard() -> void:
 	if discard_pile.size() <= 1:
 		return
@@ -227,6 +251,7 @@ func get_current_color() -> CardResource.CardColor:
 	return current_color
 
 
+## Enables or disables the draw button based on turn and color-wait state.
 func update_draw_button_state() -> void:
 	if draw_button == null:
 		return
@@ -298,6 +323,7 @@ func _stop_draw_pulse() -> void:
 	_draw_pulse_tween = null
 
 
+## Builds card array from a DeckResource (numbers + entry cards).
 func create_cards_from_deck(deck_res: DeckResource) -> Array[CardResource]:
 	var arr: Array[CardResource] = []
 	if deck_res == null:
@@ -320,6 +346,7 @@ func create_cards_from_deck(deck_res: DeckResource) -> Array[CardResource]:
 	return arr
 
 
+## Appends numbered cards for each color using number_rules copy counts.
 func add_number_cards(arr: Array[CardResource], colors: Array, rule: DeckNumberRuleResource) -> void:
 	for c in colors:
 		for n in range(rule.min_number, rule.max_number + 1):
@@ -330,6 +357,7 @@ func add_number_cards(arr: Array[CardResource], colors: Array, rule: DeckNumberR
 				arr.append(create_card(c, CardResource.CardType.NUMBER, n))
 
 
+## Appends special cards from a single DeckEntryResource.
 func add_entry_cards(arr: Array[CardResource], entry: DeckEntryResource) -> void:
 	if entry.duplicate_for_all_colors:
 		for c in entry.colors:
@@ -340,6 +368,7 @@ func add_entry_cards(arr: Array[CardResource], entry: DeckEntryResource) -> void
 			arr.append(create_card(entry.color, entry.type, entry.value))
 
 
+## Omega AI: draws the best-scoring card within the top `range` indices.
 func draw_specific_card_from_top_range(range: int, prefer_fn: Callable) -> CardResource:
 	if deck.is_empty():
 		refill_deck_from_discard()
@@ -362,16 +391,19 @@ func draw_specific_card_from_top_range(range: int, prefer_fn: Callable) -> CardR
 	return picked
 
 
+## Inserts a card at the top of the draw pile (index 0).
 func force_insert_card_on_top(card: CardResource) -> void:
 	if card != null:
 		deck.insert(0, card)
 
 
+## Inserts a card at a specific index in the draw pile.
 func force_insert_card_at(index: int, card: CardResource) -> void:
 	if card != null:
 		deck.insert(clamp(index, 0, deck.size()), card)
 
 
+## Removes and returns the first deck card matching predicate.
 func remove_first_matching_card(predicate: Callable) -> CardResource:
 	if deck.is_empty():
 		refill_deck_from_discard()
@@ -389,6 +421,7 @@ func get_discard_size() -> int:
 	return discard_pile.size()
 
 
+## Tween helper for draw-deck and card dimming feedback.
 func _smooth_modulate(node: CanvasItem, target: Color, duration: float = 0.2) -> void:
 	if node == null:
 		return

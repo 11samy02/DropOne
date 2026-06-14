@@ -9,6 +9,7 @@ class_name ServerMain
 var _started := false
 var _loading_scene := false
 
+## Starts dedicated/local server and waits for enough players to load game scene.
 func _ready() -> void:
 	print("ServerMain started")
 	NetworkManager.start_server(NetworkManager.DEFAULT_PORT)
@@ -47,6 +48,7 @@ func _on_players_received(players: Array) -> void:
 		return
 	await _load_game_scene()
 
+## Loads fallback game scene if none assigned in the inspector.
 func _ensure_game_scene() -> bool:
 	if game_scene != null:
 		return true
@@ -58,6 +60,7 @@ func _ensure_game_scene() -> bool:
 		return false
 	return true
 
+## Deferred transition to the multiplayer game scene.
 func _load_game_scene() -> void:
 	if _loading_scene:
 		return

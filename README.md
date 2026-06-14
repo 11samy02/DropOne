@@ -2,11 +2,11 @@
 
 **DropOne** is a fast-paced online multiplayer card game built with **Godot 4**. Match colors and numbers, stack draw penalties, play wild cards, and be the first to empty your hand.
 
-> **Alpha release** — features are playable but still in active development. Expect bugs, balance tweaks, and UI polish between builds.
+> **Beta release** — core gameplay and multiplayer are in place; balance, AI, and polish are still evolving between builds.
 
 <p align="center">
-  <img src="https://img.shields.io/badge/release-Alpha-orange" alt="Alpha" />
-  <img src="https://img.shields.io/badge/version-v0.2.2--alpha-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/release-Beta-yellow" alt="Beta" />
+  <img src="https://img.shields.io/badge/version-v0.3.0--beta-blue" alt="Version" />
   <img src="https://img.shields.io/badge/engine-Godot%204.6-478CBF?logo=godotengine&logoColor=white" alt="Godot 4.6" />
   <img src="https://img.shields.io/badge/players-2--8-green" alt="2-8 players" />
   <img src="https://img.shields.io/badge/platform-Windows-0078D6?logo=windows&logoColor=white" alt="Windows" />
@@ -32,7 +32,7 @@
 
 Pre-built Windows builds are on the [**Releases**](https://github.com/11samy02/DropOne/releases) page.
 
-1. Download `DropOne-Windows-v0.2.2-alpha.zip`
+1. Download `DropOne-Windows-v0.3.0-beta.zip`
 2. Extract the folder
 3. Launch **`DropOne.exe`**
 4. Keep `steam_appid.txt` and the Steam DLLs next to the executable
@@ -132,7 +132,7 @@ DropOne/
 
 ## Versioning
 
-Steam lobby matchmaking filters by game version — all players in a match must share the same build tag (e.g. `v0.2.2-alpha`).
+Steam lobby matchmaking filters by game version — all players in a match must share the same build tag (e.g. `v0.3.0-beta`).
 
 ---
 

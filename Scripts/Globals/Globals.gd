@@ -1,13 +1,15 @@
 extends Node
 
-
+## Local player's profile created on the start/profile screens.
 var client_profile: PlayerProfile
 
-## Deck selected in the lobby (res:// path). Empty = use the scene's default deck.
+## Folder containing `.tres` deck resources.
 const DECK_DIR := "res://Resources/Decks/"
+## Deck path chosen in lobby; empty uses the scene default deck.
 var selected_deck_path: String = ""
 
 
+## True when the local player has set a non-empty profile name.
 func has_customized_profile() -> bool:
 	return client_profile != null and str(client_profile.player_name).strip_edges() != ""
 
@@ -50,6 +52,7 @@ func list_deck_paths() -> Array[String]:
 
 
 ## Human-readable name for a deck path (falls back to the file name).
+## Human-readable deck title from resource or file basename.
 func deck_display_name(path: String) -> String:
 	var deck := load_deck(path)
 	if deck != null and str(deck.deck_name).strip_edges() != "":
@@ -57,6 +60,7 @@ func deck_display_name(path: String) -> String:
 	return path.get_file().get_basename()
 
 
+## Loads a DeckResource from a res:// path; returns null if missing.
 func load_deck(path: String) -> DeckResource:
 	if path == "":
 		return null
@@ -65,6 +69,7 @@ func load_deck(path: String) -> DeckResource:
 	return load(path) as DeckResource
 
 
+## Deferred scene swap using a preloaded PackedScene.
 func change_scene_packed(scene: PackedScene) -> void:
 	var tree := Engine.get_main_loop() as SceneTree
 	if tree == null:
@@ -73,6 +78,7 @@ func change_scene_packed(scene: PackedScene) -> void:
 	tree.call_deferred("change_scene_to_packed", scene)
 
 
+## Deferred scene swap using a scene file path.
 func change_scene_file(path: String) -> void:
 	var tree := Engine.get_main_loop() as SceneTree
 	if tree == null:

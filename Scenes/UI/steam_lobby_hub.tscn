@@ -32,7 +32,6 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("2_script")
-use_steam = true
 
 [node name="ColorRect" type="ColorRect" parent="." unique_id=1627577819]
 material = SubResource("ShaderMaterial_bg")
@@ -65,9 +64,9 @@ layout_mode = 2
 [node name="Back" type="Button" parent="MarginContainer/VBoxContainer/Header" unique_id=822475653]
 custom_minimum_size = Vector2(80, 80)
 layout_mode = 2
-theme_override_styles/hover = ExtResource("7_btn_hover")
 theme_override_styles/normal = ExtResource("6_btn")
 theme_override_styles/pressed = ExtResource("8_btn_pressed")
+theme_override_styles/hover = ExtResource("7_btn_hover")
 icon = ExtResource("4_back")
 icon_alignment = 1
 expand_icon = true
@@ -99,18 +98,18 @@ theme_override_constants/separation = 16
 unique_name_in_owner = true
 custom_minimum_size = Vector2(280, 75)
 layout_mode = 2
-theme_override_styles/hover = ExtResource("7_btn_hover")
 theme_override_styles/normal = ExtResource("6_btn")
 theme_override_styles/pressed = ExtResource("8_btn_pressed")
+theme_override_styles/hover = ExtResource("7_btn_hover")
 text = "Singleplayer (Bots)"
 
 [node name="Create" type="Button" parent="MarginContainer/VBoxContainer/Actions" unique_id=634845425]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(320, 75)
 layout_mode = 2
-theme_override_styles/hover = ExtResource("7_btn_hover")
 theme_override_styles/normal = ExtResource("6_btn")
 theme_override_styles/pressed = ExtResource("8_btn_pressed")
+theme_override_styles/hover = ExtResource("7_btn_hover")
 text = "Create Lobby"
 icon = ExtResource("5_add")
 
@@ -129,17 +128,17 @@ alignment = 1
 [node name="Paste" type="Button" parent="MarginContainer/VBoxContainer/JoinRow" unique_id=650624705]
 custom_minimum_size = Vector2(160, 75)
 layout_mode = 2
-theme_override_styles/hover = ExtResource("7_btn_hover")
 theme_override_styles/normal = ExtResource("6_btn")
 theme_override_styles/pressed = ExtResource("8_btn_pressed")
+theme_override_styles/hover = ExtResource("7_btn_hover")
 text = "Paste"
 
 [node name="JoinId" type="Button" parent="MarginContainer/VBoxContainer/JoinRow" unique_id=1079888514]
 custom_minimum_size = Vector2(200, 75)
 layout_mode = 2
-theme_override_styles/hover = ExtResource("7_btn_hover")
 theme_override_styles/normal = ExtResource("6_btn")
 theme_override_styles/pressed = ExtResource("8_btn_pressed")
+theme_override_styles/hover = ExtResource("7_btn_hover")
 text = "Join"
 
 [node name="ListTitle" type="Label" parent="MarginContainer/VBoxContainer" unique_id=1955270552]

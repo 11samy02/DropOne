@@ -4,15 +4,19 @@ class_name HandCardHolder
 const HAND_CARD_HOLDER = preload("uid://bpglgdslmw461")
 
 @export var CARD_VIEW: PackedScene
+## Lerp speed for hand card overlap alignment.
 @export var smooth_speed: float = 12.0
 @export var card_manager: CardManager
 @export var queue_manager: QueueManager
 @export var is_bot := false
+## Opponent/back-of-card layout with heavy overlap.
 @export var compact_view := false
 @export var profile: PlayerProfile
 
 
+## Network/slot index for this seat.
 var player_index := -1
+## Index into bot_profiles for offline bots.
 var bot_index := -1
 var turn_active := false
 var _current_sep: float = 0.0
@@ -445,6 +449,7 @@ func get_all_card_resources() -> Array[CardResource]:
 			arr.append(c.card_res)
 	return arr
 
+## Initializes profile fields on an existing holder.
 func setup_profile(index: int, bot: bool, name: String = "") -> void:
 	player_index = index
 	is_bot = bot

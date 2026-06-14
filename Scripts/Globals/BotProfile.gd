@@ -1,6 +1,7 @@
 extends Resource
 class_name BotProfile
 
+## Bot display name shown at the table and in lobby rows.
 @export var name: String = "Bot"
 
 ## AI Difficulty

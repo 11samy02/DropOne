@@ -40,6 +40,7 @@ func _can_human_pick() -> bool:
 			return false
 	return true
 
+## Sends color to server or applies locally, then hides the picker.
 func _pick_color(color: CardResource.CardColor) -> void:
 	if !_can_human_pick():
 		return

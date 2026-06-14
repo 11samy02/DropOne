@@ -136,11 +136,25 @@ func _setup_bot_options() -> void:
 		for i in range(DIFFICULTY_NAMES.size()):
 			difficulty_option.add_item(DIFFICULTY_NAMES[i], i)
 		difficulty_option.selected = 2  # Smart
+		if not difficulty_option.item_selected.is_connected(_on_difficulty_selected):
+			difficulty_option.item_selected.connect(_on_difficulty_selected)
 	if personality_option:
 		personality_option.clear()
 		for i in range(PERSONALITY_NAMES.size()):
 			personality_option.add_item(PERSONALITY_NAMES[i], i)
 		personality_option.selected = 0  # Balanced
+	_update_personality_option_state()
+
+
+func _on_difficulty_selected(_index: int) -> void:
+	_update_personality_option_state()
+
+
+func _update_personality_option_state() -> void:
+	if personality_option == null or difficulty_option == null:
+		return
+	var is_omega := difficulty_option.get_selected_id() == KIController.AIDifficulty.OMEGA
+	personality_option.disabled = is_omega
 
 
 func _setup_deck_options() -> void:
@@ -221,7 +235,9 @@ func _on_add_bot_pressed() -> void:
 		status_label.text = "Maximum of %d participants reached." % NetworkManager.MAX_PLAYERS
 		return
 	var diff := difficulty_option.get_selected_id() if difficulty_option != null else 2
-	var pers := personality_option.get_selected_id() if personality_option != null else 0
+	var pers := KIController.AIPersonality.BALANCED
+	if diff != KIController.AIDifficulty.OMEGA and personality_option != null:
+		pers = personality_option.get_selected_id()
 	NetworkManager.add_lobby_bot(diff, pers)
 
 

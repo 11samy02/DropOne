@@ -25,10 +25,13 @@ func setup(member: Dictionary) -> void:
 	if status_label:
 		if is_bot:
 			var diff := int(member.get("difficulty", 0))
-			var pers := int(member.get("personality", 0))
 			var diff_name = DIFFICULTY_NAMES[diff] if diff >= 0 and diff < DIFFICULTY_NAMES.size() else "?"
-			var pers_name = PERSONALITY_NAMES[pers] if pers >= 0 and pers < PERSONALITY_NAMES.size() else "?"
-			status_label.text = "%s / %s" % [diff_name, pers_name]
+			if diff == KIController.AIDifficulty.OMEGA:
+				status_label.text = diff_name
+			else:
+				var pers := int(member.get("personality", 0))
+				var pers_name = PERSONALITY_NAMES[pers] if pers >= 0 and pers < PERSONALITY_NAMES.size() else "?"
+				status_label.text = "%s / %s" % [diff_name, pers_name]
 			status_label.modulate = Color(0.6, 0.8, 1.0)
 		else:
 			status_label.text = "Ready" if is_ready else "Not Ready"

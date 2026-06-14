@@ -24,6 +24,8 @@ var last_hand: Array = []
 var last_match_state: Dictionary = {}
 var last_players: Array = []
 var last_slot: int = -1
+## Incremented on every new match so clients can ignore stale hand/state snapshots.
+var match_epoch: int = 0
 
 # Server-side: profiles by peer id
 var _server_profiles_by_peer: Dictionary = {} # { peer_id:int : {name, picture_id, peer_id} }
@@ -290,6 +292,7 @@ func leave_lobby() -> void:
 	my_slot = -1
 	last_slot = -1
 	last_players = []
+	clear_sync_buffers()
 	_rejoin_from_match = false
 	_session_had_remote_peers = false
 	_host_alone_lobby_return_pending = false
@@ -415,6 +418,7 @@ func request_start_game() -> void:
 		return
 	if not all_lobby_ready():
 		return
+	match_epoch += 1
 	_broadcast_players_to_all()
 	call_deferred("_deferred_launch_game_scene")
 
@@ -422,23 +426,44 @@ func request_start_game() -> void:
 func _deferred_launch_game_scene() -> void:
 	if not multiplayer.is_server():
 		return
-	clear_match_buffers()
+	clear_sync_buffers()
 	for pid in multiplayer.get_peers():
-		rpc_id(int(pid), "client_clear_match_buffers")
-	client_clear_match_buffers()
+		rpc_id(int(pid), "client_prepare_match", match_epoch)
+	_prepare_local_match(match_epoch)
+	# Give peers time to receive player list + buffer clear before the scene swap.
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if not multiplayer.is_server():
+		return
 	for pid in multiplayer.get_peers():
 		rpc_id(int(pid), "client_start_game")
 	client_start_game()
 
 
-func clear_match_buffers() -> void:
+func clear_sync_buffers() -> void:
 	last_hand = []
 	last_match_state = {}
 
 
+func clear_match_buffers() -> void:
+	clear_sync_buffers()
+	last_players = []
+
+
+@rpc("authority", "reliable")
+func client_prepare_match(epoch: int) -> void:
+	match_epoch = int(epoch)
+	clear_sync_buffers()
+
+
+func _prepare_local_match(epoch: int) -> void:
+	match_epoch = int(epoch)
+	clear_sync_buffers()
+
+
 @rpc("authority", "reliable")
 func client_clear_match_buffers() -> void:
-	clear_match_buffers()
+	clear_sync_buffers()
 
 
 func all_lobby_ready() -> bool:
@@ -519,6 +544,25 @@ func client_lobby_state(players: Array) -> void:
 @rpc("authority", "reliable", "call_local")
 func client_start_game() -> void:
 	lobby_start_game.emit()
+	call_deferred("_ensure_game_scene_if_needed")
+
+
+const LOBBY_ROOM_SCENE := "res://Scenes/UI/steam_lobby_room.tscn"
+const GAME_SCENE := "res://Scenes/Managers/card_manager.tscn"
+
+
+func _ensure_game_scene_if_needed() -> void:
+	if not has_active_connection():
+		return
+	var current := get_tree().current_scene
+	if current == null:
+		return
+	if str(current.scene_file_path) != LOBBY_ROOM_SCENE:
+		return
+	var scene := load(GAME_SCENE)
+	if scene == null:
+		return
+	Globals.change_scene_packed(scene)
 
 
 # -------------------------------------------------------------------
@@ -551,11 +595,13 @@ func server_return_to_lobby() -> void:
 	# Ready-States für die neue Runde zurücksetzen (Bots bleiben ready).
 	for key in _ready_by_peer.keys():
 		_ready_by_peer[key] = false
-	clear_match_buffers()
+	match_epoch += 1
+	clear_sync_buffers()
 	for pid in multiplayer.get_peers():
+		rpc_id(int(pid), "client_prepare_match", match_epoch)
 		rpc_id(int(pid), "client_clear_match_buffers")
 		rpc_id(int(pid), "client_return_to_lobby")
-	client_clear_match_buffers()
+	_prepare_local_match(match_epoch)
 	client_return_to_lobby()
 
 
@@ -581,8 +627,7 @@ func server_request_return_to_lobby() -> void:
 func reset_for_lobby_return() -> void:
 	my_slot = -1
 	last_slot = -1
-	last_players = []
-	clear_match_buffers()
+	clear_sync_buffers()
 	_session_had_remote_peers = false
 	_host_alone_lobby_return_pending = false
 	if multiplayer.is_server():
@@ -894,8 +939,8 @@ func _broadcast_players_to_all() -> void:
 	
 	if not _is_dedicated_server():
 		client_set_players(players, connected.find(1))
-	
-	
+
+	last_players = players
 	players_received.emit(players)
 
 func server_rebroadcast_players() -> void:
@@ -999,14 +1044,18 @@ func client_set_players(players: Array, your_slot: int) -> void:
 	players_received.emit(players)
 
 @rpc("authority", "reliable")
-func client_set_hand(hand: Array) -> void:
+func client_set_hand(hand: Array, epoch: int = -1) -> void:
+	if epoch >= 0 and epoch != match_epoch:
+		return
 	last_hand = hand
 	hand_received.emit(hand)
 	print("HAND RECEIVED size=", hand.size(), " first_type=", typeof(hand[0]) if hand.size() > 0 else -1)
 
 
 @rpc("authority", "reliable")
-func client_set_match_state(state: Dictionary) -> void:
+func client_set_match_state(state: Dictionary, epoch: int = -1) -> void:
+	if epoch >= 0 and epoch != match_epoch:
+		return
 	last_match_state = state
 	match_state_received.emit(state)
 

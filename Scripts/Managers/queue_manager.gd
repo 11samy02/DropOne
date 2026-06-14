@@ -129,6 +129,8 @@ func _ready() -> void:
 	if buffered_players.size() > 0:
 		_on_players_received(buffered_players)
 		NetworkManager.clear_last_players()
+	elif multiplayer.is_server():
+		call_deferred("_server_request_player_rebroadcast")
 
 	var buffered_hand := NetworkManager.get_last_hand()
 	if buffered_hand.size() > 0:
@@ -138,9 +140,7 @@ func _ready() -> void:
 	if buffered_state.size() > 0:
 		_on_match_state_received(buffered_state)
 
-	# Server will start match when players are received via _on_players_received()
-	if multiplayer.is_server():
-		call_deferred("_server_request_player_rebroadcast")
+	# Server starts match when players are received via _on_players_received().
 
 	_stuck_watchdog = Timer.new()
 	_stuck_watchdog.wait_time = 1.5
@@ -2586,7 +2586,7 @@ func _on_players_received(players_in: Array) -> void:
 	_players_meta = players_in.duplicate(true)
 	if !multiplayer.is_server():
 		_resolve_client_slot(_players_meta)
-	if !multiplayer.is_server() and _client_match_started:
+	if !multiplayer.is_server() and _match_deal_complete:
 		var slot := int(NetworkManager.my_slot)
 		if slot >= 0 and _slot_to_holder.has(slot) and turn_order.size() == _players_meta.size():
 			return
@@ -3261,14 +3261,15 @@ func _server_start_match() -> void:
 
 		var peer_id := _slot_to_peer_id(holder.player_index)
 		if peer_id != 0 and int(peer_id) != 1:
-			NetworkManager.rpc_id(peer_id, "client_set_hand", hand)
+			NetworkManager.rpc_id(peer_id, "client_set_hand", hand, NetworkManager.match_epoch)
 	_match_deal_in_progress = false
 	_match_deal_complete = true
 
 	await get_tree().process_frame
 
 	var state := _build_match_state()
-	NetworkManager.rpc("client_set_match_state", state)
+	state["epoch"] = NetworkManager.match_epoch
+	NetworkManager.rpc("client_set_match_state", state, NetworkManager.match_epoch)
 	_on_match_state_received(state)
 
 	await get_tree().process_frame
@@ -3665,7 +3666,7 @@ func _server_sync_match_state() -> void:
 		return
 
 	var state := _build_match_state()
-	NetworkManager.rpc("client_set_match_state", state)
+	NetworkManager.rpc("client_set_match_state", state, NetworkManager.match_epoch)
 	# Do not apply the snapshot on the server — it is authoritative and
 	# re-applying (especially mid wild-color pick) can clobber draw_stack.
 
@@ -3708,7 +3709,7 @@ func _server_sync_holder_hand(holder: HandCardHolder, sync_state: bool = true) -
 			for ch in holder.get_children():
 				if ch is CardView and ch.card_res != null and not ch.get_meta("anim_temp", false):
 					hand.append(_serialize_card(ch.card_res))
-			NetworkManager.rpc_id(peer_id, "client_set_hand", hand)
+			NetworkManager.rpc_id(peer_id, "client_set_hand", hand, NetworkManager.match_epoch)
 	_server_broadcast_counts()
 	if sync_state:
 		_server_sync_match_state()
@@ -3857,7 +3858,7 @@ func _server_sync_late_joiners(players_in: Array) -> void:
 			if ch is CardView and ch.card_res != null:
 				hand.append(_serialize_card(ch.card_res))
 
-		NetworkManager.rpc_id(peer_id, "client_set_match_state", state)
-		NetworkManager.rpc_id(peer_id, "client_set_hand", hand)
+		NetworkManager.rpc_id(peer_id, "client_set_match_state", state, NetworkManager.match_epoch)
+		NetworkManager.rpc_id(peer_id, "client_set_hand", hand, NetworkManager.match_epoch)
 
 	_server_broadcast_counts()

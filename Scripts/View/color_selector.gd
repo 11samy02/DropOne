@@ -24,17 +24,11 @@ func _can_human_pick() -> bool:
 		return false
 	if queue_manager.roulette_active and queue_manager.roulette_waiting_for_color:
 		return queue_manager.is_local_roulette_color_picker()
-	if !queue_manager.is_human_turn():
-		return false
 	var owner: HandCardHolder = queue_manager.wild_color_owner
-	if owner == null:
+	if owner == null or owner.is_bot:
 		return false
-	if owner.is_bot:
-		return false
-	if owner != queue_manager.get_current_holder():
-		return false
-	# In multiplayer ONLY the peer who actually played the wild may pick its
-	# color. Without this the host could choose colors for clients' cards.
+	# The player who played the wild card picks the color — not necessarily
+	# get_current_holder() while match state is catching up after the play.
 	if multiplayer.has_multiplayer_peer():
 		if int(owner.player_index) != int(NetworkManager.my_slot):
 			return false
@@ -45,13 +39,12 @@ func _pick_color(color: CardResource.CardColor) -> void:
 	if !_can_human_pick():
 		return
 	hide()
-	if multiplayer.has_multiplayer_peer():
-		if !multiplayer.is_server():
-			NetworkManager.request_wild_color(int(color))
-			return
-		if queue_manager != null and queue_manager.has_method("server_apply_local_wild_color"):
-			queue_manager.server_apply_local_wild_color(int(color))
-			return
+	if multiplayer.has_multiplayer_peer() and !multiplayer.is_server():
+		NetworkManager.request_wild_color(int(color))
+		return
+	if queue_manager != null and queue_manager.has_method("server_apply_local_wild_color"):
+		queue_manager.server_apply_local_wild_color(int(color))
+		return
 	Signals.COLOR_color_selected.emit(color)
 
 

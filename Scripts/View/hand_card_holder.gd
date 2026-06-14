@@ -456,10 +456,8 @@ func _after_color_selected() -> void:
 		return
 	if not _waiting_color_turn_end:
 		return
-	# Server resolves pending wild/swap effects in queue_manager._apply_wild_color.
-	if queue_manager != null and queue_manager.wild_color_owner == self:
-		_waiting_color_turn_end = false
-		_pending_effect_card_uid = -1
+	# Authoritative peers resolve effects in queue_manager._apply_wild_color.
+	if not multiplayer.has_multiplayer_peer() or multiplayer.is_server():
 		return
 	_waiting_color_turn_end = false
 	var pending_uid := _pending_effect_card_uid

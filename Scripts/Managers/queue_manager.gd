@@ -2345,33 +2345,41 @@ func _set_seat_name(container: Control, holder: HandCardHolder) -> void:
 		container.add_child(label)
 
 	label.text = holder.profile.player_name if holder.profile != null else ""
-	# Centered horizontally on the seat point, just above the card stack.
-	label.position = Vector2(-150, -290)
 
 	var info := container.get_node_or_null("SeatBotInfo") as Label
 	var info_text := _format_bot_seat_info(holder)
-	if info_text.strip_edges() == "":
+	var has_info := info_text.strip_edges() != ""
+
+	# Holder is bottom-anchored; cards extend upward (~240px). Keep all text above the stack.
+	const CARD_STACK_CLEARANCE := 250
+	const GAP_ABOVE_CARDS := 14
+	const INFO_LINE_HEIGHT := 22
+	const NAME_LINE_HEIGHT := 40
+	const LABEL_GAP := 4
+
+	var text_bottom_y := -CARD_STACK_CLEARANCE - GAP_ABOVE_CARDS
+	if has_info:
+		if info == null:
+			info = Label.new()
+			info.name = "SeatBotInfo"
+			info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			info.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+			info.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			info.z_index = 100
+			info.size = Vector2(300, INFO_LINE_HEIGHT)
+			info.add_theme_font_size_override("font_size", 16)
+			info.add_theme_color_override("font_color", Color(0.78, 0.82, 0.9, 0.95))
+			info.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.65))
+			info.add_theme_constant_override("shadow_offset_x", 2)
+			info.add_theme_constant_override("shadow_offset_y", 2)
+			container.add_child(info)
+		info.text = info_text
+		info.position = Vector2(-150, text_bottom_y - INFO_LINE_HEIGHT)
+		label.position = Vector2(-150, info.position.y - LABEL_GAP - NAME_LINE_HEIGHT)
+	else:
 		if info != null:
 			info.queue_free()
-		return
-
-	if info == null:
-		info = Label.new()
-		info.name = "SeatBotInfo"
-		info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		info.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		info.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		info.z_index = 100
-		info.size = Vector2(300, 28)
-		info.add_theme_font_size_override("font_size", 18)
-		info.add_theme_color_override("font_color", Color(0.78, 0.82, 0.9, 0.95))
-		info.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.65))
-		info.add_theme_constant_override("shadow_offset_x", 2)
-		info.add_theme_constant_override("shadow_offset_y", 2)
-		container.add_child(info)
-
-	info.text = info_text
-	info.position = Vector2(-150, -248)
+		label.position = Vector2(-150, text_bottom_y - NAME_LINE_HEIGHT)
 
 
 func _bot_display_name(difficulty: int, fallback: String) -> String:
@@ -3048,7 +3056,7 @@ func server_apply_wild_color(peer_id: int, color: int) -> void:
 
 ## Host/local authoritative wild color (same path as client RPC).
 func server_apply_local_wild_color(color: int) -> void:
-	if not multiplayer.is_server():
+	if not _is_authoritative():
 		return
 	if wild_color_owner == null or !is_instance_valid(wild_color_owner):
 		return
@@ -3069,20 +3077,19 @@ func _apply_wild_color(color: int, owner_slot: int) -> void:
 			card_manager.top_card_view.override_color = color
 			card_manager.top_card_view.load_card()
 	Signals.COLOR_color_selected.emit(color)
-	if multiplayer.is_server():
+	if _is_authoritative():
 		if roulette_active:
 			pass
 		elif wild_color_owner != null and is_instance_valid(wild_color_owner):
 			var owner := wild_color_owner
 			if owner._waiting_color_turn_end and card_manager.top_card != null:
-				var pending := int(owner._pending_effect_card_uid)
-				if pending < 0 or pending == int(card_manager.top_card.uid):
-					owner._waiting_color_turn_end = false
-					owner._pending_effect_card_uid = -1
-					register_card_play(card_manager.top_card, owner)
+				owner._waiting_color_turn_end = false
+				owner._pending_effect_card_uid = -1
+				register_card_play(card_manager.top_card, owner)
 			clear_wild_owner()
-		NetworkManager.rpc("client_set_wild_color", int(color), int(owner_slot))
-		_server_sync_match_state()
+		if multiplayer.has_multiplayer_peer():
+			NetworkManager.rpc("client_set_wild_color", int(color), int(owner_slot))
+			_server_sync_match_state()
 
 ## Client receive wild color
 ## Client: mirrors wild color from server without re-triggering play logic.

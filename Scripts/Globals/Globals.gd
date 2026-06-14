@@ -5,8 +5,19 @@ var client_profile: PlayerProfile
 
 ## Folder containing `.tres` deck resources.
 const DECK_DIR := "res://Resources/Decks/"
+const CLASSIC_DECK_PATH := "res://Resources/Decks/Classic.tres"
 ## Deck path chosen in lobby; empty uses the scene default deck.
 var selected_deck_path: String = ""
+
+
+## Default lobby deck: Classic when available, otherwise the first listed deck.
+func get_default_deck_path() -> String:
+	if ResourceLoader.exists(CLASSIC_DECK_PATH):
+		return CLASSIC_DECK_PATH
+	var paths := list_deck_paths()
+	if paths.is_empty():
+		return ""
+	return paths[0]
 
 
 ## True when the local player has set a non-empty profile name.

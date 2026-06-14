@@ -175,6 +175,8 @@ func _setup_deck_options() -> void:
 	if _deck_paths.is_empty():
 		deck_option.add_item("Default", 0)
 		deck_option.disabled = true
+	else:
+		_select_deck_in_ui(Globals.get_default_deck_path())
 
 
 func _setup_game_settings_options() -> void:
@@ -201,17 +203,19 @@ func _init_deck_state() -> void:
 	var is_host := NetworkManager.is_server or (not use_steam and SteamManager.local_role == SteamManager.LocalRole.HOST) or (use_steam and SteamManager.is_host())
 	if is_host:
 		deck_option.disabled = _deck_paths.is_empty()
-		# Seed a default deck if none chosen yet, then broadcast it.
 		var path := str(NetworkManager.lobby_deck_path)
-		if path == "" and not _deck_paths.is_empty():
-			path = _deck_paths[deck_option.selected if deck_option.selected >= 0 else 0]
+		if path.strip_edges() == "":
+			path = Globals.get_default_deck_path()
 		if path != "":
 			Globals.selected_deck_path = path
 			NetworkManager.set_lobby_deck(path)
 	else:
 		# Clients can see the deck but not change it.
 		deck_option.disabled = true
-	_select_deck_in_ui(str(NetworkManager.lobby_deck_path))
+	var display_path := str(NetworkManager.lobby_deck_path)
+	if display_path.strip_edges() == "":
+		display_path = Globals.get_default_deck_path()
+	_select_deck_in_ui(display_path)
 
 
 func _init_game_settings_state() -> void:

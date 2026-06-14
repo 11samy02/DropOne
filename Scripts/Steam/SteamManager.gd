@@ -12,7 +12,7 @@ enum LobbyOp { NONE, CREATE, JOIN }
 
 var use_steam: bool = true
 
-const GAME_VERSION := "v0.5.1-alpha"
+const GAME_VERSION := "v0.5.2-alpha"
 const MAX_LOBBY_PLAYERS := 8
 const LOCAL_LOBBY_ID := 4242
 const LOBBY_ROOM_SCENE := preload("res://Scenes/UI/steam_lobby_room.tscn")
@@ -316,21 +316,41 @@ func _on_lobby_created(result: int, lobby_id: int) -> void:
 	Steam.setLobbyData(lobby_id, "version", GAME_VERSION)
 	Steam.setLobbyData(lobby_id, "host_id", str(host_steam_id))
 	Steam.setLobbyJoinable(lobby_id, true)
+	_lobby_op = LobbyOp.NONE
 	lobby_created.emit(lobby_id)
 	_go_to_lobby_room()
 
 
+func _lobby_join_response_message(response: int) -> String:
+	match response:
+		Steam.CHAT_ROOM_ENTER_RESPONSE_DOESNT_EXIST:
+			return "Lobby does not exist — the host may have left."
+		Steam.CHAT_ROOM_ENTER_RESPONSE_NOT_ALLOWED:
+			return "Join denied — you do not have permission to enter this lobby."
+		Steam.CHAT_ROOM_ENTER_RESPONSE_FULL:
+			return "Lobby is full."
+		Steam.CHAT_ROOM_ENTER_RESPONSE_ERROR:
+			return "Steam could not join the lobby (unexpected error)."
+		_:
+			return "Failed to join lobby (code %d)." % response
+
+
 func _on_lobby_joined(lobby_id: int, _permissions: int, _locked: bool, response: int) -> void:
 	if _lobby_op != LobbyOp.JOIN:
+		# createLobby also fires lobby_joined for the host — must not leave that lobby.
+		if _lobby_op == LobbyOp.CREATE and response == Steam.CHAT_ROOM_ENTER_RESPONSE_SUCCESS:
+			if lobby_id == current_lobby_id:
+				return
 		if response == Steam.CHAT_ROOM_ENTER_RESPONSE_SUCCESS and lobby_id != 0:
 			Steam.leaveLobby(lobby_id)
-		_lobby_busy = false
+		if _lobby_op != LobbyOp.CREATE:
+			_lobby_busy = false
 		return
 	if response != Steam.CHAT_ROOM_ENTER_RESPONSE_SUCCESS:
 		_lobby_op = LobbyOp.NONE
 		_target_lobby_id = 0
 		_lobby_busy = false
-		lobby_join_failed.emit("Failed to join lobby (code %d)." % response)
+		lobby_join_failed.emit(_lobby_join_response_message(response))
 		return
 	if _target_lobby_id != 0 and lobby_id != _target_lobby_id:
 		Steam.leaveLobby(lobby_id)

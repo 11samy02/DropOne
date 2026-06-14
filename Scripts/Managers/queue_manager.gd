@@ -1040,6 +1040,19 @@ func _check_max_card_lose(holder: HandCardHolder) -> bool:
 	_eliminate_holder_for_max_cards(holder)
 	return true
 
+## Runs max-card elimination before end_turn so deferred hand callbacks cannot double-advance.
+func _try_eliminate_holder_for_max_cards(holder: HandCardHolder) -> bool:
+	if !_is_authoritative():
+		return is_holder_eliminated(holder)
+	return _check_max_card_lose(holder)
+
+func _finish_draw_turn_if_needed(holder: HandCardHolder) -> void:
+	if is_holder_eliminated(holder):
+		return
+	if _try_eliminate_holder_for_max_cards(holder):
+		return
+	end_turn()
+
 func _eliminate_holder_for_max_cards(holder: HandCardHolder) -> void:
 	if !_is_authoritative():
 		return
@@ -1054,6 +1067,26 @@ func _eliminate_holder_for_max_cards(holder: HandCardHolder) -> void:
 func _on_player_eliminated(slot: int) -> void:
 	_apply_player_eliminated_slot(int(slot), true)
 
+## Computes the active turn index after one player leaves turn_order.
+func _turn_index_after_player_removed(
+	removed_index: int, old_size: int, old_turn_index: int
+) -> int:
+	var new_size := old_size - 1
+	if new_size <= 0:
+		return 0
+	if removed_index == old_turn_index:
+		var next_old := (removed_index + direction) % old_size
+		if next_old < 0:
+			next_old += old_size
+		var new_index := next_old
+		if next_old > removed_index:
+			new_index = next_old - 1
+		return clampi(new_index, 0, new_size - 1)
+	var new_index := old_turn_index
+	if removed_index < old_turn_index:
+		new_index -= 1
+	return clampi(new_index, 0, new_size - 1)
+
 ## Applies max-card elimination: remove from turn order and update UI.
 func _apply_player_eliminated_slot(slot: int, show_local_lose_ui: bool) -> void:
 	var holder: HandCardHolder = _slot_to_holder.get(slot, null)
@@ -1067,22 +1100,24 @@ func _apply_player_eliminated_slot(slot: int, show_local_lose_ui: bool) -> void:
 	_recycle_eliminated_holder_cards(holder)
 	_clear_blocking_state_for_holder(holder)
 
+	var was_current_turn := false
 	var removed_index := turn_order.find(holder)
 	if removed_index >= 0:
+		var old_size := turn_order.size()
+		var old_turn_index := current_turn_index
+		was_current_turn = removed_index == old_turn_index
 		turn_order.remove_at(removed_index)
 		if turn_order.is_empty():
 			if _is_authoritative():
 				_check_max_card_lose_winner()
 			_finalize_eliminated_holder_ui(holder, show_local_lose_ui)
 			return
-		if removed_index == current_turn_index:
+		current_turn_index = _turn_index_after_player_removed(
+			removed_index, old_size, old_turn_index
+		)
+		if was_current_turn:
 			has_played_this_turn = false
 			has_drawn_this_turn = false
-			current_turn_index = removed_index % turn_order.size()
-		elif removed_index < current_turn_index:
-			current_turn_index -= 1
-		if current_turn_index >= turn_order.size():
-			current_turn_index = 0
 
 	_finalize_eliminated_holder_ui(holder, show_local_lose_ui)
 
@@ -1095,7 +1130,7 @@ func _apply_player_eliminated_slot(slot: int, show_local_lose_ui: bool) -> void:
 		update_turn_state()
 		if card_manager != null:
 			card_manager.update_draw_button_state()
-		if _is_authoritative():
+		if _is_authoritative() and was_current_turn:
 			call_deferred("_handle_start_of_turn_effects")
 
 ## Returns eliminated hand cards to the discard pile while keeping ghost visuals in the seat.
@@ -1313,10 +1348,14 @@ func on_draw_pressed() -> void:
 	has_drawn_this_turn = true
 
 	if !allow_play_after_draw:
-		end_turn()
+		_finish_draw_turn_if_needed(holder)
 		return
 
 	await get_tree().create_timer(0.25).timeout
+	if is_holder_eliminated(holder):
+		return
+	if _try_eliminate_holder_for_max_cards(holder):
+		return
 	if !holder_has_playable_card(holder):
 		end_turn()
 
@@ -1557,6 +1596,10 @@ func force_wild_draw_continue(holder: HandCardHolder) -> void:
 	await get_tree().create_timer(0.25).timeout
 	if !_is_holder_still_resolving_draw_stack(holder):
 		return
+	if is_holder_eliminated(holder):
+		return
+	if _try_eliminate_holder_for_max_cards(holder):
+		return
 	if !holder_has_playable_card(holder):
 		end_turn()
 
@@ -1583,6 +1626,10 @@ func force_draw_stack_continue(holder: HandCardHolder) -> void:
 	await get_tree().create_timer(0.25).timeout
 	if !_is_holder_still_resolving_draw_stack(holder):
 		return
+	if is_holder_eliminated(holder):
+		return
+	if _try_eliminate_holder_for_max_cards(holder):
+		return
 	if !holder_has_playable_card(holder):
 		end_turn()
 
@@ -1607,17 +1654,16 @@ func _check_and_finish_current_holder() -> bool:
 	winners.append(holder)
 
 	var removed_index := current_turn_index
+	var old_size := turn_order.size()
+	var old_turn_index := current_turn_index
 	turn_order.remove_at(removed_index)
 
 	if turn_order.size() == 0:
 		return true
 
-	if direction == 1:
-		current_turn_index = removed_index % turn_order.size()
-	else:
-		current_turn_index = (removed_index - 1) % turn_order.size()
-		if current_turn_index < 0:
-			current_turn_index += turn_order.size()
+	current_turn_index = _turn_index_after_player_removed(
+		removed_index, old_size, old_turn_index
+	)
 
 	return true
 
@@ -3413,9 +3459,13 @@ func server_apply_draw(peer_id: int) -> void:
 	NetworkManager.rpc_id(peer_id, "client_set_hand", hand)
 
 	if !allow_play_after_draw:
-		end_turn()
+		_finish_draw_turn_if_needed(holder)
 		return
 
+	if is_holder_eliminated(holder):
+		return
+	if _try_eliminate_holder_for_max_cards(holder):
+		return
 	if !holder_has_playable_card(holder):
 		end_turn()
 		return

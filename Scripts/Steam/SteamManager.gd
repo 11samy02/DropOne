@@ -12,7 +12,7 @@ enum LobbyOp { NONE, CREATE, JOIN }
 
 var use_steam: bool = true
 
-const GAME_VERSION := "v0.4.17-alpha"
+const GAME_VERSION := "v0.5.0-alpha"
 const MAX_LOBBY_PLAYERS := 8
 const LOCAL_LOBBY_ID := 4242
 const LOBBY_ROOM_SCENE := preload("res://Scenes/UI/steam_lobby_room.tscn")
@@ -42,6 +42,7 @@ var _configured := false
 var _lobby_op: LobbyOp = LobbyOp.NONE
 var _target_lobby_id: int = 0
 var _lobby_busy := false
+var _steam_disabled_for_solo := false
 
 
 func _ready() -> void:
@@ -207,6 +208,7 @@ func start_solo() -> void:
 	_lobby_busy = true
 	_prepare_fresh_lobby_session()
 	_lobby_op = LobbyOp.CREATE
+	_steam_disabled_for_solo = use_steam
 	use_steam = false
 	steam_ready = true
 	local_role = LocalRole.SOLO
@@ -255,6 +257,11 @@ func leave_lobby() -> void:
 	_lobby_op = LobbyOp.NONE
 	_target_lobby_id = 0
 	_lobby_busy = false
+	if _steam_disabled_for_solo:
+		use_steam = true
+		_steam_disabled_for_solo = false
+		if not steam_ready:
+			_init_steam()
 	if NetworkManager != null:
 		NetworkManager.leave_lobby()
 	if had_lobby:

@@ -2,21 +2,19 @@ extends Control
 
 const START_SCREEN := "res://Scenes/UI/start_screen.tscn"
 const LOBBY_HUB := "res://Scenes/UI/steam_lobby_hub.tscn"
+const OPTIONS_SCREEN := "res://Scenes/UI/start_options.tscn"
 
 @onready var customize_button: Button = %CustomizeButton
 @onready var play_button: Button = %PlayButton
+@onready var options_button: Button = %OptionsButton
 @onready var exit_button: Button = %ExitButton
 @onready var profile_panel: Panel = %ProfilePanel
 @onready var profile_name: Label = %ProfileName
 @onready var profile_picture: TextureRect = %ProfilePicture
 @onready var hint_label: Label = %HintLabel
-@onready var volume_slider: HSlider = %VolumeSlider
-@onready var volume_value_label: Label = %VolumeValueLabel
-@onready var fullscreen_check: CheckButton = %FullscreenCheck
 
 
 func _ready() -> void:
-	_sync_settings_ui()
 	_update_ui()
 
 
@@ -51,29 +49,9 @@ func _on_play_pressed() -> void:
 	Globals.change_scene_file(LOBBY_HUB)
 
 
+func _on_options_pressed() -> void:
+	Globals.change_scene_file(OPTIONS_SCREEN)
+
+
 func _on_exit_pressed() -> void:
 	get_tree().quit()
-
-
-func _sync_settings_ui() -> void:
-	volume_slider.set_block_signals(true)
-	volume_slider.value = SettingsManager.master_volume_linear * 100.0
-	volume_slider.set_block_signals(false)
-	_update_volume_label(volume_slider.value)
-
-	fullscreen_check.set_block_signals(true)
-	fullscreen_check.button_pressed = SettingsManager.fullscreen
-	fullscreen_check.set_block_signals(false)
-
-
-func _update_volume_label(percent: float) -> void:
-	volume_value_label.text = "%d%%" % int(round(percent))
-
-
-func _on_volume_changed(value: float) -> void:
-	_update_volume_label(value)
-	SettingsManager.set_master_volume_linear(value / 100.0)
-
-
-func _on_fullscreen_toggled(toggled_on: bool) -> void:
-	SettingsManager.set_fullscreen(toggled_on)

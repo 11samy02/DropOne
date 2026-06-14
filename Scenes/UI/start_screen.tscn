@@ -106,62 +106,6 @@ text = "Set up your profile before creating a lobby."
 horizontal_alignment = 1
 autowrap_mode = 2
 
-[node name="OptionsPanel" type="Panel" parent="CenterContainer/VBoxContainer"]
-custom_minimum_size = Vector2(0, 160)
-layout_mode = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
-
-[node name="OptionsVBox" type="VBoxContainer" parent="CenterContainer/VBoxContainer/OptionsPanel"]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-theme_override_constants/separation = 16
-alignment = 1
-
-[node name="OptionsTitle" type="Label" parent="CenterContainer/VBoxContainer/OptionsPanel/OptionsVBox"]
-layout_mode = 2
-theme_override_font_sizes/font_size = 28
-text = "Options"
-horizontal_alignment = 1
-
-[node name="VolumeRow" type="HBoxContainer" parent="CenterContainer/VBoxContainer/OptionsPanel/OptionsVBox"]
-layout_mode = 2
-theme_override_constants/separation = 16
-alignment = 1
-
-[node name="VolumeLabel" type="Label" parent="CenterContainer/VBoxContainer/OptionsPanel/OptionsVBox/VolumeRow"]
-custom_minimum_size = Vector2(160, 0)
-layout_mode = 2
-theme_override_font_sizes/font_size = 22
-text = "Sound Volume"
-
-[node name="VolumeSlider" type="HSlider" parent="CenterContainer/VBoxContainer/OptionsPanel/OptionsVBox/VolumeRow"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(200, 0)
-layout_mode = 2
-size_flags_horizontal = 3
-max_value = 100.0
-step = 1.0
-value = 100.0
-
-[node name="VolumeValueLabel" type="Label" parent="CenterContainer/VBoxContainer/OptionsPanel/OptionsVBox/VolumeRow"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(56, 0)
-layout_mode = 2
-theme_override_font_sizes/font_size = 22
-text = "100%"
-horizontal_alignment = 2
-
-[node name="FullscreenCheck" type="CheckButton" parent="CenterContainer/VBoxContainer/OptionsPanel/OptionsVBox"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 4
-theme_override_font_sizes/font_size = 22
-text = "Fullscreen"
-
 [node name="CustomizeButton" type="Button" parent="CenterContainer/VBoxContainer"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(420, 80)
@@ -184,6 +128,17 @@ theme_override_styles/normal = ExtResource("3_btn")
 theme_override_styles/pressed = ExtResource("5_btn_pressed")
 text = "Play Online"
 
+[node name="OptionsButton" type="Button" parent="CenterContainer/VBoxContainer"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(420, 80)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 32
+theme_override_styles/hover = ExtResource("4_btn_hover")
+theme_override_styles/normal = ExtResource("3_btn")
+theme_override_styles/pressed = ExtResource("5_btn_pressed")
+text = "Options"
+
 [node name="ExitButton" type="Button" parent="CenterContainer/VBoxContainer"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(420, 80)
@@ -195,8 +150,7 @@ theme_override_styles/normal = ExtResource("3_btn")
 theme_override_styles/pressed = ExtResource("5_btn_pressed")
 text = "Exit Game"
 
-[connection signal="value_changed" from="CenterContainer/VBoxContainer/OptionsPanel/OptionsVBox/VolumeRow/VolumeSlider" to="." method="_on_volume_changed"]
-[connection signal="toggled" from="CenterContainer/VBoxContainer/OptionsPanel/OptionsVBox/FullscreenCheck" to="." method="_on_fullscreen_toggled"]
 [connection signal="pressed" from="CenterContainer/VBoxContainer/CustomizeButton" to="." method="_on_customize_pressed"]
 [connection signal="pressed" from="CenterContainer/VBoxContainer/PlayButton" to="." method="_on_play_pressed"]
+[connection signal="pressed" from="CenterContainer/VBoxContainer/OptionsButton" to="." method="_on_options_pressed"]
 [connection signal="pressed" from="CenterContainer/VBoxContainer/ExitButton" to="." method="_on_exit_pressed"]

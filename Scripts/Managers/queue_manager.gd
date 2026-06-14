@@ -753,6 +753,11 @@ func _hide_winner_overlay() -> void:
 		_winner_overlay.queue_free()
 	_winner_overlay = null
 
+
+## True while match results block normal pause-menu input.
+func is_results_screen_visible() -> bool:
+	return _winner_overlay != null and is_instance_valid(_winner_overlay)
+
 ## Shows local elimination overlay when max-card rule triggers on this peer.
 func _show_loser_overlay() -> void:
 	if _local_loser_overlay_shown:

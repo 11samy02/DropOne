@@ -64,223 +64,241 @@ size_flags_vertical = 3
 horizontal_scroll_mode = 0
 vertical_scroll_mode = 2
 
-[node name="CenterColumn" type="CenterContainer" parent="LayoutMargin/MainVBox/ScrollContainer"]
+[node name="ContentVBox" type="VBoxContainer" parent="LayoutMargin/MainVBox/ScrollContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
-size_flags_vertical = 3
+theme_override_constants/separation = 28
 
-[node name="ContentVBox" type="VBoxContainer" parent="LayoutMargin/MainVBox/ScrollContainer/CenterColumn"]
-layout_mode = 2
-custom_minimum_size = Vector2(780, 0)
-size_flags_horizontal = 3
-theme_override_constants/separation = 32
-
-[node name="Title" type="Label" parent="LayoutMargin/MainVBox/ScrollContainer/CenterColumn/ContentVBox"]
+[node name="Title" type="Label" parent="LayoutMargin/MainVBox/ScrollContainer/ContentVBox"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 48
 text = "Lobby"
-horizontal_alignment = 1
 
-[node name="LobbyIdRow" type="HBoxContainer" parent="LayoutMargin/MainVBox/ScrollContainer/CenterColumn/ContentVBox"]
+[node name="LobbyIdRow" type="HBoxContainer" parent="LayoutMargin/MainVBox/ScrollContainer/ContentVBox"]
 layout_mode = 2
-alignment = 1
 theme_override_constants/separation = 16
 
-[node name="Label" type="Label" parent="LayoutMargin/MainVBox/ScrollContainer/CenterColumn/ContentVBox/LobbyIdRow"]
+[node name="Label" type="Label" parent="LayoutMargin/MainVBox/ScrollContainer/ContentVBox/LobbyIdRow"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 28
 text = "Lobby ID:"
 
-[node name="lobby_id_label" type="Label" parent="LayoutMargin/MainVBox/ScrollContainer/CenterColumn/ContentVBox/LobbyIdRow"]
+[node name="lobby_id_label" type="Label" parent="LayoutMargin/MainVBox/ScrollContainer/ContentVBox/LobbyIdRow"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 28
 text = "0"
 
-[node name="mode_label" type="Label" parent="LayoutMargin/MainVBox/ScrollContainer/CenterColumn/ContentVBox"]
+[node name="mode_label" type="Label" parent="LayoutMargin/MainVBox/ScrollContainer/ContentVBox"]
 unique_name_in_owner = true
 layout_mode = 2
 text = "Steam"
-horizontal_alignment = 1
 
-[node name="IdActions" type="HBoxContainer" parent="LayoutMargin/MainVBox/ScrollContainer/CenterColumn/ContentVBox"]
+[node name="IdActions" type="HBoxContainer" parent="LayoutMargin/MainVBox/ScrollContainer/ContentVBox"]
 layout_mode = 2
-alignment = 1
 theme_override_constants/separation = 16
 
-[node name="CopyId" type="Button" parent="LayoutMargin/MainVBox/ScrollContainer/CenterColumn/ContentVBox/IdActions"]
+[node name="CopyId" type="Button" parent="LayoutMargin/MainVBox/ScrollContainer/ContentVBox/IdActions"]
 custom_minimum_size = Vector2(220, 60)
 layout_mode = 2
+size_flags_horizontal = 3
 theme_override_styles/hover = ExtResource("5_btn_hover")
 theme_override_styles/normal = ExtResource("4_btn")
 theme_override_styles/pressed = ExtResource("6_btn_pressed")
 text = "Copy ID"
 
-[node name="Invite" type="Button" parent="LayoutMargin/MainVBox/ScrollContainer/CenterColumn/ContentVBox/IdActions"]
+[node name="Invite" type="Button" parent="LayoutMargin/MainVBox/ScrollContainer/ContentVBox/IdActions"]
 custom_minimum_size = Vector2(220, 60)
 layout_mode = 2
+size_flags_horizontal = 3
 theme_override_styles/hover = ExtResource("5_btn_hover")
 theme_override_styles/normal = ExtResource("4_btn")
 theme_override_styles/pressed = ExtResource("6_btn_pressed")
 text = "Invite Friends"
 
-[node name="PlayersTitle" type="Label" parent="LayoutMargin/MainVBox/ScrollContainer/CenterColumn/ContentVBox"]
-layout_mode = 2
-theme_override_font_sizes/font_size = 32
-text = "Players"
-horizontal_alignment = 1
-
-[node name="PlayerScroll" type="ScrollContainer" parent="LayoutMargin/MainVBox/ScrollContainer/CenterColumn/ContentVBox"]
-layout_mode = 2
-custom_minimum_size = Vector2(0, 140)
-horizontal_scroll_mode = 0
-vertical_scroll_mode = 2
-
-[node name="players_container" type="VBoxContainer" parent="LayoutMargin/MainVBox/ScrollContainer/CenterColumn/ContentVBox/PlayerScroll"]
-unique_name_in_owner = true
+[node name="MainColumns" type="HBoxContainer" parent="LayoutMargin/MainVBox/ScrollContainer/ContentVBox"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_constants/separation = 8
+theme_override_constants/separation = 40
 
-[node name="SettingsSpacer" type="Control" parent="LayoutMargin/MainVBox/ScrollContainer/CenterColumn/ContentVBox"]
-custom_minimum_size = Vector2(0, 20)
-layout_mode = 2
-
-[node name="SettingsBlock" type="VBoxContainer" parent="LayoutMargin/MainVBox/ScrollContainer/CenterColumn/ContentVBox"]
-unique_name_in_owner = true
-layout_mode = 2
-theme_override_constants/separation = 22
-
-[node name="deck_controls" type="HBoxContainer" parent="LayoutMargin/MainVBox/ScrollContainer/CenterColumn/ContentVBox/SettingsBlock"]
-unique_name_in_owner = true
-layout_mode = 2
-alignment = 1
-theme_override_constants/separation = 20
-
-[node name="DeckLabel" type="Label" parent="LayoutMargin/MainVBox/ScrollContainer/CenterColumn/ContentVBox/SettingsBlock/deck_controls"]
-layout_mode = 2
-custom_minimum_size = Vector2(110, 0)
-text = "Deck:"
-
-[node name="deck_option" type="OptionButton" parent="LayoutMargin/MainVBox/ScrollContainer/CenterColumn/ContentVBox/SettingsBlock/deck_controls"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(320, 56)
+[node name="SettingsColumn" type="VBoxContainer" parent="LayoutMargin/MainVBox/ScrollContainer/ContentVBox/MainColumns"]
 layout_mode = 2
 size_flags_horizontal = 3
-clip_text = true
-
-[node name="game_settings" type="VBoxContainer" parent="LayoutMargin/MainVBox/ScrollContainer/CenterColumn/ContentVBox/SettingsBlock"]
-unique_name_in_owner = true
-layout_mode = 2
-theme_override_constants/separation = 18
-
-[node name="StartCardsRow" type="HBoxContainer" parent="LayoutMargin/MainVBox/ScrollContainer/CenterColumn/ContentVBox/SettingsBlock/game_settings"]
-layout_mode = 2
-alignment = 1
-theme_override_constants/separation = 20
-
-[node name="StartCardsLabel" type="Label" parent="LayoutMargin/MainVBox/ScrollContainer/CenterColumn/ContentVBox/SettingsBlock/game_settings/StartCardsRow"]
-layout_mode = 2
-custom_minimum_size = Vector2(110, 0)
-text = "Start cards:"
-
-[node name="start_cards_option" type="OptionButton" parent="LayoutMargin/MainVBox/ScrollContainer/CenterColumn/ContentVBox/SettingsBlock/game_settings/StartCardsRow"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(140, 56)
-layout_mode = 2
-
-[node name="EndModeRow" type="HBoxContainer" parent="LayoutMargin/MainVBox/ScrollContainer/CenterColumn/ContentVBox/SettingsBlock/game_settings"]
-layout_mode = 2
-alignment = 1
-theme_override_constants/separation = 20
-
-[node name="EndModeLabel" type="Label" parent="LayoutMargin/MainVBox/ScrollContainer/CenterColumn/ContentVBox/SettingsBlock/game_settings/EndModeRow"]
-layout_mode = 2
-custom_minimum_size = Vector2(110, 0)
-text = "End mode:"
-
-[node name="end_mode_option" type="OptionButton" parent="LayoutMargin/MainVBox/ScrollContainer/CenterColumn/ContentVBox/SettingsBlock/game_settings/EndModeRow"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(320, 56)
-layout_mode = 2
-size_flags_horizontal = 3
-clip_text = true
-
-[node name="bot_controls" type="HBoxContainer" parent="LayoutMargin/MainVBox/ScrollContainer/CenterColumn/ContentVBox/SettingsBlock"]
-unique_name_in_owner = true
-layout_mode = 2
-alignment = 1
+size_flags_stretch_ratio = 1.0
 theme_override_constants/separation = 16
 
-[node name="BotLabel" type="Label" parent="LayoutMargin/MainVBox/ScrollContainer/CenterColumn/ContentVBox/SettingsBlock/bot_controls"]
+[node name="SettingsTitle" type="Label" parent="LayoutMargin/MainVBox/ScrollContainer/ContentVBox/MainColumns/SettingsColumn"]
 layout_mode = 2
-custom_minimum_size = Vector2(110, 0)
+theme_override_font_sizes/font_size = 32
+text = "Settings"
+
+[node name="SettingsBlock" type="VBoxContainer" parent="LayoutMargin/MainVBox/ScrollContainer/ContentVBox/MainColumns/SettingsColumn"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 22
+
+[node name="deck_controls" type="HBoxContainer" parent="LayoutMargin/MainVBox/ScrollContainer/ContentVBox/MainColumns/SettingsColumn/SettingsBlock"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 20
+
+[node name="DeckLabel" type="Label" parent="LayoutMargin/MainVBox/ScrollContainer/ContentVBox/MainColumns/SettingsColumn/SettingsBlock/deck_controls"]
+layout_mode = 2
+custom_minimum_size = Vector2(120, 0)
+text = "Deck:"
+
+[node name="deck_option" type="OptionButton" parent="LayoutMargin/MainVBox/ScrollContainer/ContentVBox/MainColumns/SettingsColumn/SettingsBlock/deck_controls"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+size_flags_horizontal = 3
+clip_text = true
+
+[node name="game_settings" type="VBoxContainer" parent="LayoutMargin/MainVBox/ScrollContainer/ContentVBox/MainColumns/SettingsColumn/SettingsBlock"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 18
+
+[node name="StartCardsRow" type="HBoxContainer" parent="LayoutMargin/MainVBox/ScrollContainer/ContentVBox/MainColumns/SettingsColumn/SettingsBlock/game_settings"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 20
+
+[node name="StartCardsLabel" type="Label" parent="LayoutMargin/MainVBox/ScrollContainer/ContentVBox/MainColumns/SettingsColumn/SettingsBlock/game_settings/StartCardsRow"]
+layout_mode = 2
+custom_minimum_size = Vector2(120, 0)
+text = "Start cards:"
+
+[node name="start_cards_option" type="OptionButton" parent="LayoutMargin/MainVBox/ScrollContainer/ContentVBox/MainColumns/SettingsColumn/SettingsBlock/game_settings/StartCardsRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="EndModeRow" type="HBoxContainer" parent="LayoutMargin/MainVBox/ScrollContainer/ContentVBox/MainColumns/SettingsColumn/SettingsBlock/game_settings"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 20
+
+[node name="EndModeLabel" type="Label" parent="LayoutMargin/MainVBox/ScrollContainer/ContentVBox/MainColumns/SettingsColumn/SettingsBlock/game_settings/EndModeRow"]
+layout_mode = 2
+custom_minimum_size = Vector2(120, 0)
+text = "End mode:"
+
+[node name="end_mode_option" type="OptionButton" parent="LayoutMargin/MainVBox/ScrollContainer/ContentVBox/MainColumns/SettingsColumn/SettingsBlock/game_settings/EndModeRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+size_flags_horizontal = 3
+clip_text = true
+
+[node name="bot_controls" type="HBoxContainer" parent="LayoutMargin/MainVBox/ScrollContainer/ContentVBox/MainColumns/SettingsColumn/SettingsBlock"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 12
+
+[node name="BotLabel" type="Label" parent="LayoutMargin/MainVBox/ScrollContainer/ContentVBox/MainColumns/SettingsColumn/SettingsBlock/bot_controls"]
+layout_mode = 2
+custom_minimum_size = Vector2(120, 0)
 text = "Bot:"
 
-[node name="difficulty_option" type="OptionButton" parent="LayoutMargin/MainVBox/ScrollContainer/CenterColumn/ContentVBox/SettingsBlock/bot_controls"]
+[node name="difficulty_option" type="OptionButton" parent="LayoutMargin/MainVBox/ScrollContainer/ContentVBox/MainColumns/SettingsColumn/SettingsBlock/bot_controls"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(170, 56)
+custom_minimum_size = Vector2(0, 56)
 layout_mode = 2
+size_flags_horizontal = 3
 
-[node name="personality_option" type="OptionButton" parent="LayoutMargin/MainVBox/ScrollContainer/CenterColumn/ContentVBox/SettingsBlock/bot_controls"]
+[node name="personality_option" type="OptionButton" parent="LayoutMargin/MainVBox/ScrollContainer/ContentVBox/MainColumns/SettingsColumn/SettingsBlock/bot_controls"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(190, 56)
+custom_minimum_size = Vector2(0, 56)
 layout_mode = 2
+size_flags_horizontal = 3
 
-[node name="add_bot_button" type="Button" parent="LayoutMargin/MainVBox/ScrollContainer/CenterColumn/ContentVBox/SettingsBlock/bot_controls"]
+[node name="add_bot_button" type="Button" parent="LayoutMargin/MainVBox/ScrollContainer/ContentVBox/MainColumns/SettingsColumn/SettingsBlock/bot_controls"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(130, 56)
+custom_minimum_size = Vector2(100, 56)
 layout_mode = 2
 theme_override_styles/hover = ExtResource("5_btn_hover")
 theme_override_styles/normal = ExtResource("4_btn")
 theme_override_styles/pressed = ExtResource("6_btn_pressed")
 text = "+ Bot"
 
-[node name="remove_bot_button" type="Button" parent="LayoutMargin/MainVBox/ScrollContainer/CenterColumn/ContentVBox/SettingsBlock/bot_controls"]
+[node name="remove_bot_button" type="Button" parent="LayoutMargin/MainVBox/ScrollContainer/ContentVBox/MainColumns/SettingsColumn/SettingsBlock/bot_controls"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(130, 56)
+custom_minimum_size = Vector2(100, 56)
 layout_mode = 2
 theme_override_styles/hover = ExtResource("5_btn_hover")
 theme_override_styles/normal = ExtResource("4_btn")
 theme_override_styles/pressed = ExtResource("6_btn_pressed")
 text = "- Bot"
 
-[node name="FooterVBox" type="VBoxContainer" parent="LayoutMargin/MainVBox"]
-layout_mode = 2
-theme_override_constants/separation = 20
-
-[node name="FooterCenter" type="CenterContainer" parent="LayoutMargin/MainVBox/FooterVBox"]
+[node name="PlayersColumn" type="VBoxContainer" parent="LayoutMargin/MainVBox/ScrollContainer/ContentVBox/MainColumns"]
 layout_mode = 2
 size_flags_horizontal = 3
+size_flags_stretch_ratio = 1.0
+theme_override_constants/separation = 16
 
-[node name="FooterInner" type="VBoxContainer" parent="LayoutMargin/MainVBox/FooterVBox/FooterCenter"]
+[node name="PlayersTitle" type="Label" parent="LayoutMargin/MainVBox/ScrollContainer/ContentVBox/MainColumns/PlayersColumn"]
 layout_mode = 2
-custom_minimum_size = Vector2(780, 0)
+theme_override_font_sizes/font_size = 32
+text = "Players"
+
+[node name="PlayerScroll" type="ScrollContainer" parent="LayoutMargin/MainVBox/ScrollContainer/ContentVBox/MainColumns/PlayersColumn"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+custom_minimum_size = Vector2(0, 280)
+horizontal_scroll_mode = 0
+vertical_scroll_mode = 2
+
+[node name="players_container" type="VBoxContainer" parent="LayoutMargin/MainVBox/ScrollContainer/ContentVBox/MainColumns/PlayersColumn/PlayerScroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="FooterVBox" type="VBoxContainer" parent="LayoutMargin/MainVBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 20
+
+[node name="FooterInner" type="VBoxContainer" parent="LayoutMargin/MainVBox/FooterVBox"]
+layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 16
 
-[node name="status_label" type="Label" parent="LayoutMargin/MainVBox/FooterVBox/FooterCenter/FooterInner"]
+[node name="status_label" type="Label" parent="LayoutMargin/MainVBox/FooterVBox/FooterInner"]
 unique_name_in_owner = true
 layout_mode = 2
+size_flags_horizontal = 3
 text = "Waiting for players..."
-horizontal_alignment = 1
 autowrap_mode = 3
 
-[node name="ready_button" type="Button" parent="LayoutMargin/MainVBox/FooterVBox/FooterCenter/FooterInner"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(420, 72)
+[node name="ButtonRow" type="HBoxContainer" parent="LayoutMargin/MainVBox/FooterVBox/FooterInner"]
 layout_mode = 2
-size_flags_horizontal = 4
+size_flags_horizontal = 3
+theme_override_constants/separation = 16
+
+[node name="ready_button" type="Button" parent="LayoutMargin/MainVBox/FooterVBox/FooterInner/ButtonRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 72)
+layout_mode = 2
+size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 44
 theme_override_styles/hover = ExtResource("5_btn_hover")
 theme_override_styles/normal = ExtResource("4_btn")
 theme_override_styles/pressed = ExtResource("6_btn_pressed")
 text = "Ready"
 
-[node name="Leave" type="Button" parent="LayoutMargin/MainVBox/FooterVBox/FooterCenter/FooterInner"]
-custom_minimum_size = Vector2(420, 64)
+[node name="Leave" type="Button" parent="LayoutMargin/MainVBox/FooterVBox/FooterInner/ButtonRow"]
+custom_minimum_size = Vector2(0, 72)
 layout_mode = 2
-size_flags_horizontal = 4
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 32
 theme_override_styles/hover = ExtResource("5_btn_hover")
 theme_override_styles/normal = ExtResource("4_btn")
 theme_override_styles/pressed = ExtResource("6_btn_pressed")
@@ -291,12 +309,12 @@ unique_name_in_owner = true
 wait_time = 0.5
 autostart = false
 
-[connection signal="pressed" from="LayoutMargin/MainVBox/ScrollContainer/CenterColumn/ContentVBox/IdActions/CopyId" to="." method="_on_copy_id_pressed"]
-[connection signal="pressed" from="LayoutMargin/MainVBox/ScrollContainer/CenterColumn/ContentVBox/IdActions/Invite" to="." method="_on_invite_pressed"]
-[connection signal="item_selected" from="LayoutMargin/MainVBox/ScrollContainer/CenterColumn/ContentVBox/SettingsBlock/deck_controls/deck_option" to="." method="_on_deck_selected"]
-[connection signal="item_selected" from="LayoutMargin/MainVBox/ScrollContainer/CenterColumn/ContentVBox/SettingsBlock/game_settings/StartCardsRow/start_cards_option" to="." method="_on_start_cards_selected"]
-[connection signal="item_selected" from="LayoutMargin/MainVBox/ScrollContainer/CenterColumn/ContentVBox/SettingsBlock/game_settings/EndModeRow/end_mode_option" to="." method="_on_end_mode_selected"]
-[connection signal="pressed" from="LayoutMargin/MainVBox/ScrollContainer/CenterColumn/ContentVBox/SettingsBlock/bot_controls/add_bot_button" to="." method="_on_add_bot_pressed"]
-[connection signal="pressed" from="LayoutMargin/MainVBox/ScrollContainer/CenterColumn/ContentVBox/SettingsBlock/bot_controls/remove_bot_button" to="." method="_on_remove_bot_pressed"]
-[connection signal="pressed" from="LayoutMargin/MainVBox/FooterVBox/FooterCenter/FooterInner/ready_button" to="." method="_on_ready_button_pressed"]
-[connection signal="pressed" from="LayoutMargin/MainVBox/FooterVBox/FooterCenter/FooterInner/Leave" to="." method="_on_leave_pressed"]
+[connection signal="pressed" from="LayoutMargin/MainVBox/ScrollContainer/ContentVBox/IdActions/CopyId" to="." method="_on_copy_id_pressed"]
+[connection signal="pressed" from="LayoutMargin/MainVBox/ScrollContainer/ContentVBox/IdActions/Invite" to="." method="_on_invite_pressed"]
+[connection signal="item_selected" from="LayoutMargin/MainVBox/ScrollContainer/ContentVBox/MainColumns/SettingsColumn/SettingsBlock/deck_controls/deck_option" to="." method="_on_deck_selected"]
+[connection signal="item_selected" from="LayoutMargin/MainVBox/ScrollContainer/ContentVBox/MainColumns/SettingsColumn/SettingsBlock/game_settings/StartCardsRow/start_cards_option" to="." method="_on_start_cards_selected"]
+[connection signal="item_selected" from="LayoutMargin/MainVBox/ScrollContainer/ContentVBox/MainColumns/SettingsColumn/SettingsBlock/game_settings/EndModeRow/end_mode_option" to="." method="_on_end_mode_selected"]
+[connection signal="pressed" from="LayoutMargin/MainVBox/ScrollContainer/ContentVBox/MainColumns/SettingsColumn/SettingsBlock/bot_controls/add_bot_button" to="." method="_on_add_bot_pressed"]
+[connection signal="pressed" from="LayoutMargin/MainVBox/ScrollContainer/ContentVBox/MainColumns/SettingsColumn/SettingsBlock/bot_controls/remove_bot_button" to="." method="_on_remove_bot_pressed"]
+[connection signal="pressed" from="LayoutMargin/MainVBox/FooterVBox/FooterInner/ButtonRow/ready_button" to="." method="_on_ready_button_pressed"]
+[connection signal="pressed" from="LayoutMargin/MainVBox/FooterVBox/FooterInner/ButtonRow/Leave" to="." method="_on_leave_pressed"]

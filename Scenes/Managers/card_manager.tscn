@@ -1,4 +1,4 @@
-[gd_scene load_steps=19 format=3 uid="uid://b3cbm8norl5h7"]
+[gd_scene load_steps=20 format=3 uid="uid://b3cbm8norl5h7"]
 
 [ext_resource type="Script" uid="uid://dr0t8llnaw7ml" path="res://Scripts/Managers/CardManager.gd" id="1_4bhoy"]
 [ext_resource type="PackedScene" uid="uid://0lhp5dikyv3u" path="res://Scenes/Managers/queue_manager.tscn" id="2_1vgeo"]
@@ -14,6 +14,7 @@
 [ext_resource type="Texture2D" uid="uid://xspumfxdwrqn" path="res://Assets/card-theme/default/black.png" id="9_xhqx2"]
 [ext_resource type="Script" path="res://Scripts/UI/turn_feedback.gd" id="10_tfback"]
 [ext_resource type="Script" path="res://Scripts/View/turn_direction_indicator.gd" id="11_tdir"]
+[ext_resource type="PackedScene" path="res://Scenes/UI/pause_menu.tscn" id="12_pause"]
 
 [sub_resource type="Resource" id="Resource_xhqx2"]
 script = ExtResource("3_c0tlk")
@@ -77,6 +78,10 @@ script = ExtResource("10_tfback")
 
 [node name="player Selector" parent="CanvasLayer" node_paths=PackedStringArray("queue_manager") instance=ExtResource("5_abt31")]
 z_index = 500
+queue_manager = NodePath("../../QueueManager")
+
+[node name="PauseMenu" parent="CanvasLayer" node_paths=PackedStringArray("queue_manager") instance=ExtResource("12_pause")]
+z_index = 900
 queue_manager = NodePath("../../QueueManager")
 
 [node name="QueueManager" parent="." node_paths=PackedStringArray("player_container", "other_player_containers", "card_manager") instance=ExtResource("2_1vgeo")]

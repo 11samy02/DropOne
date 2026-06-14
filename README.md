@@ -6,7 +6,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/release-Alpha-orange" alt="Alpha" />
-  <img src="https://img.shields.io/badge/version-v0.4.13--alpha-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-v0.4.14--alpha-blue" alt="Version" />
   <img src="https://img.shields.io/badge/engine-Godot%204.6-478CBF?logo=godotengine&logoColor=white" alt="Godot 4.6" />
   <img src="https://img.shields.io/badge/players-2--8-green" alt="2-8 players" />
   <img src="https://img.shields.io/badge/platform-Windows-0078D6?logo=windows&logoColor=white" alt="Windows" />
@@ -20,7 +20,7 @@
 |---|---|
 | **Online multiplayer** | Steam lobbies with up to 8 players, or local LAN-style testing without Steam |
 | **Singleplayer** | Practice against AI bots with adjustable difficulty and personality |
-| **Custom decks** | Host picks the deck in the lobby — **Classic**, **Merciless**, and more |
+| **Custom decks** | Host picks the deck in the lobby — **Classic** or **Merciless** |
 | **Special cards** | Skip, Reverse, Draw +2/+4, Wild, Target Draw, Swap Hands, Place All, Color Roulette, and more |
 | **Max-card elimination** | Optional deck rule: exceed the card limit and you are eliminated (spectate the rest of the match) |
 | **Smart UI** | Dynamic hand layout, hover descriptions, shared button styling, smooth fly animations |
@@ -32,7 +32,7 @@
 
 Pre-built Windows builds are on the [**Releases**](https://github.com/11samy02/DropOne/releases) page.
 
-1. Download `DropOne-Windows-v0.4.13-alpha.zip`
+1. Download `DropOne-Windows-v0.4.14-alpha.zip`
 2. Extract the folder
 3. Launch **`DropOne.exe`**
 4. Keep `steam_appid.txt` and the Steam DLLs next to the executable
@@ -132,7 +132,7 @@ DropOne/
 
 ## Versioning
 
-Steam lobby matchmaking filters by game version — all players in a match must share the same build tag (e.g. `v0.4.13-alpha`).
+Steam lobby matchmaking filters by game version — all players in a match must share the same build tag (e.g. `v0.4.14-alpha`).
 
 ---
 

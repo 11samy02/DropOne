@@ -117,7 +117,9 @@ func load_card() -> void:
 		return
 
 	var display_color := _card_res.color
-	if _override_color_enabled:
+	if in_hand_card and CardResource.is_neutral_wild_type(_card_res.type):
+		display_color = CardResource.CardColor.BLACK
+	elif _override_color_enabled:
 		display_color = _override_color
 
 	background.texture = _card_res.get_background_texture_for_color(display_color)

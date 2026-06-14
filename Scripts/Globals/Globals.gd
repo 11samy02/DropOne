@@ -53,7 +53,7 @@ func list_deck_paths() -> Array[String]:
 	# Fallback for exported builds where res:// directory listing can come back
 	# empty: probe known deck files directly.
 	if paths.is_empty():
-		for known in ["Classic", "Default", "DefaultPlus", "Test"]:
+		for known in ["Classic", "Merciless"]:
 			var p: String = DECK_DIR + str(known) + ".tres"
 			if ResourceLoader.exists(p) and not paths.has(p):
 				paths.append(p)

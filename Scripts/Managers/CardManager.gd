@@ -58,9 +58,12 @@ func create_default_cards() -> Array[CardResource]:
 ## Creates a new CardResource with a fresh uid.
 func create_card(color: CardResource.CardColor, type: CardResource.CardType, value: int) -> CardResource:
 	var card := CardResource.new()
-	card.color = color
 	card.type = type
 	card.value = value
+	if CardResource.is_neutral_wild_type(type):
+		card.color = CardResource.CardColor.BLACK
+	else:
+		card.color = color
 	card.uid = _uid_counter
 	_uid_counter += 1
 	return card
@@ -116,6 +119,7 @@ func set_top_card_runtime(card: CardResource) -> void:
 		return
 
 	if top_card != null:
+		top_card.ensure_neutral_wild_color()
 		discard_pile.append(top_card)
 
 	top_card = card
@@ -123,20 +127,18 @@ func set_top_card_runtime(card: CardResource) -> void:
 		update_draw_button_state()
 		return
 	top_card_view.card_res = top_card
-	top_card_view.override_color_enabled = false
 
 	if _card_requires_color_selection(card):
 		current_color = CardResource.CardColor.BLACK
 		waiting_for_color = true
 		pending_wild_card = card
-		top_card_view.load_card()
 		Signals.COLOR_request_color_select.emit()
 	else:
 		current_color = card.color
 		waiting_for_color = false
 		pending_wild_card = null
-		top_card_view.load_card()
 
+	sync_top_card_color_visual()
 	update_draw_button_state()
 
 ## Sets top card without triggering wild/color side effects (place-all steps).
@@ -145,6 +147,7 @@ func set_top_card_no_effect(card: CardResource) -> void:
 		return
 
 	if top_card != null:
+		top_card.ensure_neutral_wild_color()
 		discard_pile.append(top_card)
 
 	top_card = card
@@ -157,9 +160,7 @@ func set_top_card_no_effect(card: CardResource) -> void:
 		return
 
 	top_card_view.card_res = top_card
-	top_card_view.override_color_enabled = false
-	top_card_view.load_card()
-
+	sync_top_card_color_visual()
 	update_draw_button_state()
 
 
@@ -181,16 +182,27 @@ func select_color(color: CardResource.CardColor) -> void:
 
 	current_color = color
 	waiting_for_color = false
-
-	if top_card != null:
-		top_card.color = color
-
-	top_card_view.override_color_enabled = true
-	top_card_view.override_color = color
-	top_card_view.load_card()
+	sync_top_card_color_visual()
 
 	pending_wild_card = null
 	update_draw_button_state()
+
+
+## Applies chosen current_color to the top discard visual without mutating wild card data.
+func sync_top_card_color_visual() -> void:
+	if top_card_view == null or !is_instance_valid(top_card_view) or top_card == null:
+		return
+
+	if CardResource.is_neutral_wild_type(top_card.type):
+		if waiting_for_color:
+			top_card_view.override_color_enabled = false
+		else:
+			top_card_view.override_color_enabled = true
+			top_card_view.override_color = current_color
+	else:
+		top_card_view.override_color_enabled = false
+
+	top_card_view.load_card()
 
 
 ## Draw button handler: validates turn then emits DECK_draw_pressed.
@@ -216,7 +228,10 @@ func draw_card() -> CardResource:
 		refill_deck_from_discard()
 	if deck.is_empty():
 		return null
-	return deck.pop_front()
+	var card := deck.pop_front()
+	if card != null:
+		card.ensure_neutral_wild_color()
+	return card
 
 
 ## Returns a card at offset from the top of the deck without drawing it.
@@ -243,6 +258,9 @@ func refill_deck_from_discard() -> void:
 		return
 	var keep_top = discard_pile.pop_back()
 	deck = discard_pile
+	for card in deck:
+		if card != null:
+			card.ensure_neutral_wild_color()
 	deck.shuffle()
 	discard_pile = [keep_top]
 
@@ -360,6 +378,10 @@ func add_number_cards(arr: Array[CardResource], colors: Array, rule: DeckNumberR
 
 ## Appends special cards from a single DeckEntryResource.
 func add_entry_cards(arr: Array[CardResource], entry: DeckEntryResource) -> void:
+	if CardResource.is_neutral_wild_type(entry.type):
+		for i in range(entry.count):
+			arr.append(create_card(CardResource.CardColor.BLACK, entry.type, entry.value))
+		return
 	if entry.duplicate_for_all_colors:
 		for c in entry.colors:
 			for i in range(entry.count):

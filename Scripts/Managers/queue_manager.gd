@@ -2232,12 +2232,7 @@ func _apply_roulette_color_to_top_card(color: CardResource.CardColor) -> void:
 
 	card_manager.current_color = color
 	card_manager.waiting_for_color = false
-
-	if card_manager.top_card != null:
-		card_manager.top_card.color = color
-
-	if card_manager.top_card_view != null and is_instance_valid(card_manager.top_card_view):
-		card_manager.top_card_view.load_card()
+	card_manager.sync_top_card_color_visual()
 
 ## UI modulate tween helper
 func _smooth_modulate(node: CanvasItem, target: Color, duration: float = 0.2) -> void:
@@ -2285,12 +2280,7 @@ func _try_apply_pending_hand() -> void:
 	_refresh_holder_layouts()
 	if my_holder.get_child_count() == 0:
 		for entry: Dictionary in _pending_hand:
-			var r := CardResource.new()
-			r.color = int(entry.get("c", 0))
-			r.type = int(entry.get("t", 0))
-			r.value = int(entry.get("v", 0))
-			r.uid = int(entry.get("id", 0))
-			my_holder.add_card(r, false)
+			my_holder.add_card(CardResource.from_sync_dict(entry), false)
 		my_holder.sort_cards_full()
 		my_holder.refresh_playable_cards()
 	else:
@@ -2805,11 +2795,7 @@ func _apply_match_state_snapshot(state: Dictionary, skip_top_card: bool = false)
 
 	var top = state.get("top_card", null)
 	if !skip_top_card and top is Dictionary:
-		var r := CardResource.new()
-		r.color = int(top.get("c", 0))
-		r.type = int(top.get("t", 0))
-		r.value = int(top.get("v", 0))
-		r.uid = int(top.get("id", 0))
+		var r := CardResource.from_sync_dict(top)
 		var same_top := card_manager.top_card != null and int(card_manager.top_card.uid) == int(r.uid)
 		if !same_top:
 			card_manager.set_top_card_runtime(r)
@@ -2832,6 +2818,7 @@ func _apply_match_state_snapshot(state: Dictionary, skip_top_card: bool = false)
 
 	if state.has("current_color") and card_manager != null:
 		card_manager.current_color = int(state.get("current_color", card_manager.current_color))
+		card_manager.sync_top_card_color_visual()
 	# Clients mirror server snapshots; the server must not reconcile
 	# waiting_for_color from its own broadcasts or a pending wild play can be
 	# auto-resolved without register_card_play (stacked +4 stays at +4).
@@ -3027,12 +3014,7 @@ func _apply_hand_to_holder(holder: HandCardHolder, hand: Array) -> void:
 			c.queue_free()
 
 	for entry: Dictionary in hand:
-		var r := CardResource.new()
-		r.color = int(entry.get("c", 0))
-		r.type = int(entry.get("t", 0))
-		r.value = int(entry.get("v", 0))
-		r.uid = int(entry.get("id", 0))
-		holder.add_card(r, false)
+		holder.add_card(CardResource.from_sync_dict(entry), false)
 
 	holder.sort_cards_full()
 	holder.refresh_playable_cards()
@@ -3062,12 +3044,7 @@ func _reconcile_hand(holder: HandCardHolder, hand: Array) -> void:
 	for uid in desired.keys():
 		if !current.has(uid):
 			var entry: Dictionary = desired[uid]
-			var r := CardResource.new()
-			r.color = int(entry.get("c", 0))
-			r.type = int(entry.get("t", 0))
-			r.value = int(entry.get("v", 0))
-			r.uid = int(entry.get("id", 0))
-			holder.add_card(r, true)
+			holder.add_card(CardResource.from_sync_dict(entry), true)
 
 	holder.sort_cards_full()
 	holder.refresh_playable_cards()
@@ -3333,12 +3310,7 @@ func _apply_wild_color(color: int, owner_slot: int) -> void:
 		card_manager.select_color(color)
 	else:
 		card_manager.current_color = color
-		if card_manager.top_card != null:
-			card_manager.top_card.color = color
-		if card_manager.top_card_view != null and is_instance_valid(card_manager.top_card_view):
-			card_manager.top_card_view.override_color_enabled = true
-			card_manager.top_card_view.override_color = color
-			card_manager.top_card_view.load_card()
+		card_manager.sync_top_card_color_visual()
 	Signals.COLOR_color_selected.emit(color)
 	if _is_authoritative():
 		if roulette_active:
@@ -3363,12 +3335,7 @@ func client_apply_wild_color(color: int, owner_slot: int) -> void:
 		card_manager.select_color(color)
 	else:
 		card_manager.current_color = color
-		if card_manager.top_card != null:
-			card_manager.top_card.color = color
-		if card_manager.top_card_view != null and is_instance_valid(card_manager.top_card_view):
-			card_manager.top_card_view.override_color_enabled = true
-			card_manager.top_card_view.override_color = color
-			card_manager.top_card_view.load_card()
+		card_manager.sync_top_card_color_visual()
 	if not roulette_active:
 		Signals.COLOR_color_selected.emit(color)
 	clear_wild_owner()
@@ -3492,11 +3459,7 @@ func _on_play_event_received(from_slot: int, card: Dictionary) -> void:
 				cv = ch
 				break
 
-		var r := CardResource.new()
-		r.color = int(card.get("c", 0))
-		r.type = int(card.get("t", 0))
-		r.value = int(card.get("v", 0))
-		r.uid = int(card.get("id", 0))
+		var r := CardResource.from_sync_dict(card)
 
 		if card_manager != null:
 			card_manager.begin_top_card_suppression()
@@ -3532,11 +3495,7 @@ func _on_play_event_received(from_slot: int, card: Dictionary) -> void:
 		_finish_client_play_animation()
 		return
 
-	var r := CardResource.new()
-	r.color = int(card.get("c", 0))
-	r.type = int(card.get("t", 0))
-	r.value = int(card.get("v", 0))
-	r.uid = int(card.get("id", 0))
+	var r := CardResource.from_sync_dict(card)
 
 	if card_manager != null:
 		card_manager.begin_top_card_suppression()

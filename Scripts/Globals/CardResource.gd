@@ -55,6 +55,31 @@ const SPADE: Texture2D = preload("uid://b7a4n3o1ildc7")
 ## Unique runtime id used for multiplayer sync and hand reconciliation.
 @export var uid: int = 0
 
+## Wild-style cards always use BLACK on the resource; chosen color lives in game state.
+static func is_neutral_wild_type(t: CardType) -> bool:
+	return t in [
+		CardType.WILD,
+		CardType.WILD_DRAW,
+		CardType.WILD_DRAW_REVERSE,
+		CardType.SWAP_HANDS,
+		CardType.WILD_COLOR_ROULET,
+	]
+
+## Resets wild card face color after discard recycle or bad deck data.
+func ensure_neutral_wild_color() -> void:
+	if is_neutral_wild_type(type):
+		color = CardColor.BLACK
+
+## Builds a runtime card from multiplayer sync data with wild color normalized.
+static func from_sync_dict(data: Dictionary) -> CardResource:
+	var r := CardResource.new()
+	r.color = int(data.get("c", 0)) as CardColor
+	r.type = int(data.get("t", 0)) as CardType
+	r.value = int(data.get("v", 0))
+	r.uid = int(data.get("id", 0))
+	r.ensure_neutral_wild_color()
+	return r
+
 ## Get background texture (or back side if hidden)
 func get_background_texture(hidden_card: bool = false) -> Texture2D:
 	if hidden_card:

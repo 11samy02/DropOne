@@ -422,9 +422,23 @@ func request_start_game() -> void:
 func _deferred_launch_game_scene() -> void:
 	if not multiplayer.is_server():
 		return
+	clear_match_buffers()
+	for pid in multiplayer.get_peers():
+		rpc_id(int(pid), "client_clear_match_buffers")
+	client_clear_match_buffers()
 	for pid in multiplayer.get_peers():
 		rpc_id(int(pid), "client_start_game")
 	client_start_game()
+
+
+func clear_match_buffers() -> void:
+	last_hand = []
+	last_match_state = {}
+
+
+@rpc("authority", "reliable")
+func client_clear_match_buffers() -> void:
+	clear_match_buffers()
 
 
 func all_lobby_ready() -> bool:
@@ -537,8 +551,11 @@ func server_return_to_lobby() -> void:
 	# Ready-States für die neue Runde zurücksetzen (Bots bleiben ready).
 	for key in _ready_by_peer.keys():
 		_ready_by_peer[key] = false
+	clear_match_buffers()
 	for pid in multiplayer.get_peers():
+		rpc_id(int(pid), "client_clear_match_buffers")
 		rpc_id(int(pid), "client_return_to_lobby")
+	client_clear_match_buffers()
 	client_return_to_lobby()
 
 
@@ -565,8 +582,7 @@ func reset_for_lobby_return() -> void:
 	my_slot = -1
 	last_slot = -1
 	last_players = []
-	last_hand = []
-	last_match_state = {}
+	clear_match_buffers()
 	_session_had_remote_peers = false
 	_host_alone_lobby_return_pending = false
 	if multiplayer.is_server():

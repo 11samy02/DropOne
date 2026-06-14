@@ -119,11 +119,15 @@ func _refresh_lobby_list() -> void:
 
 
 func _on_lobby_list_loaded(lobbies: Array) -> void:
+	var compatible_version := SteamManager.get_game_version()
 	var seen: Dictionary = {}
 	for lobby in lobbies:
 		if lobby is Dictionary:
 			var id := int(lobby.get("id", 0))
 			if id == 0:
+				continue
+			var lobby_version := str(lobby.get("version", "")).strip_edges()
+			if lobby_version != "" and lobby_version != compatible_version:
 				continue
 			seen[id] = true
 			_upsert_lobby_item(lobby)

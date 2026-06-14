@@ -12,7 +12,6 @@ enum LobbyOp { NONE, CREATE, JOIN }
 
 var use_steam: bool = true
 
-const GAME_VERSION := "v0.5.3-alpha"
 const MAX_LOBBY_PLAYERS := 8
 const LOCAL_LOBBY_ID := 4242
 const LOBBY_ROOM_SCENE := preload("res://Scenes/UI/steam_lobby_room.tscn")
@@ -53,6 +52,10 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	if not _configured:
 		configure(use_steam)
+
+
+func get_game_version() -> String:
+	return str(ProjectSettings.get_setting("application/config/version", "dev"))
 
 
 func configure(use_steam_enabled: bool) -> void:
@@ -249,6 +252,14 @@ func join_lobby(lobby_id: int) -> void:
 			_lobby_busy = false
 			lobby_join_failed.emit("Invalid lobby ID.")
 			return
+		var lobby_version := str(Steam.getLobbyData(lobby_id, "version")).strip_edges()
+		var my_version := get_game_version()
+		if lobby_version != "" and lobby_version != my_version:
+			_lobby_busy = false
+			lobby_join_failed.emit(
+				"Incompatible version (%s). Update to %s." % [lobby_version, my_version]
+			)
+			return
 		_join_lobby_async(lobby_id)
 	else:
 		_lobby_op = LobbyOp.JOIN
@@ -326,7 +337,7 @@ func refresh_host_lobby_settings() -> void:
 		return
 	Steam.setLobbyJoinable(current_lobby_id, true)
 	Steam.setLobbyData(current_lobby_id, "name", _pending_lobby_name)
-	Steam.setLobbyData(current_lobby_id, "version", GAME_VERSION)
+	Steam.setLobbyData(current_lobby_id, "version", get_game_version())
 	Steam.setLobbyData(current_lobby_id, "host_id", str(host_steam_id))
 
 
@@ -335,7 +346,7 @@ func request_lobby_list() -> void:
 		return
 	if use_steam:
 		Steam.addRequestLobbyListDistanceFilter(Steam.LobbyDistanceFilter.LOBBY_DISTANCE_FILTER_WORLDWIDE)
-		Steam.addRequestLobbyListStringFilter("version", GAME_VERSION, Steam.LobbyComparison.LOBBY_COMPARISON_EQUAL)
+		Steam.addRequestLobbyListStringFilter("version", get_game_version(), Steam.LobbyComparison.LOBBY_COMPARISON_EQUAL)
 		Steam.requestLobbyList()
 	else:
 		lobby_list_loaded.emit([])
@@ -378,7 +389,7 @@ func _on_lobby_created(result: int, lobby_id: int) -> void:
 
 func _apply_lobby_metadata(lobby_id: int) -> void:
 	Steam.setLobbyData(lobby_id, "name", _pending_lobby_name)
-	Steam.setLobbyData(lobby_id, "version", GAME_VERSION)
+	Steam.setLobbyData(lobby_id, "version", get_game_version())
 	Steam.setLobbyData(lobby_id, "host_id", str(host_steam_id))
 	Steam.setLobbyJoinable(lobby_id, true)
 

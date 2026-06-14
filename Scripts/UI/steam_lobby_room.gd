@@ -68,6 +68,8 @@ func _ready() -> void:
 		status_label.text = "Back in the lobby."
 		NetworkManager.reset_for_lobby_return()
 		SteamManager.is_lobby_owner = NetworkManager.is_server
+		if use_steam and SteamManager.is_host():
+			SteamManager.refresh_host_lobby_settings()
 		ok = true
 	elif not use_steam:
 		if SteamManager.local_role == SteamManager.LocalRole.CLIENT:

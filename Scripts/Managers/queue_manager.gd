@@ -107,6 +107,13 @@ var _resolved_effect_uids: Dictionary = {}
 
 ## Init networking + buffered snapshots
 func _ready() -> void:
+	get_tree().paused = false
+	_client_has_hand = false
+	_client_has_state = false
+	_client_match_started = false
+	_match_deal_in_progress = false
+	_match_deal_complete = false
+	_game_over_handled = false
 	connect_signals()
 
 	NetworkManager.players_received.connect(_on_players_received)
@@ -1008,7 +1015,7 @@ func _resolve_draw_stack_for_holder(holder: HandCardHolder) -> void:
 		await force_draw_stack_continue(holder)
 	_draw_stack_resolving = false
 	if _is_authoritative():
-		_server_sync_match_state()
+		_server_sync_holder_hand(holder)
 
 
 ## Returns how many cards the current +draw play adds to the active stack.
@@ -1611,6 +1618,8 @@ func force_wild_draw_continue(holder: HandCardHolder) -> void:
 		return
 	if !holder_has_playable_card(holder):
 		end_turn()
+	if multiplayer.is_server():
+		_server_sync_holder_hand(holder, false)
 
 ## Force draw stack resolve
 func force_draw_stack_continue(holder: HandCardHolder) -> void:
@@ -1641,6 +1650,8 @@ func force_draw_stack_continue(holder: HandCardHolder) -> void:
 		return
 	if !holder_has_playable_card(holder):
 		end_turn()
+	if multiplayer.is_server():
+		_server_sync_holder_hand(holder, false)
 
 ## Draw stack UI text
 func get_draw_stack_text() -> String:
@@ -2485,8 +2496,6 @@ func _smooth_modulate(node: CanvasItem, target: Color, duration: float = 0.2) ->
 ## Buffer incoming hand
 func _on_hand_received(hand: Array) -> void:
 	_pending_hand = hand
-	if !multiplayer.is_server():
-		_client_has_hand = false
 	_try_apply_pending_hand()
 
 ## Apply buffered hand when ready
@@ -2512,6 +2521,9 @@ func _try_apply_pending_hand() -> void:
 		player_container.add_child(my_holder)
 	my_holder.compact_view = false
 	_refresh_holder_layouts()
+	if my_holder._busy:
+		my_holder._busy = false
+		my_holder.notify_remote_play_finished()
 	if my_holder.get_child_count() == 0:
 		for entry: Dictionary in _pending_hand:
 			my_holder.add_card(CardResource.from_sync_dict(entry), false)
@@ -2526,8 +2538,6 @@ func _try_apply_pending_hand() -> void:
 	_client_has_hand = true
 	if !multiplayer.is_server() and _client_has_state:
 		_client_match_started = true
-	if !multiplayer.is_server() and my_holder._busy:
-		my_holder.notify_remote_play_finished()
 	if multiplayer.is_server():
 		_apply_counts_to_ui()
 		_apply_local_visibility()
@@ -3439,13 +3449,7 @@ func server_apply_draw(peer_id: int) -> void:
 			await force_wild_draw_continue(holder)
 		else:
 			await force_draw_stack_continue(holder)
-		# Send updated hand to client after stack draw
-		var hand_after_stack: Array = []
-		for ch in holder.get_children():
-			if ch is CardView and ch.card_res != null:
-				hand_after_stack.append(_serialize_card(ch.card_res))
-		NetworkManager.rpc_id(peer_id, "client_set_hand", hand_after_stack)
-		_server_sync_match_state()
+		_server_sync_holder_hand(holder)
 		return
 	
 	# Normal draw
@@ -3460,14 +3464,7 @@ func server_apply_draw(peer_id: int) -> void:
 	holder.sort_cards_full()
 	holder.refresh_playable_cards()
 	has_drawn_this_turn = true
-	
-	# Send updated hand to client
-	var hand: Array = []
-	for ch in holder.get_children():
-		if ch is CardView and ch.card_res != null:
-			hand.append(_serialize_card(ch.card_res))
-	
-	NetworkManager.rpc_id(peer_id, "client_set_hand", hand)
+	_server_sync_holder_hand(holder)
 
 	if !allow_play_after_draw:
 		_finish_draw_turn_if_needed(holder)
@@ -3657,20 +3654,30 @@ func _server_broadcast_counts() -> void:
 ## effects (target/multi draw, swap, roulette, place-all) change a hand purely
 ## on the server; without this the client keeps showing the old cards, which
 ## causes desyncs and soft-locks (cards that look playable but no longer exist).
+func _server_sync_holder_hand(holder: HandCardHolder, sync_state: bool = true) -> void:
+	if not multiplayer.is_server():
+		return
+	if holder == null or not is_instance_valid(holder):
+		return
+	if not holder.is_bot:
+		var peer_id := _slot_to_peer_id(int(holder.player_index))
+		if peer_id != 0 and peer_id != 1:
+			var hand: Array = []
+			for ch in holder.get_children():
+				if ch is CardView and ch.card_res != null and not ch.get_meta("anim_temp", false):
+					hand.append(_serialize_card(ch.card_res))
+			NetworkManager.rpc_id(peer_id, "client_set_hand", hand)
+	_server_broadcast_counts()
+	if sync_state:
+		_server_sync_match_state()
+
+
 func _server_push_hand(holder: HandCardHolder) -> void:
 	if not multiplayer.is_server():
 		return
 	if holder == null or not is_instance_valid(holder) or holder.is_bot:
 		return
-	var peer_id := _slot_to_peer_id(int(holder.player_index))
-	# peer 0 = no peer, peer 1 = the host itself (its holder is already correct).
-	if peer_id == 0 or peer_id == 1:
-		return
-	var hand: Array = []
-	for ch in holder.get_children():
-		if ch is CardView and ch.card_res != null:
-			hand.append(_serialize_card(ch.card_res))
-	NetworkManager.rpc_id(peer_id, "client_set_hand", hand)
+	_server_sync_holder_hand(holder, false)
 
 ## Client play event for opponents
 func _on_play_event_received(from_slot: int, card: Dictionary) -> void:

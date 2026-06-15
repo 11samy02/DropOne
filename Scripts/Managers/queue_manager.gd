@@ -2839,6 +2839,10 @@ func _set_seat_name(container: Control, holder: HandCardHolder) -> void:
 	if container == null or holder == null:
 		return
 
+	if !holder.is_bot and int(holder.player_index) == int(NetworkManager.my_slot):
+		_remove_seat_name(container)
+		return
+
 	var label := container.get_node_or_null("SeatName") as Label
 	if label == null:
 		label = Label.new()

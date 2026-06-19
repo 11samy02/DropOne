@@ -45,6 +45,7 @@ func _save_profile() -> bool:
 	var player_profile := PlayerProfile.new()
 	player_profile.player_name = name
 	player_profile.picture = picture.texture
+	player_profile.picture_id = picture_id
 	Globals.client_profile = player_profile
 	return true
 

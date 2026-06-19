@@ -70,6 +70,7 @@ signal connected_ok
 signal counts_received(hand_counts: Array, deck_count: int)
 signal play_event_received(from_slot: int, card: Dictionary)
 signal place_all_event_received(from_slot: int, color: int, cards: Array)
+signal swap_hands_event_received(owner_slot: int, target_slot: int, owner_count: int, target_count: int)
 signal lobby_state_changed(players: Array)  # [{peer_id, name, is_ready, is_host, is_bot}]
 signal lobby_start_game
 signal lobby_disconnected
@@ -829,9 +830,12 @@ func _ensure_server_profile() -> void:
 	if not multiplayer.is_server():
 		return
 	var nm := _get_local_player_name()
+	var pic_id := 0
+	if Globals != null and Globals.client_profile != null and int(Globals.client_profile.picture_id) >= 0:
+		pic_id = int(Globals.client_profile.picture_id)
 	_server_profiles_by_peer[1] = {
 		"name": nm,
-		"picture_id": 0,
+		"picture_id": pic_id,
 		"peer_id": 1
 	}
 
@@ -1000,6 +1004,9 @@ func send_profile_to_server() -> void:
 		"name": _get_local_player_name(),
 		"picture_id": 0
 	}
+	if Globals != null and Globals.client_profile != null:
+		if int(Globals.client_profile.picture_id) >= 0:
+			profile["picture_id"] = int(Globals.client_profile.picture_id)
 
 	rpc_id(1, "server_register_player", profile)
 
@@ -1085,6 +1092,10 @@ func client_play_event(from_slot: int, card: Dictionary) -> void:
 @rpc("authority", "reliable")
 func client_place_all_event(from_slot: int, color: int, cards: Array) -> void:
 	place_all_event_received.emit(int(from_slot), int(color), cards)
+
+@rpc("authority", "reliable")
+func client_swap_hands_event(owner_slot: int, target_slot: int, owner_count: int, target_count: int) -> void:
+	swap_hands_event_received.emit(int(owner_slot), int(target_slot), int(owner_count), int(target_count))
 
 @rpc("authority", "reliable")
 func client_draw_sound(_from_slot: int, count: int = 1) -> void:

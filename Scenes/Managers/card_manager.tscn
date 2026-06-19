@@ -13,6 +13,7 @@
 [ext_resource type="Script" uid="uid://da686y68ol6iv" path="res://Scripts/View/plus_stack_label.gd" id="7_luibc"]
 [ext_resource type="Texture2D" uid="uid://xspumfxdwrqn" path="res://Assets/card-theme/default/black.png" id="9_xhqx2"]
 [ext_resource type="Script" path="res://Scripts/UI/turn_feedback.gd" id="10_tfback"]
+[ext_resource type="Script" path="res://Scripts/UI/swap_hands_feedback.gd" id="10_swapfb"]
 [ext_resource type="Script" path="res://Scripts/View/turn_direction_indicator.gd" id="11_tdir"]
 [ext_resource type="PackedScene" path="res://Scenes/UI/pause_menu.tscn" id="12_pause"]
 
@@ -75,6 +76,19 @@ mouse_filter = 2
 z_index = 400
 process_mode = 3
 script = ExtResource("10_tfback")
+
+[node name="SwapHandsFeedback" type="Control" parent="CanvasLayer" groups=["swap_hands_feedback"]]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+z_index = 450
+process_mode = 3
+script = ExtResource("10_swapfb")
+queue_manager = NodePath("../../QueueManager")
 
 [node name="player Selector" parent="CanvasLayer" node_paths=PackedStringArray("queue_manager") instance=ExtResource("5_abt31")]
 z_index = 500

@@ -1087,6 +1087,165 @@ func omega_choose_target_draw_target() -> HandCardHolder:
 	var draw_value := queue_manager.target_draw_value if queue_manager.target_draw_active else 2
 	return _omega_pick_max_card_target(draw_value)
 
+
+## Swap-hands target for non-Omega difficulties.
+func choose_swap_target() -> HandCardHolder:
+	if queue_manager == null:
+		return null
+	if difficulty == AIDifficulty.OMEGA:
+		return omega_choose_swap_target()
+	if difficulty == AIDifficulty.MASTER or difficulty == AIDifficulty.HARD:
+		return queue_manager.get_least_hand_target(hand_card_holder)
+	return queue_manager.get_most_threatening_target(hand_card_holder)
+
+
+## OMEGA: steal the hand that maximizes own win chance and denies opponent wins.
+func omega_choose_swap_target() -> HandCardHolder:
+	if queue_manager == null:
+		return null
+
+	var valid := queue_manager.get_valid_target_holders(hand_card_holder)
+	if valid.is_empty():
+		return null
+
+	var my_cards := hand_card_holder.get_all_card_resources()
+	var my_strength := _omega_estimate_card_set_strength(my_cards)
+
+	var best: HandCardHolder = null
+	var best_score := -999999999
+
+	for target in valid:
+		var score := _omega_score_swap_target(target, my_cards, my_strength)
+		if score > best_score:
+			best_score = score
+			best = target
+
+	if best == null:
+		return queue_manager.get_least_hand_target(hand_card_holder)
+	return best
+
+
+func _omega_min_opponent_card_count() -> int:
+	if queue_manager == null:
+		return 9999
+	var best := 9999
+	for h in queue_manager.turn_order:
+		if h == null or h == hand_card_holder:
+			continue
+		best = mini(best, h.get_child_count())
+	return best
+
+
+func _omega_estimate_card_set_strength(cards: Array) -> int:
+	if cards.is_empty():
+		return 0
+
+	var score := 0
+	var playable := 0
+	var color_counts: Dictionary = {}
+
+	for card in cards:
+		if card == null or not card is CardResource:
+			continue
+
+		if hand_card_holder.can_play_card(card):
+			playable += 1
+			score += 8000
+			match card.type:
+				CardResource.CardType.NUMBER:
+					score += 2000 + (9 - int(card.value)) * 100
+				CardResource.CardType.SKIP:
+					score += 25000
+				CardResource.CardType.REVERSE:
+					score += 18000
+				CardResource.CardType.DRAW:
+					score += 22000 + int(card.value) * 3000
+				CardResource.CardType.WILD:
+					score += 28000
+				CardResource.CardType.WILD_DRAW:
+					score += 35000 + int(card.value) * 4000
+				CardResource.CardType.WILD_DRAW_REVERSE:
+					score += 42000 + int(card.value) * 4500
+				CardResource.CardType.TARGET_DRAW:
+					score += 30000 + int(card.value) * 3500
+				CardResource.CardType.SWAP_HANDS:
+					score += 15000
+				CardResource.CardType.WILD_COLOR_ROULET:
+					score += 20000
+				CardResource.CardType.PLACE_ALL:
+					score += 18000
+				CardResource.CardType.MULTI_TARGET_DRAW:
+					score += 24000 + int(card.value) * 2500
+
+		if card.color != CardResource.CardColor.BLACK:
+			color_counts[card.color] = int(color_counts.get(card.color, 0)) + 1
+
+	if cards.size() == 1 and playable == 1:
+		score += 500000
+	elif cards.size() == 2 and playable >= 1:
+		score += 80000
+
+	for col in color_counts.keys():
+		var cnt := int(color_counts[col])
+		if cnt >= 2:
+			score += cnt * 3000
+
+	score += playable * 5000
+	score -= cards.size() * 400
+	return score
+
+
+func _omega_score_swap_target(target: HandCardHolder, my_cards: Array, my_strength: int) -> int:
+	if target == null:
+		return -999999999
+
+	var their_cards := target.get_all_card_resources()
+	var their_strength := _omega_estimate_card_set_strength(their_cards)
+	var target_count := their_cards.size()
+
+	var score := (their_strength - my_strength) * 3
+	score += my_strength
+
+	if their_cards.size() == 1:
+		var lone: CardResource = their_cards[0]
+		if lone != null and hand_card_holder.can_play_card(lone):
+			score += 900000
+
+	if their_cards.size() == 2:
+		var playable_after := 0
+		for c in their_cards:
+			if c != null and hand_card_holder.can_play_card(c):
+				playable_after += 1
+		if playable_after >= 1:
+			score += 120000 + playable_after * 40000
+
+	if target_count == 1 and their_cards.size() > 0:
+		var lone: CardResource = their_cards[0]
+		if lone != null and target.can_play_card(lone):
+			score += 700000
+	elif target_count == 2:
+		var their_playable := 0
+		for c in their_cards:
+			if c != null and target.can_play_card(c):
+				their_playable += 1
+		if their_playable >= 2:
+			score += 350000
+		elif their_playable == 1 and their_strength > 50000:
+			score += 200000
+
+	var min_count := _omega_min_opponent_card_count()
+	if target_count > min_count and their_strength > my_strength + 25000:
+		score += (their_strength - my_strength) * 2
+		score += 100000
+
+	if target_count <= 2 and their_strength >= my_strength:
+		score += (3 - target_count) * 60000
+
+	if my_cards.size() == 1 and my_cards[0] != null and target.can_play_card(my_cards[0]):
+		score -= 400000
+
+	return score
+
 func _omega_pick_max_card_target(draw_value: int) -> HandCardHolder:
 	if queue_manager == null:
 		return null

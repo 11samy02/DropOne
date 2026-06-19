@@ -188,6 +188,34 @@ func get_container_for_holder(holder: HandCardHolder) -> Control:
 
 	return player_container
 
+
+func get_holder_for_slot(slot: int) -> HandCardHolder:
+	return _slot_to_holder.get(int(slot), null)
+
+
+func get_holder_visual_center(holder: HandCardHolder) -> Vector2:
+	if holder == null:
+		return Vector2.ZERO
+	var container := get_container_for_holder(holder)
+	if container != null and is_instance_valid(container):
+		return container.get_global_rect().get_center()
+	return holder.get_global_rect().get_center()
+
+
+func _get_swap_hands_feedback() -> Node:
+	var tree := get_tree()
+	if tree == null:
+		return null
+	return tree.get_first_node_in_group("swap_hands_feedback")
+
+
+func _play_swap_hands_visual(owner: HandCardHolder, target: HandCardHolder, owner_count: int, target_count: int) -> void:
+	var feedback := _get_swap_hands_feedback()
+	if feedback != null and feedback.has_method("play_swap"):
+		await feedback.play_swap(owner, target, owner_count, target_count)
+	else:
+		await get_tree().create_timer(0.9).timeout
+
 ## Compute opponent seat index for UI.
 ## Seats are assigned RELATIVE to the local player so turn order always runs
 ## around the table in a circle: the next player after the local one takes the
@@ -229,6 +257,13 @@ func create_players() -> void:
 		holder.profile.player_index = i
 		holder.profile.is_bot = false
 		holder.profile.player_name = "Player " + str(i + 1)
+		if i == 0 and Globals != null and Globals.client_profile != null:
+			if Globals.client_profile.player_name.strip_edges() != "":
+				holder.profile.player_name = Globals.client_profile.player_name
+			if Globals.client_profile.picture != null:
+				holder.profile.picture = Globals.client_profile.picture
+			elif int(Globals.client_profile.picture_id) >= 0:
+				holder.profile.apply_picture_from_id(int(Globals.client_profile.picture_id))
 		holder.profile.holder = holder
 		holder.profile.ensure_picture()
 
@@ -257,6 +292,7 @@ func create_bots() -> void:
 		var fallback_name := bot_profile.name if bot_profile.name.strip_edges() != "" else "Bot " + str(i + 1)
 		holder.profile.player_name = _bot_display_name(bot_profile.difficulty, fallback_name)
 		holder.profile.holder = holder
+		holder.profile.apply_bot_avatar(bot_profile.difficulty)
 		holder.profile.ensure_picture()
 
 		get_container_for_holder(holder).add_child(holder)
@@ -2147,7 +2183,12 @@ func start_swap_hands(owner: HandCardHolder) -> void:
 	if multiplayer.is_server():
 		_server_sync_match_state()
 	if owner.is_bot:
-		var target := get_least_hand_target(owner)
+		var target: HandCardHolder = null
+		var ki := _get_ki_for_holder(owner)
+		if ki != null and ki.has_method("choose_swap_target"):
+			target = ki.choose_swap_target()
+		if target == null:
+			target = get_least_hand_target(owner)
 		if target == null:
 			pending_swap_owner = null
 			end_turn()
@@ -2219,7 +2260,15 @@ func resolve_swap_hands(owner: HandCardHolder) -> void:
 
 ## Execute swap between two holders, then request color selection
 func _resolve_swap_with_target(owner: HandCardHolder, target: HandCardHolder) -> void:
+	call_deferred("_resolve_swap_with_target_async", owner, target)
+
+
+func _resolve_swap_with_target_async(owner: HandCardHolder, target: HandCardHolder) -> void:
 	pending_swap_owner = null
+	if owner == null:
+		swap_color_pending = false
+		end_turn()
+		return
 	if target == null:
 		swap_color_pending = false
 		end_turn()
@@ -2227,6 +2276,32 @@ func _resolve_swap_with_target(owner: HandCardHolder, target: HandCardHolder) ->
 
 	var my_cards := owner.get_all_card_resources()
 	var opp_cards := target.get_all_card_resources()
+	var owner_count := my_cards.size()
+	var target_count := opp_cards.size()
+
+	if _is_authoritative():
+		if multiplayer.has_multiplayer_peer() and multiplayer.is_server():
+			NetworkManager.rpc(
+				"client_swap_hands_event",
+				int(owner.player_index),
+				int(target.player_index),
+				owner_count,
+				target_count
+			)
+		await _play_swap_hands_visual(owner, target, owner_count, target_count)
+		_apply_swap_hands_state(owner, target, my_cards, opp_cards)
+
+
+func _apply_swap_hands_state(
+	owner: HandCardHolder,
+	target: HandCardHolder,
+	my_cards: Array,
+	opp_cards: Array
+) -> void:
+	if !_is_authoritative():
+		return
+	if owner == null or target == null:
+		return
 
 	for c in owner.get_children():
 		if c is CardView:
@@ -2249,8 +2324,6 @@ func _resolve_swap_with_target(owner: HandCardHolder, target: HandCardHolder) ->
 	owner.refresh_playable_cards()
 	target.refresh_playable_cards()
 
-	# Push both swapped hands to their owning clients, otherwise the swap is only
-	# applied on the server and the affected clients keep their old cards.
 	_server_push_hand(owner)
 	_server_push_hand(target)
 
@@ -2770,17 +2843,11 @@ func _build_holders_from_players(players_meta: Array) -> void:
 		holder.profile.is_bot = is_bot_row
 		holder.profile.player_name = nm
 		holder.profile.holder = holder
+		if is_bot_row:
+			holder.profile.apply_bot_avatar(holder.bot_difficulty)
+		elif pic_id >= 0:
+			holder.profile.apply_picture_from_id(pic_id)
 		holder.profile.ensure_picture()
-
-		## Apply profile picture id only if PlayerProfile supports it
-		if holder.profile != null and holder.profile.get_property_list() != null:
-			var has_pic := false
-			for p in holder.profile.get_property_list():
-				if p is Dictionary and str(p.get("name", "")) == "picture_id":
-					has_pic = true
-					break
-			if has_pic:
-				holder.profile.set("picture_id", pic_id)
 
 		var container := get_container_for_holder(holder)
 		if container != null:
@@ -3705,9 +3772,15 @@ func _apply_wild_color(color: int, owner_slot: int) -> void:
 			owner._waiting_color_turn_end = false
 			owner._pending_effect_card_uid = -1
 			owner._busy = false
-			if card_manager.top_card != null and _can_resolve_card_effect(card_manager.top_card):
+			if swap_color_pending:
+				swap_color_pending = false
+				clear_wild_owner()
+				end_turn()
+			elif card_manager.top_card != null and _can_resolve_card_effect(card_manager.top_card):
 				register_card_play(card_manager.top_card, owner)
-			clear_wild_owner()
+				clear_wild_owner()
+			else:
+				clear_wild_owner()
 		if multiplayer.has_multiplayer_peer():
 			NetworkManager.rpc("client_set_wild_color", int(color), int(owner_slot))
 			_server_sync_match_state()

@@ -2033,13 +2033,18 @@ func get_next_holder(from_holder: HandCardHolder) -> HandCardHolder:
 		n += turn_order.size()
 	return turn_order[n]
 
-## Valid targets
+## Valid targets for target draw / swap (active players only, card owner excluded).
 func get_valid_target_holders(exclude: HandCardHolder) -> Array[HandCardHolder]:
 	var res: Array[HandCardHolder] = []
+	var exclude_slot := -1
+	if exclude != null and is_instance_valid(exclude):
+		exclude_slot = int(exclude.player_index)
 	for h in turn_order:
-		if h == null:
+		if h == null or !is_instance_valid(h):
 			continue
-		if h == exclude:
+		if exclude_slot >= 0 and int(h.player_index) == exclude_slot:
+			continue
+		if is_holder_eliminated(h) or is_holder_finished(h):
 			continue
 		res.append(h)
 	return res
@@ -2116,7 +2121,8 @@ func start_target_draw(owner: HandCardHolder, value: int, multi: bool, color: Ca
 		_server_sync_match_state()
 
 	if multi:
-		resolve_target_draw(null)
+		if _is_authoritative():
+			resolve_target_draw(null)
 		return
 
 	if owner.is_bot:
@@ -2161,37 +2167,44 @@ func resolve_target_draw(target_holder: HandCardHolder) -> void:
 
 	var owner := pending_target_draw_owner
 
-	if target_draw_is_multi:
-		# Multi target draw: every player except the one who played it draws.
-		for h in get_valid_target_holders(owner):
-			for i in range(target_draw_value):
-				var card := card_manager.draw_card()
-				if card == null:
-					break
-				notify_card_drawn(int(h.player_index), 1, false)
-				h.add_card(card)
-			h.sort_cards_full()
-			h.refresh_playable_cards()
-			_server_push_hand(h)
-	else:
-		if target_holder == null:
-			target_holder = get_most_threatening_target(owner)
-		if target_holder != null:
-			for i in range(target_draw_value):
-				var card := card_manager.draw_card()
-				if card == null:
-					break
-				notify_card_drawn(int(target_holder.player_index), 1, false)
-				target_holder.add_card(card)
-			target_holder.sort_cards_full()
-			target_holder.refresh_playable_cards()
-			_server_push_hand(target_holder)
+	if _is_authoritative():
+		if target_draw_is_multi:
+			# Multi target draw: every active player except the card owner draws card.value times.
+			var recipients := get_valid_target_holders(owner)
+			for h in recipients:
+				for i in range(target_draw_value):
+					var card := card_manager.draw_card()
+					if card == null:
+						break
+					notify_card_drawn(int(h.player_index), 1, false)
+					h.add_card(card)
+				h.sort_cards_full()
+				h.refresh_playable_cards()
+				_try_eliminate_holder_for_max_cards(h)
+				_server_push_hand(h)
+		else:
+			if target_holder == null:
+				target_holder = get_most_threatening_target(owner)
+			if target_holder != null:
+				for i in range(target_draw_value):
+					var card := card_manager.draw_card()
+					if card == null:
+						break
+					notify_card_drawn(int(target_holder.player_index), 1, false)
+					target_holder.add_card(card)
+				target_holder.sort_cards_full()
+				target_holder.refresh_playable_cards()
+				_try_eliminate_holder_for_max_cards(target_holder)
+				_server_push_hand(target_holder)
 
 	target_draw_active = false
 	target_draw_value = 0
 	target_draw_is_multi = false
 	target_draw_color = CardResource.CardColor.BLACK
 	pending_target_draw_owner = null
+
+	if !_is_authoritative():
+		return
 
 	_sync_deck_counts()
 

@@ -1,0 +1,76 @@
+[gd_resource type="Resource" script_class="DeckResource" format=3 uid="uid://dk4wiurjim8ve"]
+
+[ext_resource type="Script" uid="uid://c40nbsxolq1km" path="res://Scripts/Globals/DeckEntryResource.gd" id="1_vvcgu"]
+[ext_resource type="Script" uid="uid://7ntgiiwhye0n" path="res://Scripts/Globals/DeckNumberRuleResource.gd" id="2_7xeu8"]
+[ext_resource type="Script" uid="uid://52s8intselne" path="res://Scripts/Globals/DeckResource.gd" id="2_ysynn"]
+
+[sub_resource type="Resource" id="Resource_72de7"]
+script = ExtResource("1_vvcgu")
+count = 4
+duplicate_for_all_colors = true
+metadata/_custom_type_script = "uid://c40nbsxolq1km"
+
+[sub_resource type="Resource" id="Resource_ny6un"]
+script = ExtResource("1_vvcgu")
+type = 2
+count = 4
+duplicate_for_all_colors = true
+metadata/_custom_type_script = "uid://c40nbsxolq1km"
+
+[sub_resource type="Resource" id="Resource_jk3r0"]
+script = ExtResource("1_vvcgu")
+type = 3
+value = 2
+count = 2
+duplicate_for_all_colors = true
+metadata/_custom_type_script = "uid://c40nbsxolq1km"
+
+[sub_resource type="Resource" id="Resource_i14es"]
+script = ExtResource("1_vvcgu")
+type = 6
+count = 4
+duplicate_for_all_colors = true
+metadata/_custom_type_script = "uid://c40nbsxolq1km"
+
+[sub_resource type="Resource" id="Resource_hcesb"]
+script = ExtResource("1_vvcgu")
+color = 4
+type = 4
+count = 10
+metadata/_custom_type_script = "uid://c40nbsxolq1km"
+
+[sub_resource type="Resource" id="Resource_t65rx"]
+script = ExtResource("1_vvcgu")
+color = 4
+type = 5
+value = 2
+count = 6
+metadata/_custom_type_script = "uid://c40nbsxolq1km"
+
+[sub_resource type="Resource" id="Resource_qabfx"]
+script = ExtResource("1_vvcgu")
+color = 4
+type = 8
+count = 4
+metadata/_custom_type_script = "uid://c40nbsxolq1km"
+
+[sub_resource type="Resource" id="Resource_lttcx"]
+script = ExtResource("1_vvcgu")
+type = 11
+value = 1
+count = 3
+duplicate_for_all_colors = true
+metadata/_custom_type_script = "uid://c40nbsxolq1km"
+
+[sub_resource type="Resource" id="Resource_m5lpp"]
+script = ExtResource("2_7xeu8")
+max_number = 5
+overrides = {}
+metadata/_custom_type_script = "uid://7ntgiiwhye0n"
+
+[resource]
+script = ExtResource("2_ysynn")
+deck_name = "Rapid"
+number_rules = SubResource("Resource_m5lpp")
+entries = Array[ExtResource("1_vvcgu")]([SubResource("Resource_72de7"), SubResource("Resource_ny6un"), SubResource("Resource_jk3r0"), SubResource("Resource_i14es"), SubResource("Resource_hcesb"), SubResource("Resource_t65rx"), SubResource("Resource_qabfx"), SubResource("Resource_lttcx")])
+metadata/_custom_type_script = "uid://52s8intselne"

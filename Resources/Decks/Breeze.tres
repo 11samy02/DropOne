@@ -1,0 +1,58 @@
+[gd_resource type="Resource" script_class="DeckResource" format=3 uid="uid://g7mafaawn74x"]
+
+[ext_resource type="Script" uid="uid://c40nbsxolq1km" path="res://Scripts/Globals/DeckEntryResource.gd" id="1_3ytyf"]
+[ext_resource type="Script" uid="uid://52s8intselne" path="res://Scripts/Globals/DeckResource.gd" id="2_eok6f"]
+[ext_resource type="Script" uid="uid://7ntgiiwhye0n" path="res://Scripts/Globals/DeckNumberRuleResource.gd" id="2_is44r"]
+
+[sub_resource type="Resource" id="Resource_4p7fk"]
+script = ExtResource("1_3ytyf")
+count = 2
+duplicate_for_all_colors = true
+metadata/_custom_type_script = "uid://c40nbsxolq1km"
+
+[sub_resource type="Resource" id="Resource_r4nev"]
+script = ExtResource("1_3ytyf")
+type = 2
+count = 2
+duplicate_for_all_colors = true
+metadata/_custom_type_script = "uid://c40nbsxolq1km"
+
+[sub_resource type="Resource" id="Resource_c42go"]
+script = ExtResource("1_3ytyf")
+type = 3
+value = 1
+count = 2
+duplicate_for_all_colors = true
+metadata/_custom_type_script = "uid://c40nbsxolq1km"
+
+[sub_resource type="Resource" id="Resource_2adip"]
+script = ExtResource("1_3ytyf")
+type = 6
+count = 2
+duplicate_for_all_colors = true
+metadata/_custom_type_script = "uid://c40nbsxolq1km"
+
+[sub_resource type="Resource" id="Resource_cpqip"]
+script = ExtResource("1_3ytyf")
+color = 4
+type = 4
+count = 8
+metadata/_custom_type_script = "uid://c40nbsxolq1km"
+
+[sub_resource type="Resource" id="Resource_yufh0"]
+script = ExtResource("1_3ytyf")
+color = 4
+type = 8
+count = 4
+metadata/_custom_type_script = "uid://c40nbsxolq1km"
+
+[sub_resource type="Resource" id="Resource_8j231"]
+script = ExtResource("2_is44r")
+metadata/_custom_type_script = "uid://7ntgiiwhye0n"
+
+[resource]
+script = ExtResource("2_eok6f")
+deck_name = "Breeze"
+number_rules = SubResource("Resource_8j231")
+entries = Array[ExtResource("1_3ytyf")]([SubResource("Resource_4p7fk"), SubResource("Resource_r4nev"), SubResource("Resource_c42go"), SubResource("Resource_2adip"), SubResource("Resource_cpqip"), SubResource("Resource_yufh0")])
+metadata/_custom_type_script = "uid://52s8intselne"

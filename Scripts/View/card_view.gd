@@ -83,13 +83,15 @@ func _ready() -> void:
 	load_card()
 	rezise_card()
 
-	if animation_player != null and animation_player.has_animation("appear"):
-		if in_hand_card:
-			animation_player.play("appear")
+	if in_hand_card:
+		if get_meta("play_appear", false):
+			_snap_appear_start_pose()
 		else:
-			animation_player.play("appear")
-			animation_player.seek(animation_player.current_animation_length, true)
-			animation_player.stop()
+			_snap_rest_pose()
+	elif animation_player != null and animation_player.has_animation("appear"):
+		animation_player.play("appear")
+		animation_player.seek(animation_player.current_animation_length, true)
+		animation_player.stop()
 	else:
 		if animation_player != null:
 			animation_player.stop()
@@ -185,6 +187,26 @@ func load_card() -> void:
 		center_num.modulate = c
 
 	update_playable_visuals()
+
+func _snap_rest_pose() -> void:
+	if animation_player != null and animation_player.has_animation("RESET"):
+		animation_player.play("RESET")
+		animation_player.advance(0.001)
+		animation_player.stop()
+	elif visuells != null:
+		visuells.position = Vector2.ZERO
+		visuells.scale = Vector2.ONE
+		visuells.z_index = 0
+
+
+func _snap_appear_start_pose() -> void:
+	if visuells != null:
+		visuells.position = Vector2(0, 300)
+		visuells.scale = Vector2.ONE
+		visuells.z_index = 0
+	if animation_player != null:
+		animation_player.stop()
+
 
 func _ui_ready() -> bool:
 	return background != null \

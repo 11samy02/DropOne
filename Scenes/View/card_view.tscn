@@ -1,4 +1,4 @@
-[gd_scene load_steps=17 format=3 uid="uid://deat7hguf61ur"]
+[gd_scene format=3 uid="uid://deat7hguf61ur"]
 
 [ext_resource type="Script" uid="uid://dwcx18si3di77" path="res://Scripts/View/card_view.gd" id="1_cy6ll"]
 [ext_resource type="Script" uid="uid://cqusp4ug0a2ee" path="res://Scripts/Globals/CardResource.gd" id="2_p7nbu"]
@@ -158,7 +158,7 @@ _data = {
 &"zoom": SubResource("Animation_fmmoy")
 }
 
-[node name="CardView" type="Control"]
+[node name="CardView" type="Control" unique_id=179077342]
 custom_minimum_size = Vector2(168.75, 236.25)
 layout_mode = 3
 anchors_preset = 0
@@ -172,19 +172,19 @@ card_size = "Large"
 card_res = SubResource("Resource_xv604")
 metadata/_edit_use_anchors_ = true
 
-[node name="visuells" type="Control" parent="."]
+[node name="visuells" type="Control" parent="." unique_id=2110295222]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_bottom = 0.00016784668
+offset_bottom = 0.00018310547
 grow_horizontal = 2
 grow_vertical = 2
 pivot_offset = Vector2(84.375, 236.25)
 mouse_filter = 2
 
-[node name="background" type="TextureRect" parent="visuells"]
+[node name="background" type="TextureRect" parent="visuells" unique_id=171066750]
 unique_name_in_owner = true
 material = SubResource("ShaderMaterial_p7nbu")
 layout_mode = 1
@@ -199,7 +199,7 @@ texture = ExtResource("3_onqwp")
 expand_mode = 3
 stretch_mode = 5
 
-[node name="Content" type="MarginContainer" parent="visuells"]
+[node name="Content" type="MarginContainer" parent="visuells" unique_id=317944670]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -211,7 +211,7 @@ theme_override_constants/margin_top = 14
 theme_override_constants/margin_right = 22
 theme_override_constants/margin_bottom = 14
 
-[node name="center_num" type="Label" parent="visuells/Content"]
+[node name="center_num" type="Label" parent="visuells/Content" unique_id=1169074699]
 unique_name_in_owner = true
 visible = false
 layout_mode = 2
@@ -220,7 +220,7 @@ theme_override_colors/font_color = Color(0.6784314, 0, 0, 1)
 text = "+1"
 label_settings = SubResource("LabelSettings_cy6ll")
 
-[node name="corner_num" type="Label" parent="visuells/Content"]
+[node name="corner_num" type="Label" parent="visuells/Content" unique_id=998227131]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 8
@@ -228,7 +228,7 @@ size_flags_vertical = 0
 text = "+1"
 label_settings = SubResource("LabelSettings_1kj0g")
 
-[node name="symbol" type="TextureRect" parent="visuells/Content"]
+[node name="symbol" type="TextureRect" parent="visuells/Content" unique_id=302149977]
 unique_name_in_owner = true
 modulate = Color(0.7647059, 0.62352943, 0, 1)
 custom_minimum_size = Vector2(0, 100)
@@ -238,7 +238,7 @@ texture = ExtResource("4_fmmoy")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="shadow_symbol" type="TextureRect" parent="visuells/Content/symbol"]
+[node name="shadow_symbol" type="TextureRect" parent="visuells/Content/symbol" unique_id=57686540]
 unique_name_in_owner = true
 modulate = Color(0, 0, 0, 0.9843137)
 show_behind_parent = true
@@ -255,7 +255,7 @@ texture = ExtResource("4_fmmoy")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="corner_symbol2" type="TextureRect" parent="visuells/Content"]
+[node name="corner_symbol2" type="TextureRect" parent="visuells/Content" unique_id=1056148778]
 unique_name_in_owner = true
 visible = false
 custom_minimum_size = Vector2(40, 40)
@@ -266,7 +266,7 @@ texture = ExtResource("4_fmmoy")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="left_shadow_symbol" type="TextureRect" parent="visuells/Content/corner_symbol2"]
+[node name="left_shadow_symbol" type="TextureRect" parent="visuells/Content/corner_symbol2" unique_id=940930538]
 unique_name_in_owner = true
 visible = false
 modulate = Color(0, 0, 0, 1)
@@ -283,7 +283,7 @@ texture = ExtResource("4_fmmoy")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="corner_color_blind_symbol" type="TextureRect" parent="visuells/Content"]
+[node name="corner_color_blind_symbol" type="TextureRect" parent="visuells/Content" unique_id=892182427]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(30, 30)
 layout_mode = 2
@@ -293,7 +293,7 @@ texture = ExtResource("5_gijg1")
 expand_mode = 1
 stretch_mode = 4
 
-[node name="right_shadow_symbol" type="TextureRect" parent="visuells/Content/corner_color_blind_symbol"]
+[node name="right_shadow_symbol" type="TextureRect" parent="visuells/Content/corner_color_blind_symbol" unique_id=609761889]
 unique_name_in_owner = true
 visible = false
 modulate = Color(0, 0, 0, 1)
@@ -310,7 +310,7 @@ texture = ExtResource("4_fmmoy")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="shadow" type="TextureRect" parent="visuells"]
+[node name="shadow" type="TextureRect" parent="visuells" unique_id=1917538594]
 unique_name_in_owner = true
 modulate = Color(0, 0, 0, 0.19607843)
 show_behind_parent = true
@@ -329,7 +329,7 @@ texture = ExtResource("3_xv604")
 expand_mode = 3
 stretch_mode = 5
 
-[node name="button" type="Button" parent="."]
+[node name="button" type="Button" parent="." unique_id=1399243999]
 unique_name_in_owner = true
 z_index = 125
 custom_minimum_size = Vector2(0, 300)
@@ -357,10 +357,8 @@ theme_override_styles/focus = SubResource("StyleBoxEmpty_xv604")
 disabled = true
 flat = true
 
-[node name="AnimationPlayer" type="AnimationPlayer" parent="."]
-libraries = {
-&"": SubResource("AnimationLibrary_xv604")
-}
+[node name="AnimationPlayer" type="AnimationPlayer" parent="." unique_id=209805316]
+libraries/ = SubResource("AnimationLibrary_xv604")
 
 [connection signal="mouse_entered" from="." to="." method="_on_mouse_entered"]
 [connection signal="mouse_exited" from="." to="." method="_on_mouse_exited"]

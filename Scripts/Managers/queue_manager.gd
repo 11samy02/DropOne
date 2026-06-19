@@ -1401,7 +1401,7 @@ func on_draw_pressed() -> void:
 		return
 
 	notify_card_drawn(int(holder.player_index))
-	holder.add_card(card)
+	holder.add_card(card, true)
 	holder.sort_cards_full()
 	holder.refresh_playable_cards()
 	has_drawn_this_turn = true
@@ -1443,7 +1443,7 @@ func bot_draw_current() -> bool:
 		return _try_pass_if_stuck(holder)
 
 	notify_card_drawn(int(holder.player_index))
-	holder.add_card(card)
+	holder.add_card(card, true)
 	holder.sort_cards_full()
 	holder.refresh_playable_cards()
 	has_drawn_this_turn = true
@@ -1641,7 +1641,7 @@ func force_wild_draw_continue(holder: HandCardHolder) -> void:
 		if card == null:
 			break
 		notify_card_drawn(int(holder.player_index), 1, false)
-		holder.add_card(card)
+		holder.add_card(card, true)
 
 	_clear_draw_stack()
 
@@ -1673,7 +1673,7 @@ func force_draw_stack_continue(holder: HandCardHolder) -> void:
 		if card == null:
 			break
 		notify_card_drawn(int(holder.player_index), 1, false)
-		holder.add_card(card)
+		holder.add_card(card, true)
 
 	_clear_draw_stack()
 
@@ -2177,7 +2177,7 @@ func resolve_target_draw(target_holder: HandCardHolder) -> void:
 					if card == null:
 						break
 					notify_card_drawn(int(h.player_index), 1, false)
-					h.add_card(card)
+					h.add_card(card, true)
 				h.sort_cards_full()
 				h.refresh_playable_cards()
 				_try_eliminate_holder_for_max_cards(h)
@@ -2191,7 +2191,7 @@ func resolve_target_draw(target_holder: HandCardHolder) -> void:
 					if card == null:
 						break
 					notify_card_drawn(int(target_holder.player_index), 1, false)
-					target_holder.add_card(card)
+					target_holder.add_card(card, true)
 				target_holder.sort_cards_full()
 				target_holder.refresh_playable_cards()
 				_try_eliminate_holder_for_max_cards(target_holder)
@@ -2456,7 +2456,7 @@ func _do_roulette_draw_step(holder: HandCardHolder) -> void:
 		return
 
 	notify_card_drawn(int(holder.player_index))
-	holder.add_card(card)
+	holder.add_card(card, true)
 	holder.sort_cards_full()
 	holder.refresh_playable_cards()
 
@@ -3462,20 +3462,30 @@ func _apply_counts_to_ui() -> void:
 		if current_count == n:
 			continue
 
-		for c in holder.get_children():
-			# Keep transient fly-animation cards alive so the rebuild doesn't
-			# cancel an in-flight play animation.
-			if c is CardView and not c.get_meta("anim_temp", false):
-				holder.remove_child(c)
-				c.queue_free()
-
-		for k in range(n):
-			var dummy := CardResource.new()
-			dummy.color = CardResource.CardColor.BLACK
-			dummy.type = CardResource.CardType.NUMBER
-			dummy.value = 0
-			dummy.uid = 0
-			holder.add_card(dummy, false)
+		if current_count > n:
+			var to_remove := current_count - n
+			var cards: Array[CardView] = []
+			for c in holder.get_children():
+				if c is CardView and not c.get_meta("anim_temp", false):
+					cards.append(c)
+			for j in range(to_remove):
+				var idx := cards.size() - 1 - j
+				if idx < 0:
+					break
+				var cv: CardView = cards[idx]
+				if cv != null and is_instance_valid(cv):
+					holder.remove_child(cv)
+					cv.queue_free()
+		else:
+			var to_add := n - current_count
+			var animate_new := to_add == 1
+			for k in range(to_add):
+				var dummy := CardResource.new()
+				dummy.color = CardResource.CardColor.BLACK
+				dummy.type = CardResource.CardType.NUMBER
+				dummy.value = 0
+				dummy.uid = 0
+				holder.add_card(dummy, animate_new)
 
 		holder.sort_cards_full()
 
@@ -3596,7 +3606,7 @@ func server_apply_draw(peer_id: int) -> void:
 		return
 
 	notify_card_drawn(int(slot))
-	holder.add_card(card)
+	holder.add_card(card, true)
 	holder.sort_cards_full()
 	holder.refresh_playable_cards()
 	has_drawn_this_turn = true

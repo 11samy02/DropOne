@@ -69,6 +69,7 @@ signal players_received(players: Array)
 signal connected_ok
 signal counts_received(hand_counts: Array, deck_count: int)
 signal play_event_received(from_slot: int, card: Dictionary)
+signal place_all_event_received(from_slot: int, color: int, cards: Array)
 signal lobby_state_changed(players: Array)  # [{peer_id, name, is_ready, is_host, is_bot}]
 signal lobby_start_game
 signal lobby_disconnected
@@ -1080,6 +1081,10 @@ func server_request_draw() -> void:
 @rpc("authority", "reliable")
 func client_play_event(from_slot: int, card: Dictionary) -> void:
 	play_event_received.emit(int(from_slot), card)
+
+@rpc("authority", "reliable")
+func client_place_all_event(from_slot: int, color: int, cards: Array) -> void:
+	place_all_event_received.emit(int(from_slot), int(color), cards)
 
 @rpc("authority", "reliable")
 func client_draw_sound(_from_slot: int, count: int = 1) -> void:

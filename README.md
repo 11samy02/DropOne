@@ -6,7 +6,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/release-Alpha-orange" alt="Alpha" />
-  <img src="https://img.shields.io/badge/version-v0.6.2--alpha-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-v0.6.3--alpha-blue" alt="Version" />
   <img src="https://img.shields.io/badge/engine-Godot%204.6-478CBF?logo=godotengine&logoColor=white" alt="Godot 4.6" />
   <img src="https://img.shields.io/badge/players-2--8-green" alt="2-8 players" />
   <img src="https://img.shields.io/badge/platform-Windows-0078D6?logo=windows&logoColor=white" alt="Windows" />
@@ -32,7 +32,7 @@
 
 Pre-built Windows builds are on the [**Releases**](https://github.com/11samy02/DropOne/releases) page.
 
-1. Download `DropOne-v0.6.2-alpha-win64.zip`
+1. Download `DropOne-v0.6.3-alpha-win64.zip`
 2. Extract the folder
 3. Launch **`DropOne.exe`**
 4. Keep `steam_appid.txt` and the Steam DLLs next to the executable

@@ -72,6 +72,7 @@ var roulette_chosen_color: CardResource.CardColor = CardResource.CardColor.BLACK
 var roulette_step_running := false
 var pending_swap_owner: HandCardHolder = null
 var swap_color_pending := false
+var _swap_resolve_running := false
 
 var _slot_to_holder: Dictionary = {}
 var _peer_to_slot: Dictionary = {}
@@ -211,10 +212,14 @@ func _get_swap_hands_feedback() -> Node:
 
 func _play_swap_hands_visual(owner: HandCardHolder, target: HandCardHolder, owner_count: int, target_count: int) -> void:
 	var feedback := _get_swap_hands_feedback()
-	if feedback != null and feedback.has_method("play_swap"):
-		await feedback.play_swap(owner, target, owner_count, target_count)
+	if feedback != null and feedback.has_method("begin_swap_visual"):
+		feedback.begin_swap_visual(owner, target, owner_count, target_count)
+		var fly_wait := 0.9
+		if feedback.has_method("get_fly_duration"):
+			fly_wait = float(feedback.get_fly_duration())
+		await get_tree().create_timer(fly_wait).timeout
 	else:
-		await get_tree().create_timer(0.9).timeout
+		await get_tree().create_timer(0.35).timeout
 
 ## Compute opponent seat index for UI.
 ## Seats are assigned RELATIVE to the local player so turn order always runs
@@ -1518,6 +1523,8 @@ func next_turn(skip_next: bool = false) -> void:
 
 	has_played_this_turn = false
 	has_drawn_this_turn = false
+	if card_manager != null and wild_color_owner == null and !swap_color_pending:
+		card_manager.waiting_for_color = false
 	update_turn_state()
 	
 	# Synchronize turn change to all clients
@@ -1645,9 +1652,18 @@ func _handle_start_of_turn_effects() -> void:
 		return
 
 	if card_manager != null and card_manager.waiting_for_color:
+		var holder_for_color := get_current_holder()
 		if wild_color_owner != null and is_instance_valid(wild_color_owner):
-			call_deferred("_ensure_wild_color_resolved", wild_color_owner)
-		return
+			if wild_color_owner == holder_for_color:
+				call_deferred("_ensure_wild_color_resolved", wild_color_owner)
+				return
+			# Orphaned color wait from a previous effect — do not block the new active player.
+			card_manager.waiting_for_color = false
+			swap_color_pending = false
+			clear_wild_owner()
+		else:
+			card_manager.waiting_for_color = false
+			swap_color_pending = false
 
 	var holder := get_current_holder()
 	if holder == null:
@@ -1669,6 +1685,18 @@ func _handle_start_of_turn_effects() -> void:
 
 	if _try_pass_if_stuck(holder):
 		return
+
+	if holder.is_bot:
+		if swap_color_pending and wild_color_owner == holder:
+			call_deferred("_finish_bot_swap_color", holder)
+			return
+		if card_manager != null and card_manager.waiting_for_color and wild_color_owner == holder:
+			call_deferred("_ensure_wild_color_resolved", holder)
+			return
+		if !has_played_this_turn and !has_drawn_this_turn:
+			var ki := _get_ki_for_holder(holder)
+			if ki != null and !ki.is_play_turn_running():
+				ki.play_turn()
 
 ## Force wild draw resolve
 func force_wild_draw_continue(holder: HandCardHolder) -> void:
@@ -1851,11 +1879,20 @@ func _reconcile_stuck_state() -> void:
 	if card_manager != null and card_manager.waiting_for_color:
 		if wild_color_owner != null and is_instance_valid(wild_color_owner):
 			_ensure_wild_color_resolved(wild_color_owner)
+		elif swap_color_pending and wild_color_owner != null and is_instance_valid(wild_color_owner):
+			if wild_color_owner.is_bot:
+				call_deferred("_finish_bot_swap_color", wild_color_owner)
 		elif card_manager.top_card != null and CardResource.is_neutral_wild_type(card_manager.top_card.type):
 			var fallback_holder := get_current_holder()
 			if fallback_holder != null:
 				set_wild_color_owner(fallback_holder)
 				_ensure_wild_color_resolved(fallback_holder)
+		_stuck_reconcile_running = false
+		return
+
+	if swap_color_pending and wild_color_owner != null and is_instance_valid(wild_color_owner):
+		if wild_color_owner.is_bot:
+			call_deferred("_finish_bot_swap_color", wild_color_owner)
 		_stuck_reconcile_running = false
 		return
 
@@ -2264,13 +2301,19 @@ func _resolve_swap_with_target(owner: HandCardHolder, target: HandCardHolder) ->
 
 
 func _resolve_swap_with_target_async(owner: HandCardHolder, target: HandCardHolder) -> void:
+	while _swap_resolve_running:
+		await get_tree().process_frame
+	_swap_resolve_running = true
+
 	pending_swap_owner = null
 	if owner == null:
 		swap_color_pending = false
+		_swap_resolve_running = false
 		end_turn()
 		return
 	if target == null:
 		swap_color_pending = false
+		_swap_resolve_running = false
 		end_turn()
 		return
 
@@ -2288,8 +2331,11 @@ func _resolve_swap_with_target_async(owner: HandCardHolder, target: HandCardHold
 				owner_count,
 				target_count
 			)
-		await _play_swap_hands_visual(owner, target, owner_count, target_count)
+		var visual_task := _play_swap_hands_visual(owner, target, owner_count, target_count)
 		_apply_swap_hands_state(owner, target, my_cards, opp_cards)
+		await visual_task
+
+	_swap_resolve_running = false
 
 
 func _apply_swap_hands_state(
@@ -2323,6 +2369,8 @@ func _apply_swap_hands_state(
 	target.sort_cards_full()
 	owner.refresh_playable_cards()
 	target.refresh_playable_cards()
+	owner._busy = false
+	target._busy = false
 
 	_server_push_hand(owner)
 	_server_push_hand(target)
@@ -2351,15 +2399,25 @@ func _apply_swap_hands_state(
 func _finish_bot_swap_color(owner: HandCardHolder) -> void:
 	if card_manager == null or owner == null or !is_instance_valid(owner):
 		return
-	if !swap_color_pending or wild_color_owner != owner:
+	if wild_color_owner != owner and !swap_color_pending:
 		return
-	if !card_manager.waiting_for_color:
+	if !card_manager.waiting_for_color and !swap_color_pending:
 		return
-	await get_tree().create_timer(0.2).timeout
+	await get_tree().create_timer(0.15).timeout
 	if card_manager == null or !is_instance_valid(owner):
 		return
-	if !card_manager.waiting_for_color or !swap_color_pending:
+	if wild_color_owner != owner and !swap_color_pending:
 		return
+	if !card_manager.waiting_for_color and !swap_color_pending:
+		if _is_authoritative() and is_players_turn(owner) and has_played_this_turn:
+			owner._busy = false
+			swap_color_pending = false
+			clear_wild_owner()
+			end_turn()
+		return
+	if card_manager.waiting_for_color:
+		if wild_color_owner != owner:
+			set_wild_color_owner(owner)
 	var color := _bot_choose_wild_color(owner)
 	server_apply_local_wild_color(int(color))
 
@@ -3110,6 +3168,7 @@ func _reset_server_match_state() -> void:
 	roulette_step_running = false
 	pending_swap_owner = null
 	swap_color_pending = false
+	_swap_resolve_running = false
 	_resolved_effect_uids.clear()
 	if card_manager != null:
 		card_manager.waiting_for_color = false

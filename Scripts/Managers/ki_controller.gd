@@ -321,7 +321,15 @@ func play_turn() -> void:
 	if card_manager == null or queue_manager == null or hand_card_holder == null:
 		return
 	if card_manager.waiting_for_color:
-		return
+		if queue_manager.wild_color_owner == hand_card_holder:
+			return
+		if queue_manager.swap_color_pending and _still_my_turn():
+			return
+		# Stale color-wait flag from a finished effect — do not block this bot's turn.
+		if queue_manager.wild_color_owner == null or !is_instance_valid(queue_manager.wild_color_owner):
+			card_manager.waiting_for_color = false
+		elif queue_manager.wild_color_owner != hand_card_holder:
+			card_manager.waiting_for_color = false
 	if !_still_my_turn():
 		return
 

@@ -5,7 +5,7 @@ const SWAP_ICON_SIZE := 56.0
 const CARD_FLY_SIZE := Vector2(54, 78)
 const MAX_FLYING_CARDS := 10
 const FLY_DURATION := 0.55
-const POPUP_HOLD := 2.1
+const POPUP_HOLD := 1.4
 const FADE_IN := 0.16
 const FADE_OUT := 0.22
 
@@ -19,7 +19,7 @@ var _owner_avatar: TextureRect = null
 var _target_avatar: TextureRect = null
 var _owner_name: Label = null
 var _target_name: Label = null
-var _busy := false
+var _popup_busy := false
 
 
 func _ready() -> void:
@@ -29,6 +29,10 @@ func _ready() -> void:
 	add_to_group("swap_hands_feedback")
 	_build_ui()
 	NetworkManager.swap_hands_event_received.connect(_on_swap_event_received)
+
+
+func get_fly_duration() -> float:
+	return FLY_DURATION + 0.35
 
 
 func _build_ui() -> void:
@@ -169,27 +173,29 @@ func _on_swap_event_received(owner_slot: int, target_slot: int, owner_count: int
 	var target := _slot_to_holder(target_slot)
 	if owner == null or target == null:
 		return
-	await play_swap(owner, target, owner_count, target_count)
+	begin_swap_visual(owner, target, owner_count, target_count)
 
 
-func play_swap(owner: HandCardHolder, target: HandCardHolder, owner_count: int, target_count: int) -> void:
+## Starts fly animation + popup without blocking game logic on the host/server.
+func begin_swap_visual(owner: HandCardHolder, target: HandCardHolder, owner_count: int, target_count: int) -> void:
 	if owner == null or target == null:
 		return
-	if _busy:
-		await get_tree().create_timer(0.05).timeout
-	_busy = true
+	_run_swap_visual(owner, target, owner_count, target_count)
 
+
+func _run_swap_visual(owner: HandCardHolder, target: HandCardHolder, owner_count: int, target_count: int) -> void:
 	_apply_popup_content(owner, target)
-	_center_panel()
-	_show_popup()
 
 	var from_a := _holder_center(owner)
 	var from_b := _holder_center(target)
-	await _animate_card_exchange(from_a, from_b, owner_count, target_count)
 
+	_show_popup()
+	_center_panel()
+	_animate_card_exchange(from_a, from_b, owner_count, target_count)
+
+	await get_tree().create_timer(get_fly_duration()).timeout
 	await get_tree().create_timer(POPUP_HOLD).timeout
 	await _hide_popup()
-	_busy = false
 
 
 func _apply_popup_content(owner: HandCardHolder, target: HandCardHolder) -> void:
@@ -258,33 +264,25 @@ func _slot_to_holder(slot: int) -> HandCardHolder:
 func _animate_card_exchange(from_a: Vector2, from_b: Vector2, count_a: int, count_b: int) -> void:
 	var layer := _get_fly_layer()
 	if layer == null:
-		await get_tree().create_timer(FLY_DURATION).timeout
 		return
 
 	var n_a := mini(maxi(count_a, 1), MAX_FLYING_CARDS)
 	var n_b := mini(maxi(count_b, 1), MAX_FLYING_CARDS)
-	var tweens: Array[Tween] = []
 
 	for i in range(n_a):
 		var start := from_a + Vector2(randf_range(-28, 28), randf_range(-18, 18))
 		var end := from_b + Vector2(randf_range(-28, 28), randf_range(-18, 18))
 		var mid := (start + end) * 0.5 + Vector2(0, -80 - i * 6)
-		tweens.append(_fly_card_back(layer, start, mid, end, float(i) * 0.04))
+		_fly_card_back(layer, start, mid, end, float(i) * 0.04)
 
 	for i in range(n_b):
 		var start := from_b + Vector2(randf_range(-28, 28), randf_range(-18, 18))
 		var end := from_a + Vector2(randf_range(-28, 28), randf_range(-18, 18))
 		var mid := (start + end) * 0.5 + Vector2(0, -80 - i * 6)
-		tweens.append(_fly_card_back(layer, start, mid, end, float(i) * 0.04 + 0.05))
-
-	if tweens.is_empty():
-		await get_tree().create_timer(FLY_DURATION).timeout
-		return
-
-	await get_tree().create_timer(FLY_DURATION + 0.35).timeout
+		_fly_card_back(layer, start, mid, end, float(i) * 0.04 + 0.05)
 
 
-func _fly_card_back(layer: Control, start: Vector2, mid: Vector2, end: Vector2, delay: float) -> Tween:
+func _fly_card_back(layer: Control, start: Vector2, mid: Vector2, end: Vector2, delay: float) -> void:
 	var card := TextureRect.new()
 	card.texture = CardResource.BACKGROUND
 	card.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
@@ -313,7 +311,6 @@ func _fly_card_back(layer: Control, start: Vector2, mid: Vector2, end: Vector2, 
 		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
 	tween.parallel().tween_property(card, "modulate:a", 0.0, FLY_DURATION * 0.35)
 	tween.tween_callback(card.queue_free)
-	return tween
 
 
 func _get_fly_layer() -> Control:

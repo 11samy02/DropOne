@@ -13,6 +13,7 @@ var _local_connecting := false
 var _rejoin_from_match := false
 var _session_had_remote_peers := false
 var _host_alone_lobby_return_pending := false
+var _connected_profile_sent := false
 
 ## True when this peer is the authoritative server/host.
 var is_server := false
@@ -109,6 +110,7 @@ func _ready() -> void:
 ## Closes the multiplayer peer and clears connection state.
 func _reset_peer() -> void:
 	_connected = false
+	_connected_profile_sent = false
 	if multiplayer.multiplayer_peer != null:
 		multiplayer.multiplayer_peer.close()
 		multiplayer.multiplayer_peer = null
@@ -205,7 +207,10 @@ func enter_local_as_client(max_wait_sec: float = 20.0) -> bool:
 				_connected = true
 				await get_tree().process_frame
 				await get_tree().process_frame
-				send_profile_to_server()
+				# _on_connected_to_server already sends the profile via signal;
+				# only send here as a fallback if it somehow didn't fire.
+				if !_connected_profile_sent:
+					send_profile_to_server()
 				_emit_status("Connected to host.")
 				_safe_log("LOCAL: Client verbunden, peer_id=", str(multiplayer.get_unique_id()))
 				return true
@@ -626,6 +631,7 @@ func server_announce_winner(
 func server_return_to_lobby() -> void:
 	if not multiplayer.is_server():
 		return
+	print("NetworkManager: server_return_to_lobby called — peers=%s" % str(multiplayer.get_peers()))
 	# Ready-States für die neue Runde zurücksetzen (Bots bleiben ready).
 	for key in _ready_by_peer.keys():
 		_ready_by_peer[key] = false
@@ -847,7 +853,7 @@ func _on_peer_connected(id: int) -> void:
 
 func _on_peer_disconnected(id: int) -> void:
 	_emit_status("A player left the lobby.")
-	_safe_log("Client disconnected (id)", str(id))
+	print("NetworkManager: peer %d disconnected — broadcasting updated player list" % id)
 
 	if multiplayer.is_server():
 		if _server_profiles_by_peer.has(id):
@@ -951,7 +957,11 @@ func _finish_host_alone_lobby_return() -> void:
 	if not multiplayer.is_server():
 		_host_alone_lobby_return_pending = false
 		return
-	server_return_to_lobby()
+	var qm := get_tree().get_first_node_in_group("queue_manager")
+	if qm != null and qm.has_method("on_remote_peer_left_during_match"):
+		qm.call("on_remote_peer_left_during_match")
+	else:
+		server_return_to_lobby()
 	_host_alone_lobby_return_pending = false
 
 
@@ -1012,6 +1022,7 @@ func _on_connected_to_server() -> void:
 	_emit_status("Connected!")
 	_safe_log("CONNECTED TO HOST!")
 	emit_signal("connected_ok")
+	_connected_profile_sent = true
 	send_profile_to_server()
 
 
@@ -1026,6 +1037,7 @@ func _on_connection_failed() -> void:
 func _on_server_disconnected() -> void:
 	if _local_connecting:
 		return
+	print("NetworkManager: _on_server_disconnected fired — emitting lobby_disconnected")
 	_emit_status("Disconnected.")
 	_safe_log("DISCONNECTED FROM HOST")
 	_connected = false
@@ -1107,7 +1119,6 @@ func client_set_hand(hand: Array, epoch: int = -1) -> void:
 		return
 	last_hand = hand
 	hand_received.emit(hand)
-	print("HAND RECEIVED size=", hand.size(), " first_type=", typeof(hand[0]) if hand.size() > 0 else -1)
 
 
 @rpc("authority", "reliable")

@@ -111,6 +111,11 @@ var _client_suppress_draw_sound_once := false
 var _client_deal_animating := false
 var _client_deal_batch_queue: Array = []
 var _client_deal_batch_running := false
+var _client_deal_finish_scheduled := false
+var _opponent_left_overlay_shown := false
+## True once the initial _on_players_received ran in _ready(); prevents
+## any later client_set_players broadcast from destroying holders mid-match.
+var _client_holders_initialized := false
 var _client_swap_animating := false
 var _client_draw_animating := false
 var _client_draw_queue: Array = []
@@ -149,11 +154,14 @@ func _ready() -> void:
 	NetworkManager.game_won.connect(_on_game_won)
 	NetworkManager.player_eliminated.connect(_on_player_eliminated)
 	NetworkManager.return_to_lobby.connect(_on_return_to_lobby)
+	NetworkManager.lobby_disconnected.connect(_on_host_disconnected_during_match)
 
 	var buffered_players := NetworkManager.get_last_players()
 	if buffered_players.size() > 0:
 		_on_players_received(buffered_players)
 		NetworkManager.clear_last_players()
+		if !multiplayer.is_server():
+			_client_holders_initialized = true
 	elif multiplayer.is_server():
 		call_deferred("_server_request_player_rebroadcast")
 
@@ -266,40 +274,24 @@ func _acquire_client_fly_card_view(holder: HandCardHolder, res: CardResource, ma
 		cv.in_hand_card = false
 		cv.hand_card_holder = null
 		cv.set_meta("fly_start_vis_global", fly_start)
+		holder.add_child(cv)
 
 	cv.card_res = res
 	cv.show_front = true
 	cv.set_clickable(false, true)
-	cv.load_card()
+	if cv.is_inside_tree():
+		cv.load_card()
+	if cv.get_parent() == holder:
+		holder.remove_child(cv)
 	return cv
 
 
-func register_client_play_in_flight(uid: int) -> void:
-	if uid <= 0 or multiplayer.is_server():
-		return
-	_client_play_uids_in_flight[int(uid)] = true
-	_client_play_animating = true
+func register_client_play_in_flight(_uid: int) -> void:
+	pass
 
 
-func clear_client_play_in_flight(uid: int) -> void:
-	if uid <= 0:
-		return
-	_client_play_uids_in_flight.erase(int(uid))
-	if _client_play_uids_in_flight.is_empty():
-		_client_play_animating = false
-
-
-func _filter_hand_entries_for_client_play(hand: Array) -> Array:
-	if multiplayer.is_server() or _client_play_uids_in_flight.is_empty():
-		return hand
-	var out: Array = []
-	for entry in hand:
-		if entry is Dictionary:
-			var uid := int(entry.get("id", 0))
-			if uid > 0 and _client_play_uids_in_flight.has(uid):
-				continue
-		out.append(entry)
-	return out
+func clear_client_play_in_flight(_uid: int) -> void:
+	pass
 
 
 func _get_swap_hands_feedback() -> Node:
@@ -850,17 +842,86 @@ func _force_clear_winner_hand(winner_slot: int) -> void:
 			holder.remove_child(c)
 			c.queue_free()
 
+## Host-only: remote peer left during an active match — pause and offer lobby return.
+func on_remote_peer_left_during_match() -> void:
+	if !multiplayer.is_server() or _opponent_left_overlay_shown:
+		return
+	_opponent_left_overlay_shown = true
+	_show_feedback("Gegner hat Verbindung verloren", Signals.FeedbackKind.BLOCKED)
+	_show_opponent_left_overlay()
+
+
+func _show_opponent_left_overlay() -> void:
+	if _winner_overlay != null and is_instance_valid(_winner_overlay):
+		return
+
+	var layer := CanvasLayer.new()
+	layer.layer = 127
+	layer.process_mode = Node.PROCESS_MODE_ALWAYS
+
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.55)
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dim.mouse_filter = Control.MOUSE_FILTER_STOP
+	layer.add_child(dim)
+
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	layer.add_child(center)
+
+	var vbox := VBoxContainer.new()
+	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	vbox.add_theme_constant_override("separation", 20)
+	center.add_child(vbox)
+
+	var label := Label.new()
+	label.text = "Ein Spieler hat die Verbindung verloren."
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.add_theme_font_size_override("font_size", 34)
+	vbox.add_child(label)
+
+	var btn := Button.new()
+	btn.text = "Zurück zur Lobby"
+	btn.custom_minimum_size = Vector2(360, 64)
+	btn.process_mode = Node.PROCESS_MODE_ALWAYS
+	btn.add_theme_font_size_override("font_size", 28)
+	btn.pressed.connect(_on_opponent_left_lobby_pressed)
+	vbox.add_child(btn)
+
+	get_tree().root.add_child(layer)
+	_winner_overlay = layer
+
+
+func _on_opponent_left_lobby_pressed() -> void:
+	if _lobby_return_requested:
+		return
+	_lobby_return_requested = true
+	NetworkManager.server_return_to_lobby()
+
+
 ## Zurück in die Lobby (Verbindung bleibt bestehen)
 ## Unpauses and navigates back to steam_lobby_room while keeping connection.
 func _on_return_to_lobby() -> void:
+	print("QueueManager: _on_return_to_lobby fired is_server=%s match_started=%s deal_progress=%s deal_complete=%s" % [
+		str(multiplayer.is_server()), str(_client_match_started),
+		str(_match_deal_in_progress), str(_match_deal_complete)])
 	get_tree().paused = false
 	_lobby_return_requested = false
+	_opponent_left_overlay_shown = false
 	_hide_winner_overlay()
 	_hide_placement_toast()
 	_hide_loser_overlay()
 	_local_loser_overlay_shown = false
 	NetworkManager.mark_rejoin_from_match()
 	Globals.change_scene_file("res://Scenes/UI/steam_lobby_room.tscn")
+
+## Called when the ENet/Steam connection drops while in the match scene.
+## Returns the client to the lobby hub since the game is unplayable without the host.
+func _on_host_disconnected_during_match() -> void:
+	if multiplayer.is_server():
+		return
+	print("QueueManager: host disconnected during match — returning to lobby")
+	_on_return_to_lobby()
 
 ## Creates full-screen final results overlay with all placements.
 func _show_results_overlay(results: Array) -> void:
@@ -1790,23 +1851,35 @@ func _on_deal_begin_received() -> void:
 	if multiplayer.is_server():
 		return
 	if turn_order.is_empty():
+		# turn_order not ready yet — defer and wait. Don't touch the batch queue;
+		# batches may already be queued and must not be discarded on retry.
+		if _match_deal_in_progress or _match_deal_complete:
+			return  # deal already running or finished via a parallel path — stop looping
 		call_deferred("_on_deal_begin_received")
+		return
+	# Guard against double-init (signal fired twice or deferred retry after deal already started).
+	if _match_deal_in_progress or _match_deal_complete:
 		return
 	_match_deal_in_progress = true
 	_match_deal_complete = false
 	_client_deal_animating = true
-	_client_deal_batch_queue.clear()
+	# Preserve any batches already queued (arrived before turn_order was ready).
 	_client_deal_batch_running = false
 	_pending_hand.clear()
 	_cleanup_deal_overlay_cards()
 	for holder in turn_order:
 		_clear_holder_hand(holder)
+	# Kick off processing of any batches that arrived before this setup ran.
+	call_deferred("_try_run_client_deal_batch_queue")
 
 func _on_deal_batch_received(batch: Array) -> void:
 	if multiplayer.is_server():
 		return
 	_client_deal_batch_queue.append(batch)
-	call_deferred("_try_run_client_deal_batch_queue")
+	# Only trigger immediately if deal has already begun; otherwise the
+	# deferred retry in _on_deal_begin_received will kick the queue.
+	if _match_deal_in_progress:
+		call_deferred("_try_run_client_deal_batch_queue")
 
 func _try_run_client_deal_batch_queue() -> void:
 	if _client_deal_batch_running or _client_deal_batch_queue.is_empty():
@@ -1819,13 +1892,47 @@ func _run_client_deal_batch_queue() -> void:
 	_client_deal_batch_running = true
 	_client_deal_animating = true
 	while _client_deal_batch_queue.size() > 0:
+		if !is_instance_valid(self) or !is_inside_tree():
+			break
 		var batch: Array = _client_deal_batch_queue.pop_front()
 		await _client_animate_deal_batch(batch)
+		if !is_instance_valid(self) or !is_inside_tree():
+			break
 		if _client_deal_batch_queue.size() > 0:
 			await get_tree().create_timer(DEAL_CARD_GAP).timeout
 	_client_deal_batch_running = false
 	if !_match_deal_in_progress:
-		_client_deal_animating = false
+		_schedule_client_deal_finish()
+
+func _schedule_client_deal_finish() -> void:
+	if _client_deal_finish_scheduled:
+		return
+	_client_deal_finish_scheduled = true
+	call_deferred("_finish_client_deal_when_ready")
+
+func _finish_client_deal_when_ready() -> void:
+	_client_deal_finish_scheduled = false
+	if multiplayer.is_server():
+		return
+	if _match_deal_in_progress:
+		return
+	if _client_deal_batch_running or !_client_deal_batch_queue.is_empty():
+		_schedule_client_deal_finish()
+		return
+	_client_deal_animating = false
+	_client_deal_batch_queue.clear()
+	_try_apply_pending_hand()
+	_try_apply_pending_match_state()
+	_apply_counts_to_ui()
+	_apply_local_visibility()
+	call_deferred("_client_request_hand_resync_if_desynced")
+
+func _on_dealing_finished_received() -> void:
+	if multiplayer.is_server():
+		return
+	_match_deal_in_progress = false
+	_match_deal_complete = true
+	_schedule_client_deal_finish()
 
 func _client_animate_deal_batch(batch: Array) -> void:
 	if card_manager == null or batch.is_empty():
@@ -1860,37 +1967,36 @@ func _client_animate_deal_batch(batch: Array) -> void:
 		return
 
 	for _i in range(4):
+		if !is_instance_valid(self) or !is_inside_tree():
+			return
 		await get_tree().process_frame
+
+	if !is_instance_valid(self) or !is_inside_tree():
+		return
 
 	SoundManager.play_draw_card(slides.size())
 	for cv in slides:
 		if cv != null and is_instance_valid(cv) and cv.has_method("deal_slide_in"):
 			cv.deal_slide_in(deck_anchor, DEAL_CARD_DURATION)
+
+	if !is_instance_valid(self) or !is_inside_tree():
+		return
 	await get_tree().create_timer(DEAL_CARD_DURATION + 0.02).timeout
+
+	if !is_instance_valid(self) or !is_inside_tree():
+		return
 	for holder in touched:
 		if holder != null and is_instance_valid(holder):
 			holder.sort_cards_full()
 			holder.refresh_playable_cards()
-
-func _on_dealing_finished_received() -> void:
-	if multiplayer.is_server():
-		return
-	_match_deal_in_progress = false
-	_match_deal_complete = true
-	_client_deal_animating = false
-	_client_deal_batch_queue.clear()
-	_client_deal_batch_running = false
-	_try_apply_pending_hand()
-	_try_apply_pending_match_state()
-	_apply_counts_to_ui()
-	_apply_local_visibility()
 
 func _clear_holder_hand(holder: HandCardHolder) -> void:
 	if holder == null or !is_instance_valid(holder):
 		return
 	for c in holder.get_children():
 		if c is CardView:
-			holder.remove_child(c)
+			if c.get_parent() == holder:
+				holder.remove_child(c)
 			c.queue_free()
 
 func _should_show_dealt_card_front(holder: HandCardHolder) -> bool:
@@ -2695,7 +2801,7 @@ func _count_cards_in_holder(holder: HandCardHolder) -> int:
 		return 0
 	var n := 0
 	for c in holder.get_children():
-		if c is CardView and not c.get_meta("anim_temp", false) and not c.get_meta("play_in_flight", false):
+		if c is CardView and not c.get_meta("anim_temp", false):
 			n += 1
 	return n
 
@@ -3430,8 +3536,6 @@ func _try_apply_pending_hand() -> void:
 		return
 	if !multiplayer.is_server() and _client_play_animating:
 		return
-	if !multiplayer.is_server() and _client_play_uids_in_flight.size() > 0:
-		return
 
 	var slot := int(NetworkManager.my_slot)
 	if slot < 0:
@@ -3451,25 +3555,21 @@ func _try_apply_pending_hand() -> void:
 		player_container.add_child(my_holder)
 	my_holder.compact_view = false
 	_refresh_holder_layouts()
-	if my_holder._busy:
-		if _client_place_all_animating and _client_place_all_slot == slot:
-			return
-		if !multiplayer.is_server() and _client_play_uids_in_flight.size() > 0:
-			return
-		my_holder._busy = false
-		my_holder.notify_remote_play_finished()
+	if my_holder._busy and _client_play_animating:
+		return
 	var prev_count := _count_cards_in_holder(my_holder)
-	var hand_to_apply := _filter_hand_entries_for_client_play(_pending_hand)
 	if my_holder.get_child_count() == 0:
-		if !multiplayer.is_server() and hand_to_apply.size() > 1 and !_match_deal_complete:
-			await _reveal_hand_animated(my_holder, hand_to_apply)
+		if !multiplayer.is_server() and _pending_hand.size() > 1 and !_match_deal_complete:
+			await _reveal_hand_animated(my_holder, _pending_hand)
 		else:
-			for entry: Dictionary in hand_to_apply:
+			for entry: Dictionary in _pending_hand:
+				if int(entry.get("id", 0)) <= 0:
+					continue
 				my_holder.add_card(CardResource.from_sync_dict(entry), false)
 			my_holder.sort_cards_full()
 			my_holder.refresh_playable_cards()
 	else:
-		_reconcile_hand(my_holder, hand_to_apply)
+		_reconcile_hand(my_holder, _pending_hand)
 
 	if !multiplayer.is_server():
 		var new_count := _count_cards_in_holder(my_holder)
@@ -3477,7 +3577,7 @@ func _try_apply_pending_hand() -> void:
 			SoundManager.play_draw_card(new_count - prev_count)
 	_client_suppress_draw_sound_once = false
 
-	_last_applied_hand = hand_to_apply.duplicate(true)
+	_last_applied_hand = _pending_hand.duplicate(true)
 	_pending_hand = []
 	_client_hand_watchdog_armed = false
 	NetworkManager.clear_last_hand()
@@ -3531,14 +3631,18 @@ func _server_request_player_rebroadcast() -> void:
 
 ## Players list received
 func _on_players_received(players_in: Array) -> void:
-	print("QueueManager: Received %d players" % players_in.size())
+	print("QueueManager: _on_players_received count=%d is_server=%s holders_init=%s deal_progress=%s deal_complete=%s match_started=%s" % [
+		players_in.size(), str(multiplayer.is_server()), str(_client_holders_initialized),
+		str(_match_deal_in_progress), str(_match_deal_complete), str(_client_match_started)])
 	_players_meta = players_in.duplicate(true)
 	if !multiplayer.is_server():
 		_resolve_client_slot(_players_meta)
-	if !multiplayer.is_server() and _match_deal_complete:
-		var slot := int(NetworkManager.my_slot)
-		if slot >= 0 and _slot_to_holder.has(slot) and turn_order.size() == _players_meta.size():
-			return
+	# Once the client has built its holders in _ready(), never rebuild them again.
+	# Any subsequent broadcast (e.g. profile re-register, peer reconnect) only needs
+	# the peer-slot map updated, not a full holder teardown that destroys deal state.
+	if !multiplayer.is_server() and _client_holders_initialized:
+		_update_peer_slots_from_players(_players_meta)
+		return
 	if multiplayer.is_server():
 		_server_last_players_change_ms = Time.get_ticks_msec()
 		if _server_match_started:
@@ -3574,8 +3678,10 @@ func _on_players_received(players_in: Array) -> void:
 		print("QueueManager: Client mode - waiting for server to start match")
 
 ## Build holders + slot map
-## Build holders + slot map
 func _build_holders_from_players(players_meta: Array) -> void:
+	print("QueueManager: _build_holders_from_players count=%d is_server=%s deal_progress=%s match_started=%s" % [
+		players_meta.size(), str(multiplayer.is_server()),
+		str(_match_deal_in_progress), str(_client_match_started)])
 	for h in turn_order:
 		if h != null and is_instance_valid(h):
 			h.queue_free()
@@ -3875,6 +3981,8 @@ func _reset_server_match_state() -> void:
 	_client_deal_animating = false
 	_client_deal_batch_queue.clear()
 	_client_deal_batch_running = false
+	_client_deal_finish_scheduled = false
+	_opponent_left_overlay_shown = false
 	_client_play_animating = false
 	_client_play_uids_in_flight.clear()
 	_client_place_all_animating = false
@@ -4296,7 +4404,8 @@ func _slot_to_peer_id(slot: int) -> int:
 func _apply_hand_to_holder(holder: HandCardHolder, hand: Array) -> void:
 	for c in holder.get_children():
 		if c is CardView:
-			holder.remove_child(c)
+			if c.get_parent() == holder:
+				holder.remove_child(c)
 			c.queue_free()
 
 	for entry: Dictionary in hand:
@@ -4324,7 +4433,8 @@ func _reconcile_hand(holder: HandCardHolder, hand: Array) -> void:
 		if !desired.has(uid):
 			var cv: CardView = current[uid]
 			if cv != null and is_instance_valid(cv):
-				holder.remove_child(cv)
+				if cv.get_parent() == holder:
+					holder.remove_child(cv)
 				cv.queue_free()
 
 	for uid in desired.keys():
@@ -4350,7 +4460,7 @@ func _on_counts_received(hand_counts: Array, deck_count: int) -> void:
 func _client_counts_blocked() -> bool:
 	if multiplayer.is_server():
 		return false
-	return _client_place_all_animating or _client_deal_animating or _client_swap_animating or _client_play_animating or _client_draw_animating or _client_play_uids_in_flight.size() > 0
+	return _client_place_all_animating or _client_deal_animating or _client_swap_animating or _client_play_animating or _client_draw_animating
 
 func _try_apply_counts_to_ui() -> void:
 	if _last_hand_counts.is_empty():
@@ -4390,10 +4500,7 @@ func _apply_counts_to_ui() -> void:
 		if is_holder_eliminated(holder):
 			continue
 
-		var current_count := 0
-		for c in holder.get_children():
-			if c is CardView and not c.get_meta("anim_temp", false):
-				current_count += 1
+		var current_count := _count_cards_in_holder(holder)
 
 		var n := int(_last_hand_counts[i])
 		if current_count == n:
@@ -4439,7 +4546,7 @@ func _apply_counts_to_ui() -> void:
 		if my_holder != null and is_instance_valid(my_holder):
 			if _client_place_all_animating and _client_place_all_slot == my_slot:
 				pass
-			elif _client_play_uids_in_flight.size() > 0:
+			elif _client_play_animating:
 				pass
 			elif _count_cards_in_holder(my_holder) != int(_last_hand_counts[my_slot]):
 				call_deferred("_client_request_hand_resync_if_desynced")
@@ -4566,11 +4673,12 @@ func server_apply_draw(peer_id: int) -> void:
 			_server_sync_match_state()
 			return
 		if _holder_blocked_from_resolving_draw_stack(holder):
+			_server_sync_match_state()
 			return
 		await _accept_draw_stack_penalty(holder)
 		_server_sync_match_state()
 		return
-	
+
 	# Normal draw
 	var card := card_manager.draw_card()
 	if card == null:
@@ -4868,21 +4976,13 @@ func _on_play_event_received(from_slot: int, card: Dictionary) -> void:
 			card_manager.begin_top_card_suppression()
 
 		if cv != null and is_instance_valid(cv):
-			cv.remove_meta("play_in_flight")
-			cv.visible = true
 			cv.set_clickable(false, true)
-			await cv.fly_to_discard_pile(0.3)
+			if is_instance_valid(cv):
+				await cv.fly_to_discard_pile(0.3)
 			if is_instance_valid(cv):
 				if cv.get_parent() != null:
 					cv.get_parent().remove_child(cv)
 				cv.queue_free()
-		else:
-			# Optimistic hide before the event — drop any leftover hidden copy.
-			for ch in holder.get_children():
-				if ch is CardView and ch.card_res != null and int(ch.card_res.uid) == card_uid:
-					holder.remove_child(ch)
-					ch.queue_free()
-					break
 
 		clear_client_play_in_flight(card_uid)
 
@@ -4919,9 +5019,6 @@ func _on_play_event_received(from_slot: int, card: Dictionary) -> void:
 	if holder == null or not is_instance_valid(holder):
 		_finish_client_play_animation()
 		return
-
-	if int(from_slot) >= 0 and int(from_slot) < _last_hand_counts.size():
-		_last_hand_counts[int(from_slot)] = maxi(0, int(_last_hand_counts[int(from_slot)]) - 1)
 
 	var r := CardResource.from_sync_dict(card)
 
@@ -4964,6 +5061,7 @@ func _on_play_event_received(from_slot: int, card: Dictionary) -> void:
 
 	update_turn_state()
 	_refresh_seat_names()
+	_try_apply_counts_to_ui()
 	_finish_client_play_animation()
 
 func _on_client_swap_hands_visual(
@@ -5052,7 +5150,7 @@ func _schedule_client_hand_watchdog() -> void:
 func _client_request_hand_resync_if_desynced() -> void:
 	if multiplayer.is_server():
 		return
-	if _client_place_all_animating:
+	if _client_play_animating or _client_place_all_animating:
 		return
 	var slot := int(NetworkManager.my_slot)
 	if slot < 0 or slot >= _last_hand_counts.size():
@@ -5135,6 +5233,12 @@ func _on_place_all_event_received(from_slot: int, color: int, cards: Array) -> v
 		return
 	_client_place_all_animating = true
 	_client_place_all_slot = int(from_slot)
+	var pa_watchdog := get_tree().create_timer(10.0)
+	pa_watchdog.timeout.connect(func() -> void:
+		if _client_place_all_animating:
+			push_warning("QueueManager: place-all animation watchdog fired; releasing client sync lock")
+			_finish_client_place_all_animation()
+	, CONNECT_ONE_SHOT)
 	call_deferred("_client_animate_place_all", int(from_slot), int(color), cards)
 
 func _client_animate_place_all(from_slot: int, color: int, cards: Array) -> void:
@@ -5166,7 +5270,9 @@ func _client_animate_place_all(from_slot: int, color: int, cards: Array) -> void
 			continue
 
 		var res := CardResource.from_sync_dict(entry)
-		var cv := _acquire_client_fly_card_view(holder, res, is_own_hand, !is_own_hand)
+		# Always allow fallback so a uid mismatch (minor desync) never silently
+		# drops the fly animation — the correct face is set from res either way.
+		var cv := _acquire_client_fly_card_view(holder, res, is_own_hand, true)
 		if cv == null:
 			if card_manager != null:
 				card_manager.set_top_card_no_effect(res)

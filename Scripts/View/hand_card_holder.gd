@@ -79,7 +79,7 @@ func align_cards(delta: float) -> void:
 func _get_card_count() -> int:
 	var n := 0
 	for c in get_children():
-		if c is CardView and not c.get_meta("anim_temp", false) and not c.get_meta("play_in_flight", false):
+		if c is CardView and not c.get_meta("anim_temp", false):
 			n += 1
 	return n
 
@@ -270,26 +270,15 @@ func set_card(card_view: CardView) -> void:
 	if multiplayer.has_multiplayer_peer() and !multiplayer.is_server():
 		_busy = true
 		_queued = null
-		var play_uid := int(card_view.card_res.uid)
-		if queue_manager != null:
-			queue_manager.register_client_play_in_flight(play_uid)
 		card_view.set_clickable(false, true)
-		card_view.set_meta("play_in_flight", true)
-		card_view.visible = false
-		sort_cards_full()
-		refresh_playable_cards()
-		NetworkManager.request_play(play_uid)
+		NetworkManager.request_play(int(card_view.card_res.uid))
 		if _remote_play_timeout != null:
 			_remote_play_timeout = null
-		_remote_play_timeout = get_tree().create_timer(3.0)
+		_remote_play_timeout = get_tree().create_timer(5.0)
 		_remote_play_timeout.timeout.connect(func():
 			if _busy:
 				_busy = false
-				if queue_manager != null:
-					queue_manager.clear_client_play_in_flight(play_uid)
 				if is_instance_valid(card_view) and card_view.get_parent() == self:
-					card_view.remove_meta("play_in_flight")
-					card_view.visible = true
 					card_view.set_clickable(true, false)
 					sort_cards_full()
 					refresh_playable_cards()
@@ -328,7 +317,8 @@ func set_card(card_view: CardView) -> void:
 	await card_view.fly_to_discard_pile(animation_duration)
 	
 	if is_instance_valid(card_view):
-		remove_child(card_view)
+		if card_view.get_parent() == self:
+			remove_child(card_view)
 		card_view.queue_free()
 	
 	if queue_manager != null:

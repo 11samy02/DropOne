@@ -3,9 +3,11 @@ extends Control
 const START_SCREEN := "res://Scenes/UI/start_screen.tscn"
 const LOBBY_HUB := "res://Scenes/UI/steam_lobby_hub.tscn"
 const OPTIONS_SCREEN := "res://Scenes/UI/start_options.tscn"
+const DECK_EDITOR := "res://Scenes/DeckEditor/deck_editor.tscn"
 
 @onready var customize_button: Button = %CustomizeButton
 @onready var play_button: Button = %PlayButton
+@onready var decks_button: Button = %DecksButton
 @onready var options_button: Button = %OptionsButton
 @onready var exit_button: Button = %ExitButton
 @onready var profile_panel: Panel = %ProfilePanel
@@ -51,6 +53,10 @@ func _on_play_pressed() -> void:
 
 func _on_options_pressed() -> void:
 	Globals.change_scene_file(OPTIONS_SCREEN)
+
+
+func _on_decks_pressed() -> void:
+	Globals.change_scene_file(DECK_EDITOR)
 
 
 func _on_exit_pressed() -> void:

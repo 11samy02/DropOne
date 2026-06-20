@@ -24,6 +24,13 @@ func _can_human_pick() -> bool:
 		return false
 	if queue_manager.roulette_active and queue_manager.roulette_waiting_for_color:
 		return queue_manager.is_local_roulette_color_picker()
+	if queue_manager.swap_color_pending:
+		var swap_owner: HandCardHolder = queue_manager.wild_color_owner
+		if swap_owner == null or swap_owner.is_bot:
+			return false
+		if multiplayer.has_multiplayer_peer():
+			return int(swap_owner.player_index) == int(NetworkManager.my_slot)
+		return true
 	var owner: HandCardHolder = queue_manager.wild_color_owner
 	if owner == null or owner.is_bot:
 		return false

@@ -73,6 +73,7 @@ var roulette_step_running := false
 var pending_swap_owner: HandCardHolder = null
 var swap_color_pending := false
 var _swap_resolve_running := false
+var _swap_resolve_started_ms := 0
 
 var _slot_to_holder: Dictionary = {}
 var _peer_to_slot: Dictionary = {}
@@ -100,13 +101,28 @@ var _local_loser_overlay_shown := false
 var _server_last_players_change_ms := 0
 var _server_start_delay_active := false
 const SERVER_START_DELAY_MS := 300
+const DEAL_CARD_DURATION := 0.11
+const DEAL_CARD_GAP := 0.04
 var _client_play_animating := false
+var _client_play_uids_in_flight: Dictionary = {}
 var _client_place_all_animating := false
 var _client_place_all_slot := -1
+var _client_suppress_draw_sound_once := false
+var _client_deal_animating := false
+var _client_deal_batch_queue: Array = []
+var _client_deal_batch_running := false
+var _client_swap_animating := false
+var _client_draw_animating := false
+var _client_draw_queue: Array = []
+var _client_hand_watchdog_armed := false
+var _last_hand_resync_ms := 0
+var _pending_counts_apply := false
 var _stuck_reconcile_running := false
 var _stuck_watchdog: Timer = null
 ## Uids whose special-card effects were already applied (prevents double skip etc.).
 var _resolved_effect_uids: Dictionary = {}
+## Top-card uids whose swap-hands effect already applied (prevents double swap).
+var _completed_swap_uids: Dictionary = {}
 
 ## Init networking + buffered snapshots
 func _ready() -> void:
@@ -125,6 +141,11 @@ func _ready() -> void:
 	NetworkManager.counts_received.connect(_on_counts_received)
 	NetworkManager.play_event_received.connect(_on_play_event_received)
 	NetworkManager.place_all_event_received.connect(_on_place_all_event_received)
+	NetworkManager.swap_hands_event_received.connect(_on_client_swap_hands_visual)
+	NetworkManager.draw_event_received.connect(_on_draw_event_received)
+	NetworkManager.deal_begin_received.connect(_on_deal_begin_received)
+	NetworkManager.deal_batch_received.connect(_on_deal_batch_received)
+	NetworkManager.dealing_finished_received.connect(_on_dealing_finished_received)
 	NetworkManager.game_won.connect(_on_game_won)
 	NetworkManager.player_eliminated.connect(_on_player_eliminated)
 	NetworkManager.return_to_lobby.connect(_on_return_to_lobby)
@@ -160,11 +181,24 @@ func connect_signals() -> void:
 	Signals.COLOR_color_selected.connect(_on_roulette_color_selected)
 
 
-## Plays draw-card SFX locally and optionally syncs deck/hand counts to all peers.
-func notify_card_drawn(from_slot: int, count: int = 1, sync_counts: bool = true) -> void:
+## Plays draw-card SFX locally, syncs fly-in animation to clients, and optionally updates counts.
+func notify_card_drawn(from_slot: int, count: int = 1, sync_counts: bool = true, card: CardResource = null) -> void:
 	SoundManager.play_draw_card(count)
 	if multiplayer.has_multiplayer_peer() and multiplayer.is_server():
-		NetworkManager.rpc("client_draw_sound", int(from_slot), int(count))
+		var card_c := int(card.color) if card != null else -1
+		var card_t := int(card.type) if card != null else -1
+		var card_v := int(card.value) if card != null else 0
+		var card_id := int(card.uid) if card != null else 0
+		for _i in range(maxi(int(count), 1)):
+			NetworkManager.rpc(
+				"client_draw_event",
+				int(from_slot),
+				card_c,
+				card_t,
+				card_v,
+				card_id,
+				NetworkManager.match_epoch
+			)
 	if sync_counts:
 		_sync_deck_counts()
 
@@ -203,23 +237,76 @@ func get_holder_visual_center(holder: HandCardHolder) -> Vector2:
 	return holder.get_global_rect().get_center()
 
 
+## Builds a fly CardView for remote plays (pulls a card back or spawns a temp card).
+func _acquire_client_fly_card_view(holder: HandCardHolder, res: CardResource, match_uid: bool = false, allow_fallback: bool = true) -> CardView:
+	if holder == null or !is_instance_valid(holder) or res == null:
+		return null
+
+	if match_uid:
+		for ch in holder.get_children():
+			if ch is CardView and ch.card_res != null and int(ch.card_res.uid) == int(res.uid):
+				return ch
+		if !allow_fallback:
+			return null
+
+	var fly_start := get_holder_visual_center(holder)
+	var cv: CardView = null
+	var back_cards: Array[CardView] = []
+	for ch in holder.get_children():
+		if ch is CardView and is_instance_valid(ch) and not ch.get_meta("anim_temp", false):
+			back_cards.append(ch)
+	if back_cards.size() > 0:
+		cv = back_cards[back_cards.size() - 1]
+		if cv.visuells != null and is_instance_valid(cv.visuells):
+			fly_start = cv.visuells.global_position
+		cv.set_meta("fly_start_vis_global", fly_start)
+		holder.remove_child(cv)
+	else:
+		cv = holder.CARD_VIEW.instantiate()
+		cv.in_hand_card = false
+		cv.hand_card_holder = null
+		cv.set_meta("fly_start_vis_global", fly_start)
+
+	cv.card_res = res
+	cv.show_front = true
+	cv.set_clickable(false, true)
+	cv.load_card()
+	return cv
+
+
+func register_client_play_in_flight(uid: int) -> void:
+	if uid <= 0 or multiplayer.is_server():
+		return
+	_client_play_uids_in_flight[int(uid)] = true
+	_client_play_animating = true
+
+
+func clear_client_play_in_flight(uid: int) -> void:
+	if uid <= 0:
+		return
+	_client_play_uids_in_flight.erase(int(uid))
+	if _client_play_uids_in_flight.is_empty():
+		_client_play_animating = false
+
+
+func _filter_hand_entries_for_client_play(hand: Array) -> Array:
+	if multiplayer.is_server() or _client_play_uids_in_flight.is_empty():
+		return hand
+	var out: Array = []
+	for entry in hand:
+		if entry is Dictionary:
+			var uid := int(entry.get("id", 0))
+			if uid > 0 and _client_play_uids_in_flight.has(uid):
+				continue
+		out.append(entry)
+	return out
+
+
 func _get_swap_hands_feedback() -> Node:
 	var tree := get_tree()
 	if tree == null:
 		return null
 	return tree.get_first_node_in_group("swap_hands_feedback")
-
-
-func _play_swap_hands_visual(owner: HandCardHolder, target: HandCardHolder, owner_count: int, target_count: int) -> void:
-	var feedback := _get_swap_hands_feedback()
-	if feedback != null and feedback.has_method("begin_swap_visual"):
-		feedback.begin_swap_visual(owner, target, owner_count, target_count)
-		var fly_wait := 0.9
-		if feedback.has_method("get_fly_duration"):
-			fly_wait = float(feedback.get_fly_duration())
-		await get_tree().create_timer(fly_wait).timeout
-	else:
-		await get_tree().create_timer(0.35).timeout
 
 ## Compute opponent seat index for UI.
 ## Seats are assigned RELATIVE to the local player so turn order always runs
@@ -352,7 +439,7 @@ func start_game() -> void:
 	await get_tree().process_frame
 
 	_match_deal_in_progress = true
-	deal_starting_cards(start_card_count)
+	await deal_starting_cards(start_card_count)
 	_match_deal_in_progress = false
 	_match_deal_complete = true
 
@@ -440,7 +527,7 @@ func can_play_now(holder: HandCardHolder) -> bool:
 		return true
 	if !is_players_turn(holder):
 		return false
-	if has_played_this_turn:
+	if has_played_this_turn and draw_stack_amount <= 0:
 		return false
 	if card_manager != null and card_manager.waiting_for_color:
 		return false
@@ -465,7 +552,7 @@ func _notify_player_skipped(skipped_holder: HandCardHolder) -> void:
 
 	if !multiplayer.has_multiplayer_peer():
 		if _is_local_human_owner(skipped_holder):
-			Signals.FEEDBACK_show.emit("Skipped", Signals.FeedbackKind.SKIPPED)
+			_show_feedback("Skipped", Signals.FeedbackKind.SKIPPED)
 		return
 
 	if !multiplayer.is_server():
@@ -510,16 +597,30 @@ func _try_recover_stuck_card_play(played_card: CardResource, player: HandCardHol
 			_try_recover_draw_stack_source_turn(actor)
 		return
 	if has_played_this_turn:
+		if played_card.type == CardResource.CardType.SWAP_HANDS and is_players_turn(actor):
+			call_deferred("_try_recover_stuck_swap", actor)
+		elif _holder_has_active_sub_effect(actor):
+			pass
+		elif is_players_turn(actor):
+			call_deferred("_try_recover_stuck_turn", actor)
 		return
-	has_played_this_turn = true
-	if draw_stack_amount <= 0 and !holder_has_playable_card(actor):
-		end_turn()
+	# Effect already resolved — replay skip-style advances for bots only.
+	if actor.is_bot:
+		match played_card.type:
+			CardResource.CardType.SKIP:
+				next_turn(true)
+			CardResource.CardType.REVERSE:
+				if turn_order.size() == 2:
+					next_turn(true)
 
 
 ## Register played card and advance rules
 func register_card_play(played_card: CardResource, player: HandCardHolder = null) -> void:
 	if played_card == null:
 		end_turn()
+		return
+
+	if !_is_authoritative():
 		return
 
 	if place_all_active:
@@ -570,11 +671,14 @@ func register_card_play(played_card: CardResource, player: HandCardHolder = null
 			return
 		CardResource.CardType.SWAP_HANDS:
 			if swap_color_pending:
-				swap_color_pending = false
-				clear_wild_owner()
-				end_turn()
-			else:
-				start_swap_hands(get_current_holder())
+				if wild_color_owner != null and is_instance_valid(wild_color_owner):
+					_restore_turn_to_holder(wild_color_owner)
+					if wild_color_owner.is_bot:
+						call_deferred("_finish_bot_swap_color", wild_color_owner)
+					else:
+						call_deferred("_ensure_wild_color_resolved", wild_color_owner)
+				return
+			start_swap_hands(actor)
 			return
 		CardResource.CardType.TARGET_DRAW:
 			start_target_draw(actor, played_card.value, false, played_card.color)
@@ -981,7 +1085,15 @@ func _show_direction_reversed_feedback() -> void:
 	var text := "Direction reversed"
 	if turn_order.size() == 2:
 		text = "Reverse!"
-	Signals.FEEDBACK_show.emit(text, Signals.FeedbackKind.REVERSE)
+	_show_feedback(text, Signals.FeedbackKind.REVERSE)
+
+
+## Shows a gameplay feedback popup locally or via server RPC in multiplayer.
+func _show_feedback(text: String, kind: int, target_slot: int = -1) -> void:
+	if multiplayer.has_multiplayer_peer() and multiplayer.is_server():
+		NetworkManager.server_show_feedback(text, kind, target_slot)
+	else:
+		Signals.FEEDBACK_show.emit(text, kind)
 
 ## Resets all draw-stack tracking fields.
 func _clear_draw_stack() -> void:
@@ -1098,9 +1210,11 @@ func _draw_stack_value_for_play(played_card: CardResource) -> int:
 func _resolve_active_deck() -> DeckResource:
 	var path := str(NetworkManager.lobby_deck_path)
 	if path != "":
+		if NetworkManager.lobby_deck_override_path == path and NetworkManager.lobby_deck_override != null:
+			return NetworkManager.lobby_deck_override.duplicate(true)
 		var chosen := Globals.load_deck(path)
 		if chosen != null:
-			return chosen
+			return chosen.duplicate(true)
 	if card_manager != null and card_manager.loaded_deck != null:
 		return card_manager.loaded_deck
 	return null
@@ -1374,7 +1488,31 @@ func _apply_active_turn_order_from_state(state: Dictionary) -> void:
 	if rebuilt.is_empty():
 		return
 	turn_order = rebuilt
-	current_turn_index = clampi(int(state.get("turn_index", current_turn_index)), 0, turn_order.size() - 1)
+	_apply_turn_index_from_state(state)
+
+func _apply_turn_index_from_state(state: Dictionary) -> void:
+	if turn_order.is_empty():
+		return
+	var server_turn_index := int(state.get("turn_index", current_turn_index))
+	var wild_slot := int(state.get("wild_owner_slot", -1))
+	var needs_color := bool(state.get("waiting_for_color", false)) \
+		or bool(state.get("swap_color_pending", false))
+	if !multiplayer.is_server() and wild_slot >= 0 and needs_color:
+		var owner: HandCardHolder = _slot_to_holder.get(wild_slot, null)
+		if owner != null and turn_order.has(owner):
+			current_turn_index = turn_order.find(owner)
+			return
+	if !multiplayer.is_server():
+		var my_holder := _get_local_holder()
+		if my_holder != null and my_holder._busy and !_is_server_turn_index_for_local(server_turn_index):
+			return
+	current_turn_index = clampi(server_turn_index, 0, turn_order.size() - 1)
+
+func _is_server_turn_index_for_local(turn_idx: int) -> bool:
+	var my_slot := int(NetworkManager.my_slot)
+	if my_slot < 0 or turn_idx < 0 or turn_idx >= turn_order.size():
+		return false
+	return int(turn_order[turn_idx].player_index) == my_slot
 
 func _check_max_card_lose_winner() -> void:
 	if !is_max_card_lose_enabled():
@@ -1441,7 +1579,7 @@ func on_draw_pressed() -> void:
 		_try_pass_if_stuck(holder)
 		return
 
-	notify_card_drawn(int(holder.player_index))
+	notify_card_drawn(int(holder.player_index), 1, true, card)
 	holder.add_card(card, true)
 	holder.sort_cards_full()
 	holder.refresh_playable_cards()
@@ -1483,7 +1621,7 @@ func bot_draw_current() -> bool:
 	if card == null:
 		return _try_pass_if_stuck(holder)
 
-	notify_card_drawn(int(holder.player_index))
+	notify_card_drawn(int(holder.player_index), 1, true, card)
 	holder.add_card(card, true)
 	holder.sort_cards_full()
 	holder.refresh_playable_cards()
@@ -1496,10 +1634,20 @@ func end_turn() -> void:
 	# (e.g. legacy bot finisher logic) so the turn is not advanced twice.
 	if place_all_resolving or _place_all_sequence_running:
 		return
+	if _blocks_turn_advance():
+		var pending := _get_pending_turn_holder()
+		if pending != null:
+			_restore_turn_to_holder(pending)
+		return
 	next_turn()
 
 ## Next turn logic
 func next_turn(skip_next: bool = false) -> void:
+	if !skip_next and _blocks_turn_advance():
+		var pending := _get_pending_turn_holder()
+		if pending != null:
+			_restore_turn_to_holder(pending)
+		return
 	if turn_order.size() == 0:
 		return
 	if turn_order.size() == 1:
@@ -1562,18 +1710,281 @@ func update_turn_state() -> void:
 
 	Signals.TURN_changed.emit(get_current_holder())
 
-## Offline deal
+## Round-robin deal: one card per player each round, parallel fly within a round.
 func deal_starting_cards(cards_per_player: int = 7) -> void:
 	if card_manager == null:
 		return
+
+	_cleanup_deal_overlay_cards()
 	for holder in turn_order:
-		for i in range(cards_per_player):
+		_clear_holder_hand(holder)
+
+	_last_hand_counts.clear()
+	_sync_deck_counts()
+
+	if multiplayer.is_server() and multiplayer.has_multiplayer_peer():
+		_server_broadcast_deal_begin()
+
+	for round_i in range(cards_per_player):
+		var batch: Array = []
+		for holder in turn_order:
+			if holder == null or !is_instance_valid(holder):
+				continue
 			var card := card_manager.draw_card()
 			if card == null:
 				break
-			holder.add_card(card)
+			batch.append([holder, card])
+		if batch.is_empty():
+			break
+		if multiplayer.is_server() and multiplayer.has_multiplayer_peer():
+			_server_broadcast_deal_batch(batch)
+		await _animate_deal_batch(batch)
+		_sync_deck_counts()
+		if round_i < cards_per_player - 1:
+			await get_tree().create_timer(DEAL_CARD_GAP).timeout
+
+	for holder in turn_order:
+		if holder == null or !is_instance_valid(holder):
+			continue
 		holder.sort_cards_full()
 		holder.refresh_playable_cards()
+
+	if multiplayer.is_server() and multiplayer.has_multiplayer_peer():
+		_server_broadcast_dealing_finished()
+
+func _server_broadcast_deal_begin() -> void:
+	if not multiplayer.is_server() or not multiplayer.has_multiplayer_peer():
+		return
+	for peer_id in multiplayer.get_peers():
+		NetworkManager.rpc_id(int(peer_id), "client_begin_dealing", NetworkManager.match_epoch)
+
+func _server_broadcast_deal_batch(batch: Array) -> void:
+	if not multiplayer.is_server() or not multiplayer.has_multiplayer_peer():
+		return
+	for peer_id in multiplayer.get_peers():
+		var pid := int(peer_id)
+		var peer_slot := int(_peer_to_slot.get(pid, -1))
+		var payload: Array = []
+		for entry in batch:
+			if entry.size() < 2:
+				continue
+			var holder: HandCardHolder = entry[0]
+			var card: CardResource = entry[1]
+			if holder == null or card == null:
+				continue
+			var slot := int(holder.player_index)
+			var item: Dictionary = {"slot": slot}
+			if !holder.is_bot and slot == peer_slot:
+				item["card"] = _serialize_card(card)
+			payload.append(item)
+		if payload.size() > 0:
+			NetworkManager.rpc_id(pid, "client_deal_batch", payload, NetworkManager.match_epoch)
+
+func _server_broadcast_dealing_finished() -> void:
+	if not multiplayer.is_server() or not multiplayer.has_multiplayer_peer():
+		return
+	for peer_id in multiplayer.get_peers():
+		NetworkManager.rpc_id(int(peer_id), "client_dealing_finished", NetworkManager.match_epoch)
+
+func _on_deal_begin_received() -> void:
+	if multiplayer.is_server():
+		return
+	if turn_order.is_empty():
+		call_deferred("_on_deal_begin_received")
+		return
+	_match_deal_in_progress = true
+	_match_deal_complete = false
+	_client_deal_animating = true
+	_client_deal_batch_queue.clear()
+	_client_deal_batch_running = false
+	_pending_hand.clear()
+	_cleanup_deal_overlay_cards()
+	for holder in turn_order:
+		_clear_holder_hand(holder)
+
+func _on_deal_batch_received(batch: Array) -> void:
+	if multiplayer.is_server():
+		return
+	_client_deal_batch_queue.append(batch)
+	call_deferred("_try_run_client_deal_batch_queue")
+
+func _try_run_client_deal_batch_queue() -> void:
+	if _client_deal_batch_running or _client_deal_batch_queue.is_empty():
+		return
+	call_deferred("_run_client_deal_batch_queue")
+
+func _run_client_deal_batch_queue() -> void:
+	if _client_deal_batch_running:
+		return
+	_client_deal_batch_running = true
+	_client_deal_animating = true
+	while _client_deal_batch_queue.size() > 0:
+		var batch: Array = _client_deal_batch_queue.pop_front()
+		await _client_animate_deal_batch(batch)
+		if _client_deal_batch_queue.size() > 0:
+			await get_tree().create_timer(DEAL_CARD_GAP).timeout
+	_client_deal_batch_running = false
+	if !_match_deal_in_progress:
+		_client_deal_animating = false
+
+func _client_animate_deal_batch(batch: Array) -> void:
+	if card_manager == null or batch.is_empty():
+		return
+	var deck_anchor := card_manager.get_draw_deck_anchor_global()
+	var slides: Array[CardView] = []
+	var touched: Array[HandCardHolder] = []
+	var my_slot := int(NetworkManager.my_slot)
+
+	for item in batch:
+		if not (item is Dictionary):
+			continue
+		var slot := int(item.get("slot", -1))
+		var holder: HandCardHolder = _slot_to_holder.get(slot, null)
+		if holder == null or !is_instance_valid(holder):
+			continue
+		var card_data = item.get("card", null)
+		var res: CardResource
+		var show_front := false
+		if card_data is Dictionary and CardResource.sync_dict_has_identity(card_data):
+			res = CardResource.from_sync_dict(card_data)
+			show_front = slot == my_slot
+		else:
+			res = _make_dummy_deal_card()
+		var cv := holder.add_card_for_deal(res, show_front)
+		if cv != null:
+			slides.append(cv)
+			if !touched.has(holder):
+				touched.append(holder)
+
+	if slides.is_empty():
+		return
+
+	for _i in range(4):
+		await get_tree().process_frame
+
+	SoundManager.play_draw_card(slides.size())
+	for cv in slides:
+		if cv != null and is_instance_valid(cv) and cv.has_method("deal_slide_in"):
+			cv.deal_slide_in(deck_anchor, DEAL_CARD_DURATION)
+	await get_tree().create_timer(DEAL_CARD_DURATION + 0.02).timeout
+	for holder in touched:
+		if holder != null and is_instance_valid(holder):
+			holder.sort_cards_full()
+			holder.refresh_playable_cards()
+
+func _on_dealing_finished_received() -> void:
+	if multiplayer.is_server():
+		return
+	_match_deal_in_progress = false
+	_match_deal_complete = true
+	_client_deal_animating = false
+	_client_deal_batch_queue.clear()
+	_client_deal_batch_running = false
+	_try_apply_pending_hand()
+	_try_apply_pending_match_state()
+	_apply_counts_to_ui()
+	_apply_local_visibility()
+
+func _clear_holder_hand(holder: HandCardHolder) -> void:
+	if holder == null or !is_instance_valid(holder):
+		return
+	for c in holder.get_children():
+		if c is CardView:
+			holder.remove_child(c)
+			c.queue_free()
+
+func _should_show_dealt_card_front(holder: HandCardHolder) -> bool:
+	if holder.is_bot:
+		return false
+	if !multiplayer.has_multiplayer_peer():
+		return true
+	return int(holder.player_index) == int(NetworkManager.my_slot)
+
+func _make_dummy_deal_card() -> CardResource:
+	var dummy := CardResource.new()
+	dummy.color = CardResource.CardColor.BLACK
+	dummy.type = CardResource.CardType.NUMBER
+	dummy.value = 0
+	dummy.uid = 0
+	return dummy
+
+func _animate_deal_batch(batch: Array) -> void:
+	var deck_anchor := card_manager.get_draw_deck_anchor_global()
+	var slides: Array[CardView] = []
+	for entry in batch:
+		var holder: HandCardHolder = entry[0]
+		var card: CardResource = entry[1]
+		if holder == null or card == null:
+			continue
+		var show_front := _should_show_dealt_card_front(holder)
+		var cv := holder.add_card_for_deal(card, show_front)
+		if cv != null:
+			slides.append(cv)
+	if slides.is_empty():
+		return
+	await get_tree().process_frame
+	await get_tree().process_frame
+	SoundManager.play_draw_card(slides.size())
+	for cv in slides:
+		if cv != null and is_instance_valid(cv) and cv.has_method("deal_slide_in"):
+			cv.deal_slide_in(deck_anchor, DEAL_CARD_DURATION)
+	await get_tree().create_timer(DEAL_CARD_DURATION + 0.02).timeout
+	for entry in batch:
+		var holder: HandCardHolder = entry[0]
+		if holder != null and is_instance_valid(holder):
+			holder.refresh_playable_cards()
+
+func _animate_deal_card_to_holder(holder: HandCardHolder, card: CardResource, play_sound: bool = true) -> void:
+	if holder == null or !is_instance_valid(holder) or card_manager == null:
+		return
+	var show_front := _should_show_dealt_card_front(holder)
+	var cv := holder.add_card_for_deal(card, show_front)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if cv == null or !is_instance_valid(cv):
+		return
+	if play_sound:
+		SoundManager.play_draw_card(1)
+	var deck_anchor := card_manager.get_draw_deck_anchor_global()
+	if cv.has_method("deal_slide_in"):
+		await cv.deal_slide_in(deck_anchor, DEAL_CARD_DURATION)
+	if is_instance_valid(holder):
+		holder.refresh_playable_cards()
+
+func _reveal_hand_animated(holder: HandCardHolder, hand: Array) -> void:
+	if holder == null or card_manager == null:
+		return
+	_client_deal_animating = true
+	_cleanup_deal_overlay_cards()
+	SoundManager.play_draw_card(hand.size())
+	for i in range(hand.size()):
+		var entry: Variant = hand[i]
+		if not (entry is Dictionary):
+			continue
+		var res := CardResource.from_sync_dict(entry)
+		await _animate_deal_card_to_holder(holder, res, false)
+		if i < hand.size() - 1:
+			await get_tree().create_timer(DEAL_CARD_GAP).timeout
+	holder.sort_cards_full()
+	holder.refresh_playable_cards()
+	_client_deal_animating = false
+
+func _cleanup_deal_overlay_cards() -> void:
+	var scene := get_tree().current_scene
+	if scene == null:
+		return
+	var layer := scene.get_node_or_null("CanvasLayer")
+	if layer == null:
+		return
+	for child in layer.get_children():
+		if child is CardView and child.in_hand_card and child.hand_card_holder != null:
+			var holder: HandCardHolder = child.hand_card_holder
+			if holder != null and is_instance_valid(holder):
+				layer.remove_child(child)
+				child.top_level = false
+				holder.add_child(child)
+				if child.has_method("_snap_rest_pose"):
+					child._snap_rest_pose()
 
 ## Playable check
 func holder_has_playable_card(holder: HandCardHolder) -> bool:
@@ -1596,8 +2007,20 @@ func can_draw_from_pile() -> bool:
 func _try_pass_if_stuck(holder: HandCardHolder) -> bool:
 	if holder == null:
 		return false
-	if has_played_this_turn:
+	# Humans must never be auto-passed — only bots use recovery pass logic.
+	if !holder.is_bot:
 		return false
+	if has_played_this_turn:
+		if _holder_has_active_sub_effect(holder):
+			return false
+		if draw_stack_amount > 0:
+			return false
+		if card_manager != null and card_manager.waiting_for_color:
+			return false
+		if roulette_active or place_all_resolving or _place_all_sequence_running:
+			return false
+		end_turn()
+		return true
 	if draw_stack_amount > 0:
 		return false
 	if card_manager != null and card_manager.waiting_for_color:
@@ -1638,8 +2061,59 @@ func _kick_bot_turn_if_needed(holder: HandCardHolder) -> void:
 	if ki != null and !ki.is_play_turn_running():
 		ki.play_turn()
 
+## True while a holder is inside swap, wild-color, target-draw, or place-all resolution.
+func _holder_has_active_sub_effect(holder: HandCardHolder) -> bool:
+	if holder == null or !is_instance_valid(holder):
+		return false
+	if pending_swap_owner == holder or _swap_resolve_running:
+		return true
+	if swap_color_pending and wild_color_owner == holder:
+		return true
+	if card_manager != null and card_manager.waiting_for_color and wild_color_owner == holder:
+		return true
+	if target_draw_active and pending_target_draw_owner == holder:
+		return true
+	if place_all_active and place_all_owner == holder:
+		return true
+	if place_all_resolving or _place_all_sequence_running:
+		return true
+	if roulette_active:
+		return true
+	return false
+
+
+## Recover when has_played is set but no sub-effect is running anymore.
+func _try_recover_stuck_turn(holder: HandCardHolder) -> void:
+	if !_is_authoritative() or holder == null or !is_instance_valid(holder):
+		return
+	if !holder.is_bot:
+		return
+	if !is_players_turn(holder) or !has_played_this_turn:
+		return
+	if _holder_has_active_sub_effect(holder):
+		return
+	if draw_stack_amount > 0:
+		return
+	if _draw_stack_resolving:
+		return
+	if card_manager != null and card_manager.waiting_for_color:
+		return
+	if card_manager != null and card_manager.top_card != null:
+		if card_manager.top_card.type == CardResource.CardType.SWAP_HANDS:
+			call_deferred("_try_recover_stuck_swap", holder)
+			return
+		var uid := int(card_manager.top_card.uid)
+		if uid > 0 and !_resolved_effect_uids.has(uid) and _can_resolve_card_effect(card_manager.top_card):
+			register_card_play(card_manager.top_card, holder)
+			return
+	holder._busy = false
+	end_turn()
+
+
 ## Start-of-turn effects
 func _handle_start_of_turn_effects() -> void:
+	if !_is_authoritative():
+		return
 	if multiplayer.is_server() and !_match_deal_complete:
 		return
 	if place_all_resolving:
@@ -1651,19 +2125,11 @@ func _handle_start_of_turn_effects() -> void:
 		_handle_roulette_start()
 		return
 
-	if card_manager != null and card_manager.waiting_for_color:
-		var holder_for_color := get_current_holder()
-		if wild_color_owner != null and is_instance_valid(wild_color_owner):
-			if wild_color_owner == holder_for_color:
-				call_deferred("_ensure_wild_color_resolved", wild_color_owner)
-				return
-			# Orphaned color wait from a previous effect — do not block the new active player.
-			card_manager.waiting_for_color = false
-			swap_color_pending = false
-			clear_wild_owner()
-		else:
-			card_manager.waiting_for_color = false
-			swap_color_pending = false
+	var pending_holder := _get_pending_turn_holder()
+	if pending_holder != null:
+		_restore_turn_to_holder(pending_holder)
+		call_deferred("_resume_pending_effect_for_holder", pending_holder)
+		return
 
 	var holder := get_current_holder()
 	if holder == null:
@@ -1683,7 +2149,7 @@ func _handle_start_of_turn_effects() -> void:
 				card_manager.update_draw_button_state()
 		return
 
-	if _try_pass_if_stuck(holder):
+	if holder.is_bot and _try_pass_if_stuck(holder):
 		return
 
 	if holder.is_bot:
@@ -1693,7 +2159,18 @@ func _handle_start_of_turn_effects() -> void:
 		if card_manager != null and card_manager.waiting_for_color and wild_color_owner == holder:
 			call_deferred("_ensure_wild_color_resolved", holder)
 			return
-		if !has_played_this_turn and !has_drawn_this_turn:
+		if has_played_this_turn and _is_unresolved_swap_for_holder(holder):
+			call_deferred("_try_recover_stuck_swap", holder)
+			return
+		if has_played_this_turn:
+			call_deferred("_try_recover_stuck_turn", holder)
+			return
+		if has_drawn_this_turn and !has_played_this_turn:
+			var ki_after_draw := _get_ki_for_holder(holder)
+			if ki_after_draw != null and !ki_after_draw.is_play_turn_running():
+				ki_after_draw.play_turn()
+			return
+		if !has_drawn_this_turn:
 			var ki := _get_ki_for_holder(holder)
 			if ki != null and !ki.is_play_turn_running():
 				ki.play_turn()
@@ -1704,7 +2181,7 @@ func force_wild_draw_continue(holder: HandCardHolder) -> void:
 		var card := card_manager.draw_card()
 		if card == null:
 			break
-		notify_card_drawn(int(holder.player_index), 1, false)
+		notify_card_drawn(int(holder.player_index), 1, false, card)
 		holder.add_card(card, true)
 
 	_clear_draw_stack()
@@ -1736,7 +2213,7 @@ func force_draw_stack_continue(holder: HandCardHolder) -> void:
 		var card := card_manager.draw_card()
 		if card == null:
 			break
-		notify_card_drawn(int(holder.player_index), 1, false)
+		notify_card_drawn(int(holder.player_index), 1, false, card)
 		holder.add_card(card, true)
 
 	_clear_draw_stack()
@@ -1837,6 +2314,60 @@ func clear_wild_owner() -> void:
 func set_wild_color_owner(holder: HandCardHolder) -> void:
 	wild_color_owner = holder
 
+## Holder that must finish swap/color/target selection before the turn advances.
+func _get_pending_turn_holder() -> HandCardHolder:
+	if wild_color_owner != null and is_instance_valid(wild_color_owner):
+		if swap_color_pending or (card_manager != null and card_manager.waiting_for_color):
+			return wild_color_owner
+	if pending_swap_owner != null and is_instance_valid(pending_swap_owner):
+		return pending_swap_owner
+	if target_draw_active and pending_target_draw_owner != null and is_instance_valid(pending_target_draw_owner):
+		return pending_target_draw_owner
+	return null
+
+func _restore_turn_to_holder(holder: HandCardHolder) -> bool:
+	if holder == null or !is_instance_valid(holder) or !turn_order.has(holder):
+		return false
+	var idx := turn_order.find(holder)
+	if idx < 0:
+		return false
+	if current_turn_index != idx:
+		current_turn_index = idx
+		update_turn_state()
+		if multiplayer.is_server():
+			_server_sync_match_state()
+		return true
+	return false
+
+func _blocks_turn_advance() -> bool:
+	if place_all_resolving or _place_all_sequence_running:
+		return true
+	if _swap_resolve_running:
+		return true
+	if roulette_active:
+		return true
+	return _get_pending_turn_holder() != null
+
+func _resume_pending_effect_for_holder(holder: HandCardHolder) -> void:
+	if holder == null or !is_instance_valid(holder):
+		return
+	if swap_color_pending and wild_color_owner == holder:
+		if holder.is_bot:
+			call_deferred("_finish_bot_swap_color", holder)
+		else:
+			call_deferred("_ensure_wild_color_resolved", holder)
+		return
+	if card_manager != null and card_manager.waiting_for_color and wild_color_owner == holder:
+		call_deferred("_ensure_wild_color_resolved", holder)
+		return
+	if pending_swap_owner == holder:
+		call_deferred("_kick_pending_swap_resolution")
+		return
+	if target_draw_active and pending_target_draw_owner == holder:
+		if holder.is_bot:
+			return
+		call_deferred("_request_target_select_for_owner", holder, false)
+
 ## Picks and applies wild color for a bot (also used as watchdog fallback).
 func _finish_bot_wild_color(holder: HandCardHolder) -> void:
 	if !_is_authoritative() or card_manager == null or holder == null or !is_instance_valid(holder):
@@ -1860,6 +2391,10 @@ func _ensure_wild_color_resolved(owner: HandCardHolder) -> void:
 		_finish_bot_wild_color(owner)
 	elif _is_local_human_owner(owner):
 		Signals.COLOR_request_color_select.emit()
+	elif multiplayer.is_server():
+		var peer_id := _slot_to_peer_id(int(owner.player_index))
+		if peer_id > 0 and peer_id != multiplayer.get_unique_id():
+			NetworkManager.rpc_id(peer_id, "client_request_color", int(owner.player_index))
 
 func _on_stuck_watchdog_timeout() -> void:
 	if !_is_authoritative() or !is_match_in_progress():
@@ -1878,34 +2413,48 @@ func _reconcile_stuck_state() -> void:
 
 	if card_manager != null and card_manager.waiting_for_color:
 		if wild_color_owner != null and is_instance_valid(wild_color_owner):
+			_restore_turn_to_holder(wild_color_owner)
 			_ensure_wild_color_resolved(wild_color_owner)
-		elif swap_color_pending and wild_color_owner != null and is_instance_valid(wild_color_owner):
-			if wild_color_owner.is_bot:
-				call_deferred("_finish_bot_swap_color", wild_color_owner)
-		elif card_manager.top_card != null and CardResource.is_neutral_wild_type(card_manager.top_card.type):
-			var fallback_holder := get_current_holder()
-			if fallback_holder != null:
-				set_wild_color_owner(fallback_holder)
-				_ensure_wild_color_resolved(fallback_holder)
 		_stuck_reconcile_running = false
 		return
 
 	if swap_color_pending and wild_color_owner != null and is_instance_valid(wild_color_owner):
+		_restore_turn_to_holder(wild_color_owner)
 		if wild_color_owner.is_bot:
 			call_deferred("_finish_bot_swap_color", wild_color_owner)
+		else:
+			call_deferred("_ensure_wild_color_resolved", wild_color_owner)
+		_stuck_reconcile_running = false
+		return
+
+	if pending_swap_owner != null and is_instance_valid(pending_swap_owner):
+		call_deferred("_kick_pending_swap_resolution")
+		_stuck_reconcile_running = false
+		return
+
+	if _swap_resolve_running and Time.get_ticks_msec() - _swap_resolve_started_ms > 6000:
+		push_warning("QueueManager: swap resolve watchdog reset stuck _swap_resolve_running")
+		_swap_resolve_running = false
+
+	var swap_holder := get_current_holder()
+	if swap_holder != null and _is_unresolved_swap_for_holder(swap_holder):
+		call_deferred("_try_recover_stuck_swap", swap_holder)
 		_stuck_reconcile_running = false
 		return
 
 	if wild_color_owner != null and is_instance_valid(wild_color_owner) and card_manager != null:
 		var orphan := wild_color_owner
 		if orphan._waiting_color_turn_end and card_manager.top_card != null and !card_manager.waiting_for_color:
-			var top_uid := int(card_manager.top_card.uid)
-			orphan._waiting_color_turn_end = false
-			orphan._pending_effect_card_uid = -1
-			orphan._busy = false
-			if top_uid > 0 and !_resolved_effect_uids.has(top_uid) and _can_resolve_card_effect(card_manager.top_card):
-				register_card_play(card_manager.top_card, orphan)
-			clear_wild_owner()
+			if orphan.is_bot:
+				var top_uid := int(card_manager.top_card.uid)
+				orphan._waiting_color_turn_end = false
+				orphan._pending_effect_card_uid = -1
+				orphan._busy = false
+				if top_uid > 0 and !_resolved_effect_uids.has(top_uid) and _can_resolve_card_effect(card_manager.top_card):
+					register_card_play(card_manager.top_card, orphan)
+				clear_wild_owner()
+			else:
+				call_deferred("_ensure_wild_color_resolved", orphan)
 
 	var holder := get_current_holder()
 	if holder == null:
@@ -1925,20 +2474,39 @@ func _reconcile_stuck_state() -> void:
 		return
 
 	if holder.is_bot and card_manager != null and !card_manager.waiting_for_color:
-		if !has_played_this_turn and !has_drawn_this_turn:
+		if has_played_this_turn and _is_unresolved_swap_for_holder(holder):
+			call_deferred("_try_recover_stuck_swap", holder)
+		elif has_played_this_turn:
+			call_deferred("_try_recover_stuck_turn", holder)
+		elif has_drawn_this_turn and !has_played_this_turn:
+			var ki_drawn := _get_ki_for_holder(holder)
+			if ki_drawn != null and !ki_drawn.is_play_turn_running():
+				ki_drawn.play_turn()
+		elif !has_drawn_this_turn:
 			var ki := _get_ki_for_holder(holder)
 			if ki != null and !ki.is_play_turn_running():
 				if holder_has_playable_card(holder) or draw_stack_amount > 0:
 					ki.play_turn()
 				elif can_draw_from_pile():
 					if bot_draw_current():
-						pass
+						call_deferred("_kick_bot_after_draw", holder)
 					elif _try_pass_if_stuck(holder):
 						pass
 				elif _try_pass_if_stuck(holder):
 					pass
 
 	_stuck_reconcile_running = false
+
+
+## Continue bot turn after a watchdog-triggered draw.
+func _kick_bot_after_draw(holder: HandCardHolder) -> void:
+	if !_is_authoritative() or holder == null or !is_instance_valid(holder):
+		return
+	if get_current_holder() != holder or !holder.is_bot:
+		return
+	var ki := _get_ki_for_holder(holder)
+	if ki != null and !ki.is_play_turn_running():
+		ki.play_turn()
 
 ## Place-all sequence start
 func start_place_all(holder: HandCardHolder, color: CardResource.CardColor, played_card: CardResource, place_all_view: CardView) -> void:
@@ -1999,13 +2567,12 @@ func start_place_all(holder: HandCardHolder, color: CardResource.CardColor, play
 			_server_sync_match_state()
 		return
 
-	end_turn()
-
-	# Push the owner's new hand after the turn advances so clients never receive
-	# a stale turn_index (still on the place-all player) with has_played cleared.
+	# Push the authoritative hand before advancing the turn so clients can apply
+	# it right after the place-all fly animation (without a stale full-hand resync).
 	if multiplayer.is_server():
 		_server_push_hand(holder)
-		_server_broadcast_counts()
+
+	end_turn()
 
 ## Place-all play color cards
 func _place_all_play_color_cards_sequential(owner: HandCardHolder, place_all_view: CardView) -> void:
@@ -2128,7 +2695,7 @@ func _count_cards_in_holder(holder: HandCardHolder) -> int:
 		return 0
 	var n := 0
 	for c in holder.get_children():
-		if c is CardView and not c.get_meta("anim_temp", false):
+		if c is CardView and not c.get_meta("anim_temp", false) and not c.get_meta("play_in_flight", false):
 			n += 1
 	return n
 
@@ -2210,22 +2777,110 @@ func start_target_draw(owner: HandCardHolder, value: int, multi: bool, color: Ca
 
 	_request_target_select_for_owner(owner, false)
 
-## Swap hands start
-func start_swap_hands(owner: HandCardHolder) -> void:
+## True when a swap-hands play still needs target selection or color follow-up.
+func _is_unresolved_swap_for_holder(holder: HandCardHolder) -> bool:
+	if holder == null or !is_instance_valid(holder) or card_manager == null:
+		return false
+	if card_manager.top_card == null or card_manager.top_card.type != CardResource.CardType.SWAP_HANDS:
+		return false
+	if !is_players_turn(holder):
+		return false
+	var uid := int(card_manager.top_card.uid)
+	if uid > 0 and !_resolved_effect_uids.has(uid):
+		return true
+	if !has_played_this_turn:
+		return false
+	if _swap_resolve_running:
+		return false
+	if swap_color_pending:
+		return wild_color_owner == holder
+	if pending_swap_owner != null:
+		return true
+	return wild_color_owner == null
+
+
+func _pick_swap_target_for_owner(owner: HandCardHolder) -> HandCardHolder:
 	if owner == null:
+		return null
+	var target: HandCardHolder = null
+	var ki := _get_ki_for_holder(owner)
+	if ki != null and ki.has_method("choose_swap_target"):
+		target = ki.choose_swap_target()
+	if target == null:
+		target = get_least_hand_target(owner)
+	return target
+
+
+## Resume a stalled swap target pick (bot auto-pick or human UI).
+func _kick_pending_swap_resolution() -> void:
+	if !_is_authoritative() or pending_swap_owner == null or !is_instance_valid(pending_swap_owner):
+		pending_swap_owner = null
+		return
+	if _swap_resolve_running:
+		return
+	var owner := pending_swap_owner
+	if owner.is_bot:
+		var target := _pick_swap_target_for_owner(owner)
+		if target == null:
+			pending_swap_owner = null
+			end_turn()
+			return
+		_resolve_swap_with_target(owner, target)
+		return
+	_request_target_select_for_owner(owner, false)
+
+
+## Recover when swap-hands was played but target/color resolution never finished.
+func _try_recover_stuck_swap(holder: HandCardHolder) -> void:
+	if !_is_authoritative() or holder == null or !is_instance_valid(holder):
+		return
+	if _swap_resolve_running:
+		return
+	if card_manager == null or card_manager.top_card == null:
+		return
+	if card_manager.top_card.type != CardResource.CardType.SWAP_HANDS:
+		return
+	if !is_players_turn(holder):
+		return
+	var top := card_manager.top_card
+	var uid := int(top.uid)
+	if uid > 0 and !_resolved_effect_uids.has(uid) and _can_resolve_card_effect(top):
+		register_card_play(top, holder)
+		return
+	if !has_played_this_turn:
+		return
+	if swap_color_pending:
+		if wild_color_owner == holder:
+			if holder.is_bot:
+				call_deferred("_finish_bot_swap_color", holder)
+			else:
+				call_deferred("_ensure_wild_color_resolved", holder)
 		return
 	if pending_swap_owner != null:
+		_kick_pending_swap_resolution()
 		return
+	if uid > 0 and _completed_swap_uids.has(uid):
+		return
+	holder._busy = false
+	start_swap_hands(holder)
+
+
+## Swap hands start
+func start_swap_hands(owner: HandCardHolder) -> void:
+	if owner == null or !_is_authoritative():
+		return
+	if pending_swap_owner != null:
+		if pending_swap_owner == owner and !_swap_resolve_running:
+			pending_swap_owner = null
+		elif _swap_resolve_running:
+			return
+		else:
+			pending_swap_owner = null
 	pending_swap_owner = owner
 	if multiplayer.is_server():
 		_server_sync_match_state()
 	if owner.is_bot:
-		var target: HandCardHolder = null
-		var ki := _get_ki_for_holder(owner)
-		if ki != null and ki.has_method("choose_swap_target"):
-			target = ki.choose_swap_target()
-		if target == null:
-			target = get_least_hand_target(owner)
+		var target := _pick_swap_target_for_owner(owner)
 		if target == null:
 			pending_swap_owner = null
 			end_turn()
@@ -2238,6 +2893,9 @@ func start_swap_hands(owner: HandCardHolder) -> void:
 func resolve_target_draw(target_holder: HandCardHolder) -> void:
 	if !target_draw_active:
 		if pending_swap_owner != null:
+			if _swap_resolve_running or _is_swap_already_completed_for_top():
+				pending_swap_owner = null
+				return
 			var owner := pending_swap_owner
 			pending_swap_owner = null
 			_resolve_swap_with_target(owner, target_holder)
@@ -2254,7 +2912,7 @@ func resolve_target_draw(target_holder: HandCardHolder) -> void:
 					var card := card_manager.draw_card()
 					if card == null:
 						break
-					notify_card_drawn(int(h.player_index), 1, false)
+					notify_card_drawn(int(h.player_index), 1, false, card)
 					h.add_card(card, true)
 				h.sort_cards_full()
 				h.refresh_playable_cards()
@@ -2268,7 +2926,7 @@ func resolve_target_draw(target_holder: HandCardHolder) -> void:
 					var card := card_manager.draw_card()
 					if card == null:
 						break
-					notify_card_drawn(int(target_holder.player_index), 1, false)
+					notify_card_drawn(int(target_holder.player_index), 1, false, card)
 					target_holder.add_card(card, true)
 				target_holder.sort_cards_full()
 				target_holder.refresh_playable_cards()
@@ -2297,13 +2955,31 @@ func resolve_swap_hands(owner: HandCardHolder) -> void:
 
 ## Execute swap between two holders, then request color selection
 func _resolve_swap_with_target(owner: HandCardHolder, target: HandCardHolder) -> void:
-	call_deferred("_resolve_swap_with_target_async", owner, target)
+	if owner == null or target == null:
+		return
+	if _swap_resolve_running:
+		return
+	if _is_swap_already_completed_for_top():
+		return
+	# Bots resolve immediately so deferred calls cannot leave pending_swap_owner stuck.
+	if owner.is_bot:
+		_resolve_swap_with_target_async(owner, target)
+	else:
+		call_deferred("_resolve_swap_with_target_async", owner, target)
+
+
+func _is_swap_already_completed_for_top() -> bool:
+	if card_manager == null or card_manager.top_card == null:
+		return false
+	var uid := int(card_manager.top_card.uid)
+	return uid > 0 and _completed_swap_uids.has(uid)
 
 
 func _resolve_swap_with_target_async(owner: HandCardHolder, target: HandCardHolder) -> void:
 	while _swap_resolve_running:
 		await get_tree().process_frame
 	_swap_resolve_running = true
+	_swap_resolve_started_ms = Time.get_ticks_msec()
 
 	pending_swap_owner = null
 	if owner == null:
@@ -2317,23 +2993,51 @@ func _resolve_swap_with_target_async(owner: HandCardHolder, target: HandCardHold
 		end_turn()
 		return
 
+	var top_uid := -1
+	if card_manager != null and card_manager.top_card != null:
+		top_uid = int(card_manager.top_card.uid)
+	if top_uid > 0 and _completed_swap_uids.has(top_uid):
+		_swap_resolve_running = false
+		return
+
 	var my_cards := owner.get_all_card_resources()
 	var opp_cards := target.get_all_card_resources()
 	var owner_count := my_cards.size()
 	var target_count := opp_cards.size()
 
 	if _is_authoritative():
+		var anim_seed := randi()
 		if multiplayer.has_multiplayer_peer() and multiplayer.is_server():
+			var feedback := _get_swap_hands_feedback()
+			var finished := false
+			var on_finished := func() -> void:
+				finished = true
+			if feedback != null and feedback.has_signal("visual_finished"):
+				feedback.visual_finished.connect(on_finished, CONNECT_ONE_SHOT)
 			NetworkManager.rpc(
 				"client_swap_hands_event",
 				int(owner.player_index),
 				int(target.player_index),
 				owner_count,
-				target_count
+				target_count,
+				int(anim_seed),
+				int(NetworkManager.match_epoch)
 			)
-		var visual_task := _play_swap_hands_visual(owner, target, owner_count, target_count)
+			if feedback != null:
+				var deadline := Time.get_ticks_msec() + 8000
+				while not finished and is_instance_valid(feedback) and Time.get_ticks_msec() < deadline:
+					await get_tree().process_frame
+			else:
+				await get_tree().create_timer(1.0).timeout
+		else:
+			var feedback := _get_swap_hands_feedback()
+			if feedback != null and feedback.has_method("run_swap_visual"):
+				await feedback.run_swap_visual(owner, target, owner_count, target_count, anim_seed)
+			else:
+				await get_tree().create_timer(0.9).timeout
 		_apply_swap_hands_state(owner, target, my_cards, opp_cards)
-		await visual_task
+		if top_uid > 0:
+			_completed_swap_uids[top_uid] = true
 
 	_swap_resolve_running = false
 
@@ -2586,7 +3290,7 @@ func _do_roulette_draw_step(holder: HandCardHolder) -> void:
 		_abort_roulette()
 		return
 
-	notify_card_drawn(int(holder.player_index))
+	notify_card_drawn(int(holder.player_index), 1, true, card)
 	holder.add_card(card, true)
 	holder.sort_cards_full()
 	holder.refresh_playable_cards()
@@ -2711,6 +3415,7 @@ func _smooth_modulate(node: CanvasItem, target: Color, duration: float = 0.2) ->
 ## Buffer incoming hand
 func _on_hand_received(hand: Array) -> void:
 	_pending_hand = hand
+	_schedule_client_hand_watchdog()
 	_try_apply_pending_hand()
 
 ## Apply buffered hand when ready
@@ -2718,6 +3423,14 @@ func _try_apply_pending_hand() -> void:
 	if _pending_hand.size() == 0:
 		return
 	if !multiplayer.is_server() and _client_place_all_animating:
+		return
+	if !multiplayer.is_server() and _client_deal_animating:
+		return
+	if !multiplayer.is_server() and _client_swap_animating:
+		return
+	if !multiplayer.is_server() and _client_play_animating:
+		return
+	if !multiplayer.is_server() and _client_play_uids_in_flight.size() > 0:
 		return
 
 	var slot := int(NetworkManager.my_slot)
@@ -2739,18 +3452,34 @@ func _try_apply_pending_hand() -> void:
 	my_holder.compact_view = false
 	_refresh_holder_layouts()
 	if my_holder._busy:
+		if _client_place_all_animating and _client_place_all_slot == slot:
+			return
+		if !multiplayer.is_server() and _client_play_uids_in_flight.size() > 0:
+			return
 		my_holder._busy = false
 		my_holder.notify_remote_play_finished()
+	var prev_count := _count_cards_in_holder(my_holder)
+	var hand_to_apply := _filter_hand_entries_for_client_play(_pending_hand)
 	if my_holder.get_child_count() == 0:
-		for entry: Dictionary in _pending_hand:
-			my_holder.add_card(CardResource.from_sync_dict(entry), false)
-		my_holder.sort_cards_full()
-		my_holder.refresh_playable_cards()
+		if !multiplayer.is_server() and hand_to_apply.size() > 1 and !_match_deal_complete:
+			await _reveal_hand_animated(my_holder, hand_to_apply)
+		else:
+			for entry: Dictionary in hand_to_apply:
+				my_holder.add_card(CardResource.from_sync_dict(entry), false)
+			my_holder.sort_cards_full()
+			my_holder.refresh_playable_cards()
 	else:
-		_reconcile_hand(my_holder, _pending_hand)
+		_reconcile_hand(my_holder, hand_to_apply)
 
-	_last_applied_hand = _pending_hand.duplicate(true)
+	if !multiplayer.is_server():
+		var new_count := _count_cards_in_holder(my_holder)
+		if new_count > prev_count and !_client_suppress_draw_sound_once:
+			SoundManager.play_draw_card(new_count - prev_count)
+	_client_suppress_draw_sound_once = false
+
+	_last_applied_hand = hand_to_apply.duplicate(true)
 	_pending_hand = []
+	_client_hand_watchdog_armed = false
 	NetworkManager.clear_last_hand()
 	_client_has_hand = true
 	if !multiplayer.is_server() and _client_has_state:
@@ -2760,6 +3489,7 @@ func _try_apply_pending_hand() -> void:
 		_apply_local_visibility()
 	else:
 		_apply_local_visibility()
+		_apply_counts_to_ui()
 		_try_finalize_client_sync()
 	_refresh_seat_names()
 
@@ -3004,12 +3734,21 @@ func _refresh_holder_layouts() -> void:
 ## Player name labels shown at each seat during a match.
 ## ------------------------------------------------------------------
 func _get_display_card_count(slot: int) -> int:
-	if slot >= 0 and slot < _last_hand_counts.size():
-		return int(_last_hand_counts[slot])
 	var holder: HandCardHolder = _slot_to_holder.get(slot, null)
+	var live := 0
 	if holder != null and is_instance_valid(holder):
-		return _count_cards_in_holder(holder)
-	return 0
+		live = _count_cards_in_holder(holder)
+
+	if _is_authoritative():
+		return live
+
+	var my_slot := int(NetworkManager.my_slot)
+	if slot == my_slot:
+		return live
+
+	# Opponents on clients: show the visible card-back stack, not the server count
+	# (counts can arrive before stagger animations finish).
+	return live
 
 func _refresh_seat_names() -> void:
 	var used: Dictionary = {}
@@ -3133,6 +3872,15 @@ func _reset_server_match_state() -> void:
 	_match_deal_in_progress = false
 	_match_deal_complete = false
 	_client_match_started = false
+	_client_deal_animating = false
+	_client_deal_batch_queue.clear()
+	_client_deal_batch_running = false
+	_client_play_animating = false
+	_client_play_uids_in_flight.clear()
+	_client_place_all_animating = false
+	_client_place_all_slot = -1
+	_client_swap_animating = false
+	_client_draw_animating = false
 	current_turn_index = 0
 	has_played_this_turn = false
 	has_drawn_this_turn = false
@@ -3169,7 +3917,9 @@ func _reset_server_match_state() -> void:
 	pending_swap_owner = null
 	swap_color_pending = false
 	_swap_resolve_running = false
+	_swap_resolve_started_ms = 0
 	_resolved_effect_uids.clear()
+	_completed_swap_uids.clear()
 	if card_manager != null:
 		card_manager.waiting_for_color = false
 		card_manager.pending_wild_card = null
@@ -3212,6 +3962,8 @@ func _build_match_state() -> Dictionary:
 		"roulette_waiting": bool(roulette_waiting_for_color),
 		"roulette_target_slot": int(roulette_target_slot),
 		"place_all_active": bool(place_all_active),
+		"place_all_resolving": bool(place_all_resolving),
+		"swap_color_pending": bool(swap_color_pending),
 		"target_draw_active": bool(target_draw_active),
 		"pending_swap_slot": pending_swap_slot,
 		"wild_owner_slot": wild_owner_slot,
@@ -3230,6 +3982,9 @@ func _apply_match_state_flags(state: Dictionary) -> void:
 	else:
 		roulette_target = null
 	place_all_active = bool(state.get("place_all_active", false))
+	place_all_resolving = bool(state.get("place_all_resolving", false))
+	if !multiplayer.is_server():
+		swap_color_pending = bool(state.get("swap_color_pending", false))
 	target_draw_active = bool(state.get("target_draw_active", false))
 	var swap_slot := int(state.get("pending_swap_slot", -1))
 	if swap_slot >= 0:
@@ -3244,7 +3999,7 @@ func _on_match_state_received(state: Dictionary) -> void:
 		_client_has_state = false
 		# Apply immediately when possible so draw-stack/turn flags never lag
 		# behind card fly animations (prevents stale "+N" soft-locks).
-		if _client_play_animating or _client_place_all_animating:
+		if _client_play_animating or _client_place_all_animating or _client_deal_animating or _client_swap_animating or _client_draw_animating:
 			_apply_match_state_snapshot(state, true)
 		else:
 			_try_apply_pending_match_state()
@@ -3261,7 +4016,7 @@ func _try_apply_pending_match_state() -> void:
 	# While a card fly animation runs, still mirror turn/draw-stack/flags so
 	# clients do not stay soft-locked with a stale "+N" overlay. Only defer the
 	# top-card swap — the in-flight animation will finish it via suppression.
-	var skip_top_card := !multiplayer.is_server() and _client_play_animating
+	var skip_top_card := !multiplayer.is_server() and (_client_play_animating or _client_swap_animating)
 	_apply_match_state_snapshot(_pending_state, skip_top_card)
 
 	_pending_state = {}
@@ -3278,13 +4033,12 @@ func _apply_match_state_snapshot(state: Dictionary, skip_top_card: bool = false)
 		return
 
 	var top = state.get("top_card", null)
-	if !skip_top_card and top is Dictionary:
+	if !skip_top_card and top is Dictionary and CardResource.sync_dict_has_identity(top):
 		var r := CardResource.from_sync_dict(top)
 		var same_top := card_manager.top_card != null and int(card_manager.top_card.uid) == int(r.uid)
 		if !same_top:
 			card_manager.set_top_card_runtime(r, false)
 
-	current_turn_index = int(state.get("turn_index", 0))
 	var new_direction := int(state.get("direction", 1))
 	if direction != new_direction:
 		direction = new_direction
@@ -3300,11 +4054,6 @@ func _apply_match_state_snapshot(state: Dictionary, skip_top_card: bool = false)
 		draw_stack_color = int(state.get("draw_stack_color", draw_stack_color))
 		draw_stack_source_slot = int(state.get("draw_stack_source_slot", draw_stack_source_slot))
 
-	if state.has("current_color") and card_manager != null:
-		card_manager.current_color = int(state.get("current_color", card_manager.current_color))
-	# Clients mirror server snapshots; the server must not reconcile
-	# waiting_for_color from its own broadcasts or a pending wild play can be
-	# auto-resolved without register_card_play (stacked +4 stays at +4).
 	if state.has("waiting_for_color") and card_manager != null and !multiplayer.is_server():
 		var waiting := bool(state.get("waiting_for_color", card_manager.waiting_for_color))
 		if waiting and !card_manager.waiting_for_color:
@@ -3313,6 +4062,17 @@ func _apply_match_state_snapshot(state: Dictionary, skip_top_card: bool = false)
 		if !waiting and card_manager.waiting_for_color:
 			card_manager.waiting_for_color = false
 			card_manager.pending_wild_card = null
+
+	if state.has("current_color") and card_manager != null and !multiplayer.is_server():
+		# Never tint a pending wild with the previous pile color while the owner
+		# is still choosing (RED == 0 was leaking through as a false "chosen" color).
+		if card_manager.waiting_for_color:
+			card_manager.current_color = CardResource.CardColor.BLACK
+		else:
+			card_manager.current_color = int(state.get("current_color", card_manager.current_color))
+	# Clients mirror server snapshots; the server must not reconcile
+	# waiting_for_color from its own broadcasts or a pending wild play can be
+	# auto-resolved without register_card_play (stacked +4 stays at +4).
 	_sync_wild_owner_from_state(state)
 	if card_manager != null:
 		card_manager.sync_top_card_color_visual()
@@ -3320,6 +4080,8 @@ func _apply_match_state_snapshot(state: Dictionary, skip_top_card: bool = false)
 	_apply_match_state_flags(state)
 	_sync_eliminated_slots_from_state(state)
 	_apply_active_turn_order_from_state(state)
+	if !state.has("active_turn_slots") or (state.get("active_turn_slots", []) as Array).is_empty():
+		_apply_turn_index_from_state(state)
 
 	update_turn_state()
 
@@ -3329,7 +4091,10 @@ func _apply_match_state_snapshot(state: Dictionary, skip_top_card: bool = false)
 	if not multiplayer.is_server() and roulette_active and roulette_waiting_for_color:
 		_try_prompt_local_roulette_color()
 	elif not multiplayer.is_server() and not roulette_waiting_for_color:
-		Signals.COLOR_color_select_dismissed.emit()
+		var needs_color_pick := bool(state.get("waiting_for_color", false)) \
+			or bool(state.get("swap_color_pending", false))
+		if !needs_color_pick:
+			Signals.COLOR_color_select_dismissed.emit()
 	_try_prompt_wild_color_from_state(state)
 
 func _sync_wild_owner_from_state(state: Dictionary) -> void:
@@ -3347,13 +4112,33 @@ func _sync_wild_owner_from_state(state: Dictionary) -> void:
 func _try_prompt_wild_color_from_state(state: Dictionary) -> void:
 	if multiplayer.is_server():
 		return
-	if card_manager == null or !card_manager.waiting_for_color:
+	if card_manager == null:
+		return
+	var waiting := bool(state.get("waiting_for_color", card_manager.waiting_for_color))
+	var swap_pending := bool(state.get("swap_color_pending", swap_color_pending))
+	if !waiting and !swap_pending:
 		return
 	if wild_color_owner == null or !is_instance_valid(wild_color_owner):
 		return
 	if !_is_local_human_owner(wild_color_owner):
 		return
-	call_deferred("_ensure_wild_color_resolved", wild_color_owner)
+	_prompt_local_wild_color_picker()
+
+
+func _prompt_local_wild_color_picker() -> void:
+	if multiplayer.is_server():
+		return
+	if card_manager == null or wild_color_owner == null or !is_instance_valid(wild_color_owner):
+		return
+	if !_is_local_human_owner(wild_color_owner):
+		return
+	if !card_manager.waiting_for_color and !swap_color_pending:
+		return
+	card_manager.waiting_for_color = true
+	card_manager.pending_wild_card = card_manager.top_card
+	card_manager.current_color = CardResource.CardColor.BLACK
+	card_manager.sync_top_card_color_visual()
+	Signals.COLOR_request_color_select.emit()
 
 ## Serialize card
 func _serialize_card(r: CardResource) -> Dictionary:
@@ -3452,6 +4237,7 @@ func _server_start_match() -> void:
 	_local_loser_overlay_shown = false
 	_hide_loser_overlay()
 	_resolved_effect_uids.clear()
+	_completed_swap_uids.clear()
 
 	# Apply the deck chosen in the lobby (host-authoritative). Falls back to the
 	# card manager's default deck if none was selected / it fails to load.
@@ -3459,6 +4245,7 @@ func _server_start_match() -> void:
 	if card_manager.loaded_deck != null:
 		print("QueueManager: Using deck '%s'" % str(card_manager.loaded_deck.deck_name))
 
+	card_manager.reset_for_new_match()
 	card_manager.deck = card_manager.create_default_cards()
 	if card_manager.deck.is_empty():
 		push_error("QueueManager: Cannot start match – deck is empty.")
@@ -3470,24 +4257,20 @@ func _server_start_match() -> void:
 	# Deal starting hands before any match-state sync so empty-hand win checks
 	# never run against undistributed cards.
 	_match_deal_in_progress = true
+	await deal_starting_cards(start_card_count)
+	_match_deal_in_progress = false
+	_match_deal_complete = true
+
 	for holder in turn_order:
 		if holder == null:
 			continue
-
 		var hand: Array = []
-		for i in range(start_card_count):
-			var c := card_manager.draw_card()
-			if c == null:
-				break
-			hand.append(_serialize_card(c))
-
-		_apply_hand_to_holder(holder, hand)
-
+		for ch in holder.get_children():
+			if ch is CardView and ch.card_res != null and not ch.get_meta("anim_temp", false):
+				hand.append(_serialize_card(ch.card_res))
 		var peer_id := _slot_to_peer_id(holder.player_index)
 		if peer_id != 0 and int(peer_id) != 1:
 			NetworkManager.rpc_id(peer_id, "client_set_hand", hand, NetworkManager.match_epoch)
-	_match_deal_in_progress = false
-	_match_deal_complete = true
 
 	await get_tree().process_frame
 
@@ -3547,7 +4330,10 @@ func _reconcile_hand(holder: HandCardHolder, hand: Array) -> void:
 	for uid in desired.keys():
 		if !current.has(uid):
 			var entry: Dictionary = desired[uid]
-			holder.add_card(CardResource.from_sync_dict(entry), true)
+			var play_appear := false
+			if multiplayer.is_server() or _is_authoritative():
+				play_appear = true
+			holder.add_card(CardResource.from_sync_dict(entry), play_appear)
 
 	holder.sort_cards_full()
 	holder.refresh_playable_cards()
@@ -3556,18 +4342,43 @@ func _reconcile_hand(holder: HandCardHolder, hand: Array) -> void:
 func _on_counts_received(hand_counts: Array, deck_count: int) -> void:
 	_last_hand_counts = hand_counts.duplicate(true)
 	_last_deck_count = int(deck_count)
+	if _match_deal_in_progress:
+		_refresh_seat_names()
+		return
+	_try_apply_counts_to_ui()
+
+func _client_counts_blocked() -> bool:
+	if multiplayer.is_server():
+		return false
+	return _client_place_all_animating or _client_deal_animating or _client_swap_animating or _client_play_animating or _client_draw_animating or _client_play_uids_in_flight.size() > 0
+
+func _try_apply_counts_to_ui() -> void:
+	if _last_hand_counts.is_empty():
+		return
+	if _match_deal_in_progress:
+		return
+	if _client_counts_blocked():
+		_pending_counts_apply = true
+		return
+	_pending_counts_apply = false
 	_apply_counts_to_ui()
 
 ## Build opponent dummy backs from counts
 func _apply_counts_to_ui() -> void:
 	if _last_hand_counts.is_empty():
 		return
-	if !multiplayer.is_server() and _client_place_all_animating:
+	if _match_deal_in_progress:
 		return
+	if _client_counts_blocked():
+		_pending_counts_apply = true
+		return
+	_pending_counts_apply = false
 
 	var my_slot := int(NetworkManager.my_slot)
 	if my_slot < 0:
 		my_slot = 0
+
+	var stagger_jobs: Array = []
 
 	for i in range(_last_hand_counts.size()):
 		if i == my_slot:
@@ -3604,19 +4415,55 @@ func _apply_counts_to_ui() -> void:
 					cv.queue_free()
 		else:
 			var to_add := n - current_count
-			var animate_new := to_add == 1
-			for k in range(to_add):
-				var dummy := CardResource.new()
-				dummy.color = CardResource.CardColor.BLACK
-				dummy.type = CardResource.CardType.NUMBER
-				dummy.value = 0
-				dummy.uid = 0
-				holder.add_card(dummy, animate_new)
+			if to_add > 1 and !multiplayer.is_server():
+				stagger_jobs.append([holder, to_add])
+			else:
+				for k in range(to_add):
+					var dummy := CardResource.new()
+					dummy.color = CardResource.CardColor.BLACK
+					dummy.type = CardResource.CardType.NUMBER
+					dummy.value = 0
+					dummy.uid = 0
+					holder.add_card(dummy, to_add == 1)
 
 		holder.sort_cards_full()
 
+	if stagger_jobs.size() > 0:
+		call_deferred("_run_opponent_stagger_jobs", stagger_jobs)
+
 	_apply_local_visibility()
 	_refresh_seat_names()
+
+	if !multiplayer.is_server() and my_slot >= 0 and my_slot < _last_hand_counts.size():
+		var my_holder: HandCardHolder = _slot_to_holder.get(my_slot, null)
+		if my_holder != null and is_instance_valid(my_holder):
+			if _client_place_all_animating and _client_place_all_slot == my_slot:
+				pass
+			elif _client_play_uids_in_flight.size() > 0:
+				pass
+			elif _count_cards_in_holder(my_holder) != int(_last_hand_counts[my_slot]):
+				call_deferred("_client_request_hand_resync_if_desynced")
+
+func _run_opponent_stagger_jobs(jobs: Array) -> void:
+	_client_deal_animating = true
+	for job in jobs:
+		if job.size() < 2:
+			continue
+		var holder: HandCardHolder = job[0]
+		var count: int = int(job[1])
+		if holder == null or !is_instance_valid(holder) or count <= 0:
+			continue
+		SoundManager.play_draw_card(count)
+		for i in range(count):
+			await _animate_deal_card_to_holder(holder, _make_dummy_deal_card(), false)
+			if i < count - 1:
+				await get_tree().create_timer(DEAL_CARD_GAP).timeout
+		holder.sort_cards_full()
+	_apply_local_visibility()
+	_client_deal_animating = false
+	_try_apply_pending_hand()
+	_apply_counts_to_ui()
+	_try_apply_pending_match_state()
 
 ## Deck count getter
 func get_synced_deck_count() -> int:
@@ -3731,7 +4578,7 @@ func server_apply_draw(peer_id: int) -> void:
 			_server_sync_match_state()
 		return
 
-	notify_card_drawn(int(slot))
+	notify_card_drawn(int(slot), 1, true, card)
 	holder.add_card(card, true)
 	holder.sort_cards_full()
 	holder.refresh_playable_cards()
@@ -3769,6 +4616,11 @@ func server_apply_target_select(peer_id: int, target_slot: int) -> void:
 		resolve_target_draw(target_holder)
 		return
 
+	if _swap_resolve_running or _is_swap_already_completed_for_top():
+		return
+	if swap_color_pending and wild_color_owner == owner_holder:
+		return
+
 	if pending_swap_owner == owner_holder:
 		pending_swap_owner = null
 		_resolve_swap_with_target(owner_holder, target_holder)
@@ -3797,8 +4649,9 @@ func server_apply_wild_color(peer_id: int, color: int) -> void:
 	if card_manager == null:
 		return
 	var needs_color := card_manager.waiting_for_color
-	if !needs_color and wild_color_owner == holder and is_instance_valid(holder) and holder._waiting_color_turn_end:
-		needs_color = true
+	if !needs_color and wild_color_owner == holder and is_instance_valid(holder):
+		if holder._waiting_color_turn_end or swap_color_pending:
+			needs_color = true
 	if !needs_color:
 		return
 	if wild_color_owner != holder:
@@ -3885,11 +4738,8 @@ func client_request_color(owner_slot: int) -> void:
 	var holder: HandCardHolder = _slot_to_holder.get(int(owner_slot), null)
 	if holder == null or !is_instance_valid(holder):
 		return
-	if card_manager != null:
-		card_manager.waiting_for_color = true
-		card_manager.pending_wild_card = card_manager.top_card
 	set_wild_color_owner(holder)
-	Signals.COLOR_request_color_select.emit()
+	_prompt_local_wild_color_picker()
 
 ## Client request to show target selector for a specific owner slot
 func client_request_target_select(owner_slot: int, allow_self: bool) -> void:
@@ -3932,8 +4782,8 @@ func _server_broadcast_counts() -> void:
 
 	if multiplayer.has_multiplayer_peer() and multiplayer.is_server():
 		NetworkManager.rpc("client_set_counts", counts, deck_count)
-	else:
-		_on_counts_received(counts, deck_count)
+	if !multiplayer.has_multiplayer_peer() or multiplayer.is_server():
+		NetworkManager.counts_received.emit(counts, deck_count)
 
 ## Push a holder's authoritative hand to its owning client. Many special-card
 ## effects (target/multi draw, swap, roulette, place-all) change a hand purely
@@ -3957,6 +4807,22 @@ func _server_sync_holder_hand(holder: HandCardHolder, sync_state: bool = true) -
 		_server_sync_match_state()
 
 
+## Server: re-push hand for a peer that reports desync.
+func server_resync_hand_for_peer(peer_id: int) -> void:
+	if not multiplayer.is_server():
+		return
+	var slot := int(_peer_to_slot.get(int(peer_id), -1))
+	if slot < 0:
+		return
+	if _place_all_sequence_running and place_all_owner != null and is_instance_valid(place_all_owner):
+		if int(place_all_owner.player_index) == slot:
+			return
+	var holder: HandCardHolder = _slot_to_holder.get(slot, null)
+	if holder == null or not is_instance_valid(holder) or holder.is_bot:
+		return
+	_server_sync_holder_hand(holder, true)
+
+
 func _server_push_hand(holder: HandCardHolder) -> void:
 	if not multiplayer.is_server():
 		return
@@ -3976,6 +4842,8 @@ func _on_play_event_received(from_slot: int, card: Dictionary) -> void:
 		if _client_play_animating:
 			push_warning("QueueManager: play animation watchdog fired; releasing client sync lock")
 			_client_play_animating = false
+			_try_apply_pending_hand()
+			_apply_counts_to_ui()
 			_try_apply_pending_match_state()
 	, CONNECT_ONE_SHOT)
 	var my_slot := int(NetworkManager.my_slot)
@@ -4000,12 +4868,23 @@ func _on_play_event_received(from_slot: int, card: Dictionary) -> void:
 			card_manager.begin_top_card_suppression()
 
 		if cv != null and is_instance_valid(cv):
+			cv.remove_meta("play_in_flight")
+			cv.visible = true
 			cv.set_clickable(false, true)
 			await cv.fly_to_discard_pile(0.3)
 			if is_instance_valid(cv):
 				if cv.get_parent() != null:
 					cv.get_parent().remove_child(cv)
 				cv.queue_free()
+		else:
+			# Optimistic hide before the event — drop any leftover hidden copy.
+			for ch in holder.get_children():
+				if ch is CardView and ch.card_res != null and int(ch.card_res.uid) == card_uid:
+					holder.remove_child(ch)
+					ch.queue_free()
+					break
+
+		clear_client_play_in_flight(card_uid)
 
 		var is_wild_play := r.type in [
 			CardResource.CardType.WILD,
@@ -4025,7 +4904,9 @@ func _on_play_event_received(from_slot: int, card: Dictionary) -> void:
 		if is_wild_play:
 			if card_manager != null:
 				card_manager.waiting_for_color = true
+				card_manager.current_color = CardResource.CardColor.BLACK
 				card_manager.pending_wild_card = card_manager.top_card
+				card_manager.sync_top_card_color_visual()
 			call_deferred("_ensure_wild_color_resolved", holder)
 
 		holder.sort_cards_full()
@@ -4039,42 +4920,211 @@ func _on_play_event_received(from_slot: int, card: Dictionary) -> void:
 		_finish_client_play_animation()
 		return
 
+	if int(from_slot) >= 0 and int(from_slot) < _last_hand_counts.size():
+		_last_hand_counts[int(from_slot)] = maxi(0, int(_last_hand_counts[int(from_slot)]) - 1)
+
 	var r := CardResource.from_sync_dict(card)
 
 	if card_manager != null:
 		card_manager.begin_top_card_suppression()
 
-	var temp: CardView = holder.CARD_VIEW.instantiate()
-	temp.in_hand_card = false
-	temp.hand_card_holder = null
-	temp.card_res = r
-	temp.show_front = true
-	temp.set_clickable(false, true)
-	temp.set_meta("anim_temp", true)
-	holder.add_child(temp)
-	temp.load_card()
+	var cv := _acquire_client_fly_card_view(holder, r, false)
+	if cv == null:
+		if card_manager != null:
+			card_manager.end_top_card_suppression(r, false)
+		_finish_client_play_animation()
+		return
 
 	await get_tree().process_frame
 	await get_tree().process_frame
 
-	await temp.fly_to_discard_pile(0.3)
+	await cv.fly_to_discard_pile(0.3)
 
-	if temp != null and is_instance_valid(temp):
-		temp.queue_free()
+	if cv != null and is_instance_valid(cv):
+		if cv.get_parent() != null:
+			cv.get_parent().remove_child(cv)
+		cv.queue_free()
+
+	var is_wild_play := r.type in [
+		CardResource.CardType.WILD,
+		CardResource.CardType.WILD_DRAW,
+		CardResource.CardType.WILD_DRAW_REVERSE,
+	]
 
 	if card_manager != null:
 		card_manager.end_top_card_suppression(r, false)
 
+	if is_wild_play:
+		set_wild_color_owner(holder)
+		if card_manager != null:
+			card_manager.waiting_for_color = true
+			card_manager.current_color = CardResource.CardColor.BLACK
+			card_manager.pending_wild_card = card_manager.top_card
+			card_manager.sync_top_card_color_visual()
+
 	update_turn_state()
+	_refresh_seat_names()
 	_finish_client_play_animation()
+
+func _on_client_swap_hands_visual(
+	owner_slot: int,
+	target_slot: int,
+	owner_count: int,
+	target_count: int,
+	anim_seed: int
+) -> void:
+	if _is_dedicated_server_peer():
+		return
+	if !multiplayer.is_server():
+		_client_swap_animating = true
+		var swap_watchdog := get_tree().create_timer(8.0)
+		swap_watchdog.timeout.connect(func() -> void:
+			if _client_swap_animating:
+				push_warning("QueueManager: swap animation watchdog fired; releasing client sync lock")
+				_finish_client_swap_animation()
+		, CONNECT_ONE_SHOT)
+	var owner := get_holder_for_slot(int(owner_slot))
+	var target := get_holder_for_slot(int(target_slot))
+	var feedback := _get_swap_hands_feedback()
+	if feedback == null or owner == null or target == null or !is_instance_valid(owner) or !is_instance_valid(target):
+		if !multiplayer.is_server():
+			call_deferred("_finish_client_swap_animation")
+		else:
+			call_deferred("_emit_swap_visual_finished", feedback)
+		return
+	if feedback.has_signal("visual_finished") and !multiplayer.is_server():
+		feedback.visual_finished.connect(_finish_client_swap_animation, CONNECT_ONE_SHOT)
+	if feedback.has_method("begin_swap_visual"):
+		feedback.begin_swap_visual(owner, target, int(owner_count), int(target_count), int(anim_seed))
+	elif !multiplayer.is_server():
+		call_deferred("_finish_client_swap_animation")
+
+
+func _is_dedicated_server_peer() -> bool:
+	return multiplayer.is_server() and (OS.has_feature("dedicated_server") or DisplayServer.get_name() == "headless")
+
+
+func _emit_swap_visual_finished(feedback: Node) -> void:
+	if feedback != null and is_instance_valid(feedback) and feedback.has_signal("visual_finished"):
+		feedback.visual_finished.emit()
+
+func _finish_client_swap_animation() -> void:
+	_client_swap_animating = false
+	_try_apply_pending_hand()
+	_apply_counts_to_ui()
+	_try_apply_pending_match_state()
+	if swap_color_pending and wild_color_owner != null:
+		_prompt_local_wild_color_picker()
 
 func _finish_client_play_animation() -> void:
 	_client_play_animating = false
+	_try_apply_pending_hand()
+	_apply_counts_to_ui()
 	_try_apply_pending_match_state()
+
+func _finish_client_draw_animation() -> void:
+	_client_draw_animating = false
+	_apply_counts_to_ui()
+	_try_apply_pending_hand()
+	_try_apply_pending_match_state()
+
+func _schedule_client_hand_watchdog() -> void:
+	if multiplayer.is_server() or _client_hand_watchdog_armed:
+		return
+	_client_hand_watchdog_armed = true
+	var watchdog := get_tree().create_timer(5.0)
+	watchdog.timeout.connect(func() -> void:
+		_client_hand_watchdog_armed = false
+		if _client_place_all_animating:
+			return
+		if _pending_hand.is_empty():
+			_client_request_hand_resync_if_desynced()
+			return
+		push_warning("QueueManager: hand sync watchdog fired; applying buffered hand")
+		_release_client_hand_sync_locks()
+		_try_apply_pending_hand()
+		_apply_counts_to_ui()
+		_try_apply_pending_match_state()
+		if !_pending_hand.is_empty():
+			_client_request_hand_resync_if_desynced()
+	, CONNECT_ONE_SHOT)
+
+func _client_request_hand_resync_if_desynced() -> void:
+	if multiplayer.is_server():
+		return
+	if _client_place_all_animating:
+		return
+	var slot := int(NetworkManager.my_slot)
+	if slot < 0 or slot >= _last_hand_counts.size():
+		return
+	var holder: HandCardHolder = _slot_to_holder.get(slot, null)
+	if holder == null or !is_instance_valid(holder):
+		return
+	var live := _count_cards_in_holder(holder)
+	var server_count := int(_last_hand_counts[slot])
+	if live == server_count:
+		return
+	var now := Time.get_ticks_msec()
+	if now - _last_hand_resync_ms < 3000:
+		return
+	_last_hand_resync_ms = now
+	push_warning(
+		"QueueManager: hand desync (%d local vs %d server); requesting resync" % [live, server_count]
+	)
+	NetworkManager.request_hand_sync()
+
+func _release_client_hand_sync_locks() -> void:
+	_client_draw_animating = false
+	_client_draw_queue.clear()
+	_client_swap_animating = false
+
+## Client: fly a drawn card from the deck pile into a player's hand.
+func _on_draw_event_received(from_slot: int, card_c: int, card_t: int, card_v: int, card_id: int) -> void:
+	if multiplayer.is_server():
+		return
+	# Own draws are authoritative via client_set_hand; animating them blocks hand sync.
+	if int(from_slot) == int(NetworkManager.my_slot):
+		return
+	_client_draw_queue.append([int(from_slot), int(card_c), int(card_t), int(card_v), int(card_id)])
+	call_deferred("_try_run_client_draw_queue")
+
+func _try_run_client_draw_queue() -> void:
+	if _client_draw_animating or _client_draw_queue.is_empty():
+		return
+	call_deferred("_run_client_draw_queue")
+
+func _run_client_draw_queue() -> void:
+	if _client_draw_animating:
+		return
+	_client_draw_animating = true
+	var draw_watchdog := get_tree().create_timer(8.0)
+	draw_watchdog.timeout.connect(func() -> void:
+		if _client_draw_animating:
+			push_warning("QueueManager: draw animation watchdog fired; releasing client sync lock")
+			_client_draw_queue.clear()
+			_finish_client_draw_animation()
+	, CONNECT_ONE_SHOT)
+	while _client_draw_queue.size() > 0:
+		var job: Array = _client_draw_queue.pop_front()
+		if job.size() < 5:
+			continue
+		var slot: int = int(job[0])
+		var card_c: int = int(job[1])
+		var card_t: int = int(job[2])
+		var card_v: int = int(job[3])
+		var card_id: int = int(job[4])
+		var holder: HandCardHolder = _slot_to_holder.get(slot, null)
+		if holder == null or !is_instance_valid(holder):
+			continue
+		var res: CardResource = _make_dummy_deal_card()
+		await _animate_deal_card_to_holder(holder, res, true)
+		_refresh_seat_names()
+	_finish_client_draw_animation()
 
 func _finish_client_place_all_animation() -> void:
 	_client_place_all_animating = false
 	_client_place_all_slot = -1
+	_client_suppress_draw_sound_once = true
 	_try_apply_pending_hand()
 	_apply_counts_to_ui()
 	_try_apply_pending_match_state()
@@ -4083,14 +5133,14 @@ func _finish_client_place_all_animation() -> void:
 func _on_place_all_event_received(from_slot: int, color: int, cards: Array) -> void:
 	if multiplayer.is_server():
 		return
+	_client_place_all_animating = true
+	_client_place_all_slot = int(from_slot)
 	call_deferred("_client_animate_place_all", int(from_slot), int(color), cards)
 
 func _client_animate_place_all(from_slot: int, color: int, cards: Array) -> void:
-	if _client_place_all_animating:
-		return
-
-	_client_place_all_animating = true
-	_client_place_all_slot = from_slot
+	if !_client_place_all_animating:
+		_client_place_all_animating = true
+		_client_place_all_slot = from_slot
 
 	var holder: HandCardHolder = _slot_to_holder.get(from_slot, null)
 	if holder == null or !is_instance_valid(holder) or cards.is_empty():
@@ -4116,29 +5166,24 @@ func _client_animate_place_all(from_slot: int, color: int, cards: Array) -> void
 			continue
 
 		var res := CardResource.from_sync_dict(entry)
-		var cv: CardView = null
-
-		if is_own_hand:
-			for ch in holder.get_children():
-				if ch is CardView and ch.card_res != null and int(ch.card_res.uid) == int(res.uid):
-					cv = ch
-					break
-		else:
-			for ch in holder.get_children():
-				if ch is CardView and is_instance_valid(ch) and not ch.get_meta("anim_temp", false):
-					cv = ch
-					break
+		var cv := _acquire_client_fly_card_view(holder, res, is_own_hand, !is_own_hand)
+		if cv == null:
+			if card_manager != null:
+				card_manager.set_top_card_no_effect(res)
+			if i < cards.size() - 1:
+				await get_tree().create_timer(delay_between).timeout
+			continue
 
 		var anim_duration := 0.26 if i == cards.size() - 1 else duration
 
-		if cv != null and is_instance_valid(cv):
-			SoundManager.play_card_played()
-			cv.set_clickable(false, true)
-			await cv.fly_to_discard_pile(anim_duration)
-			if is_instance_valid(cv):
-				if cv.get_parent() == holder:
-					holder.remove_child(cv)
-				cv.queue_free()
+		SoundManager.play_card_played()
+		await get_tree().process_frame
+		await get_tree().process_frame
+		await cv.fly_to_discard_pile(anim_duration)
+		if is_instance_valid(cv):
+			if cv.get_parent() == holder:
+				holder.remove_child(cv)
+			cv.queue_free()
 
 		if card_manager != null:
 			card_manager.set_top_card_no_effect(res)

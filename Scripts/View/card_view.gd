@@ -88,13 +88,8 @@ func _ready() -> void:
 			_snap_appear_start_pose()
 		else:
 			_snap_rest_pose()
-	elif animation_player != null and animation_player.has_animation("appear"):
-		animation_player.play("appear")
-		animation_player.seek(animation_player.current_animation_length, true)
-		animation_player.stop()
 	else:
-		if animation_player != null:
-			animation_player.stop()
+		_snap_rest_pose()
 
 	if is_top_card:
 		current_top_card = self
@@ -197,6 +192,14 @@ func _snap_rest_pose() -> void:
 		visuells.position = Vector2.ZERO
 		visuells.scale = Vector2.ONE
 		visuells.z_index = 0
+
+
+## Returns the global anchor used as the discard-pile fly target.
+func get_discard_anchor_global() -> Vector2:
+	_snap_rest_pose()
+	if visuells != null and is_instance_valid(visuells):
+		return visuells.global_position
+	return global_position
 
 
 func _snap_appear_start_pose() -> void:
@@ -319,13 +322,6 @@ func rezise_card() -> void:
 	else:
 		scale = Vector2(1, 1)
 
-## Returns the scene overlay layer used for fly animations and tooltips.
-func _get_overlay_layer() -> CanvasLayer:
-	var scene := get_tree().current_scene
-	if scene == null:
-		return null
-	return scene.get_node_or_null("CanvasLayer") as CanvasLayer
-
 ## Reset hover/zoom offsets before a fly animation.
 func _reset_visuells_for_fly() -> void:
 	if visuells == null:
@@ -338,60 +334,141 @@ func _reset_visuells_for_fly() -> void:
 		animation_player.seek(0.0, true)
 		animation_player.stop()
 
-## Global offset from card origin to visuells anchor in screen space.
-func _visuells_origin_offset() -> Vector2:
-	if visuells == null:
-		return Vector2.ZERO
-	return visuells.global_position - global_position
+func _resolve_scene_tree() -> SceneTree:
+	var tree := get_tree()
+	if tree != null:
+		return tree
+	if hand_card_holder != null and is_instance_valid(hand_card_holder):
+		tree = hand_card_holder.get_tree()
+		if tree != null:
+			return tree
+	var top := current_top_card
+	if top != null and is_instance_valid(top):
+		return top.get_tree()
+	return Engine.get_main_loop() as SceneTree
+
+func _await_frames(count: int = 1) -> void:
+	var tree := _resolve_scene_tree()
+	if tree == null:
+		return
+	for _i in range(maxi(count, 1)):
+		if !is_instance_valid(self):
+			return
+		await tree.process_frame
+
+## Attach detached cards so tweens/awaits work (opponent play uses a pulled card back).
+func _ensure_in_tree_for_fly() -> bool:
+	if !is_instance_valid(self):
+		return false
+	if is_inside_tree():
+		return true
+	var top := current_top_card
+	if top == null or !is_instance_valid(top) or !top.is_inside_tree():
+		return false
+	var host := top.get_parent()
+	if host == null:
+		return false
+	host.add_child(self)
+	top_level = true
+	z_as_relative = false
+	z_index = 4095
+	if has_meta("fly_start_vis_global") and visuells != null and is_instance_valid(visuells):
+		var start_vis: Vector2 = get_meta("fly_start_vis_global")
+		remove_meta("fly_start_vis_global")
+		var vis_offset := visuells.global_position - global_position
+		global_position = start_vis - vis_offset
+	return true
 
 ## Flies this card to the discard pile, centered on the top card (all peers).
 func fly_to_discard_pile(duration: float = 0.35, overshoot: float = 14.0) -> void:
+	if !is_instance_valid(self):
+		return
 	var top := current_top_card
-	if top == null or top == self:
+	if top == null or top == self or !is_instance_valid(top):
 		return
 	if visuells == null or !is_instance_valid(visuells):
 		return
 	if top.visuells == null or !is_instance_valid(top.visuells):
 		return
+	if !_ensure_in_tree_for_fly():
+		return
 
 	show_front = true
 	_reset_visuells_for_fly()
-
-	var start_vis_global := visuells.global_position
-	var end_vis_global := top.visuells.global_position
-
-	var layer := _get_overlay_layer()
-	if layer == null:
-		return
-
-	var parent := get_parent()
-	if parent != null:
-		parent.remove_child(self)
-	layer.add_child(self)
-	top_level = true
-	z_as_relative = false
-	z_index = 4096
+	top._snap_rest_pose()
 
 	card_size = top.card_size
 	rezise_card()
 
-	await get_tree().process_frame
+	var start_vis_global := visuells.global_position
+	var end_vis_global := top.get_discard_anchor_global()
 
-	var vis_offset := _visuells_origin_offset()
-	global_position = start_vis_global - vis_offset
+	var saved_top_level := visuells.top_level
+	var saved_z := visuells.z_index
+	var saved_z_rel := visuells.z_as_relative
 
-	var target_pos := end_vis_global - vis_offset
-	var dir := target_pos - global_position
-	var overshoot_pos := target_pos
+	visuells.top_level = true
+	visuells.z_as_relative = false
+	visuells.z_index = 4096
+	# Hide the hand slot while visuells flies — prevents a duplicate card showing
+	# in the fan layout during and after the tween.
+	visible = false
+
+	await _await_frames(1)
+	if !is_instance_valid(self) or !is_instance_valid(visuells) or !is_inside_tree():
+		return
+
+	visuells.global_position = start_vis_global
+
+	var dir := end_vis_global - start_vis_global
+	var overshoot_pos := end_vis_global
 	if dir.length() > 0.001:
-		overshoot_pos = target_pos + dir.normalized() * overshoot
+		overshoot_pos = end_vis_global + dir.normalized() * overshoot
 
 	var tween := create_tween()
-	tween.tween_property(self, "global_position", overshoot_pos, duration * 0.75) \
+	if tween == null:
+		return
+	tween.tween_property(visuells, "global_position", overshoot_pos, duration * 0.75) \
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	tween.tween_property(self, "global_position", target_pos, duration * 0.25) \
+	tween.tween_property(visuells, "global_position", end_vis_global, duration * 0.25) \
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	await tween.finished
+
+	if is_instance_valid(visuells):
+		visuells.visible = false
+		visuells.top_level = saved_top_level
+		visuells.z_as_relative = saved_z_rel
+		visuells.z_index = saved_z
+
+## Slides visuells from the draw pile into the hand slot without reparenting.
+func deal_slide_in(deck_anchor: Vector2, duration: float = 0.11) -> void:
+	if visuells == null or !is_instance_valid(visuells):
+		return
+
+	modulate = Color(1, 1, 1, 1)
+	_reset_visuells_for_fly()
+	_snap_rest_pose()
+
+	for _i in range(4):
+		await _await_frames(1)
+		if !is_instance_valid(self) or visuells == null:
+			return
+
+	var end_global := visuells.global_position
+	if end_global.distance_squared_to(deck_anchor) < 4.0:
+		_snap_rest_pose()
+		return
+
+	visuells.global_position = deck_anchor
+
+	var tween := create_tween()
+	if tween == null:
+		_snap_rest_pose()
+		return
+	tween.tween_property(visuells, "global_position", end_global, duration) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	await tween.finished
+	_snap_rest_pose()
 
 ## Animate moving this card button to the top card
 func smooth_move_button_to_top_card_juicy(duration: float = 0.35, overshoot: float = 14.0) -> void:

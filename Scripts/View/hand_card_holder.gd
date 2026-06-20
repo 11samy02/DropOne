@@ -79,7 +79,7 @@ func align_cards(delta: float) -> void:
 func _get_card_count() -> int:
 	var n := 0
 	for c in get_children():
-		if c is CardView:
+		if c is CardView and not c.get_meta("anim_temp", false) and not c.get_meta("play_in_flight", false):
 			n += 1
 	return n
 
@@ -172,6 +172,28 @@ func _get_insert_index(card_res: CardResource) -> int:
 				return i
 	return children.size()
 
+## Adds a card for an animated deal; caller runs deal_slide_in after layout settles.
+func add_card_for_deal(card_res: CardResource, show_front: bool = false) -> CardView:
+	var card_view: CardView = CARD_VIEW.instantiate()
+	card_view.in_hand_card = true
+	card_view.hand_card_holder = self
+	# Must stay visible for HBox layout; hide via alpha until the slide starts.
+	card_view.visible = true
+	card_view.modulate = Color(1, 1, 1, 0)
+	card_view.set_meta("play_appear", false)
+	card_view.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	card_view.show_front = show_front
+
+	add_child(card_view)
+	card_view.card_res = card_res
+	if card_view.has_method("load_card"):
+		card_view.load_card()
+
+	var idx := _get_insert_index(card_res)
+	move_child(card_view, idx)
+	return card_view
+
+
 ## Adds a card to this holder and places it directly into the correct sorted position
 func add_card(card_res: CardResource, play_appear: bool = false) -> void:
 	var card_view: CardView = CARD_VIEW.instantiate()
@@ -248,13 +270,29 @@ func set_card(card_view: CardView) -> void:
 	if multiplayer.has_multiplayer_peer() and !multiplayer.is_server():
 		_busy = true
 		_queued = null
-		NetworkManager.request_play(int(card_view.card_res.uid))
+		var play_uid := int(card_view.card_res.uid)
+		if queue_manager != null:
+			queue_manager.register_client_play_in_flight(play_uid)
+		card_view.set_clickable(false, true)
+		card_view.set_meta("play_in_flight", true)
+		card_view.visible = false
+		sort_cards_full()
+		refresh_playable_cards()
+		NetworkManager.request_play(play_uid)
 		if _remote_play_timeout != null:
 			_remote_play_timeout = null
 		_remote_play_timeout = get_tree().create_timer(3.0)
 		_remote_play_timeout.timeout.connect(func():
 			if _busy:
 				_busy = false
+				if queue_manager != null:
+					queue_manager.clear_client_play_in_flight(play_uid)
+				if is_instance_valid(card_view) and card_view.get_parent() == self:
+					card_view.remove_meta("play_in_flight")
+					card_view.visible = true
+					card_view.set_clickable(true, false)
+					sort_cards_full()
+					refresh_playable_cards()
 		, CONNECT_ONE_SHOT)
 		return
 	
@@ -282,7 +320,7 @@ func set_card(card_view: CardView) -> void:
 			"v": int(played_card_res.value),
 			"id": int(played_card_res.uid),
 		}
-		NetworkManager.rpc("client_play_event", int(player_index), ev)
+		NetworkManager.rpc("client_play_event", int(player_index), ev, int(NetworkManager.match_epoch))
 	
 	SoundManager.play_card_played()
 	card_view.set_clickable(false, true)
@@ -373,6 +411,8 @@ func can_play_card(card_res: CardResource) -> bool:
 					return true
 				return false
 			return card_res.color == current_color
+		if card_res.type == CardResource.CardType.TARGET_DRAW or card_res.type == CardResource.CardType.MULTI_TARGET_DRAW:
+			return card_res.value == top.value or card_res.color == top.color
 		return true
 
 	if card_res.type == CardResource.CardType.NUMBER and top.type == CardResource.CardType.NUMBER and card_res.value == top.value:

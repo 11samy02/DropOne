@@ -143,6 +143,8 @@ func _on_feedback_show(text: String, kind: int = Signals.FeedbackKind.BLOCKED) -
 
 	_popup.scale = Vector2(0.82, 0.82)
 	_popup.modulate = Color(1, 1, 1, 0)
+	_popup.top_level = true
+	_popup.z_index = 4096
 	_popup.visible = true
 	if _popup_icon != null:
 		_popup_icon.scale = Vector2(0.6, 0.6)
@@ -167,6 +169,7 @@ func _on_feedback_show(text: String, kind: int = Signals.FeedbackKind.BLOCKED) -
 	_popup_tween.tween_callback(func():
 		if _popup != null:
 			_popup.visible = false
+			_popup.top_level = false
 		if _popup_icon != null:
 			_popup_icon.scale = Vector2.ONE
 		_busy = false
@@ -181,4 +184,4 @@ func _center_popup() -> void:
 	if size.x <= 1.0 or size.y <= 1.0:
 		size = _panel.size
 	var vp := get_viewport().get_visible_rect().size
-	_popup.position = (vp - size) * 0.5 + Vector2(0, -40)
+	_popup.global_position = (vp - size) * 0.5 + Vector2(0, -40)

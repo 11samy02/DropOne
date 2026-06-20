@@ -1,16 +1,19 @@
 extends Control
 
+signal visual_finished
+
 const AVATAR_SIZE := 88.0
 const SWAP_ICON_SIZE := 56.0
 const CARD_FLY_SIZE := Vector2(54, 78)
 const MAX_FLYING_CARDS := 10
 const FLY_DURATION := 0.55
-const POPUP_HOLD := 1.4
-const FADE_IN := 0.16
-const FADE_OUT := 0.22
+const POPUP_HOLD := 0.65
+const FADE_IN := 0.14
+const FADE_OUT := 0.15
 
 @export var queue_manager: QueueManager
 
+var _fly_layer: Control = null
 var _overlay: Control = null
 var _panel: PanelContainer = null
 var _title_label: Label = null
@@ -19,7 +22,7 @@ var _owner_avatar: TextureRect = null
 var _target_avatar: TextureRect = null
 var _owner_name: Label = null
 var _target_name: Label = null
-var _popup_busy := false
+var _visual_running := false
 
 
 func _ready() -> void:
@@ -28,14 +31,37 @@ func _ready() -> void:
 	z_index = 450
 	add_to_group("swap_hands_feedback")
 	_build_ui()
-	NetworkManager.swap_hands_event_received.connect(_on_swap_event_received)
+	if queue_manager == null:
+		queue_manager = get_tree().get_first_node_in_group("queue_manager") as QueueManager
 
 
 func get_fly_duration() -> float:
 	return FLY_DURATION + 0.35
 
 
+func get_visual_duration() -> float:
+	return get_fly_duration() + POPUP_HOLD + FADE_OUT
+
+
+## Awaitable swap visual used by solo/offline authoritative resolution.
+func run_swap_visual(
+	owner: HandCardHolder,
+	target: HandCardHolder,
+	owner_count: int,
+	target_count: int,
+	anim_seed: int = 0
+) -> void:
+	if owner == null or target == null:
+		return
+	await _run_swap_visual(owner, target, owner_count, target_count, anim_seed)
+
+
 func _build_ui() -> void:
+	_fly_layer = Control.new()
+	_fly_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_fly_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(_fly_layer)
+
 	_overlay = Control.new()
 	_overlay.visible = false
 	_overlay.modulate = Color(1, 1, 1, 0)
@@ -166,24 +192,29 @@ func _make_swap_icon_column() -> VBoxContainer:
 	return col
 
 
-func _on_swap_event_received(owner_slot: int, target_slot: int, owner_count: int, target_count: int) -> void:
-	if multiplayer.is_server():
-		return
-	var owner := _slot_to_holder(owner_slot)
-	var target := _slot_to_holder(target_slot)
+## Starts fly animation + popup on every peer (host included via call_local RPC).
+func begin_swap_visual(
+	owner: HandCardHolder,
+	target: HandCardHolder,
+	owner_count: int,
+	target_count: int,
+	anim_seed: int = 0
+) -> void:
 	if owner == null or target == null:
 		return
-	begin_swap_visual(owner, target, owner_count, target_count)
+	_run_swap_visual(owner, target, owner_count, target_count, anim_seed)
 
 
-## Starts fly animation + popup without blocking game logic on the host/server.
-func begin_swap_visual(owner: HandCardHolder, target: HandCardHolder, owner_count: int, target_count: int) -> void:
-	if owner == null or target == null:
-		return
-	_run_swap_visual(owner, target, owner_count, target_count)
-
-
-func _run_swap_visual(owner: HandCardHolder, target: HandCardHolder, owner_count: int, target_count: int) -> void:
+func _run_swap_visual(
+	owner: HandCardHolder,
+	target: HandCardHolder,
+	owner_count: int,
+	target_count: int,
+	anim_seed: int = 0
+) -> void:
+	if _visual_running:
+		await visual_finished
+	_visual_running = true
 	_apply_popup_content(owner, target)
 
 	var from_a := _holder_center(owner)
@@ -191,11 +222,15 @@ func _run_swap_visual(owner: HandCardHolder, target: HandCardHolder, owner_count
 
 	_show_popup()
 	_center_panel()
-	_animate_card_exchange(from_a, from_b, owner_count, target_count)
+	_animate_card_exchange(from_a, from_b, owner_count, target_count, anim_seed)
 
 	await get_tree().create_timer(get_fly_duration()).timeout
 	await get_tree().create_timer(POPUP_HOLD).timeout
 	await _hide_popup()
+	if _fly_layer != null:
+		_fly_layer.top_level = false
+	_visual_running = false
+	visual_finished.emit()
 
 
 func _apply_popup_content(owner: HandCardHolder, target: HandCardHolder) -> void:
@@ -255,29 +290,34 @@ func _holder_center(holder: HandCardHolder) -> Vector2:
 
 func _slot_to_holder(slot: int) -> HandCardHolder:
 	if queue_manager == null:
+		queue_manager = get_tree().get_first_node_in_group("queue_manager") as QueueManager
+	if queue_manager == null:
 		return null
-	if queue_manager.has_method("get_holder_for_slot"):
-		return queue_manager.get_holder_for_slot(int(slot))
-	return null
+	return queue_manager.get_holder_for_slot(int(slot))
 
 
-func _animate_card_exchange(from_a: Vector2, from_b: Vector2, count_a: int, count_b: int) -> void:
+func _animate_card_exchange(from_a: Vector2, from_b: Vector2, count_a: int, count_b: int, anim_seed: int = 0) -> void:
 	var layer := _get_fly_layer()
 	if layer == null:
 		return
+	layer.top_level = true
+	layer.z_index = 4095
+
+	var rng := RandomNumberGenerator.new()
+	rng.seed = int(anim_seed)
 
 	var n_a := mini(maxi(count_a, 1), MAX_FLYING_CARDS)
 	var n_b := mini(maxi(count_b, 1), MAX_FLYING_CARDS)
 
 	for i in range(n_a):
-		var start := from_a + Vector2(randf_range(-28, 28), randf_range(-18, 18))
-		var end := from_b + Vector2(randf_range(-28, 28), randf_range(-18, 18))
+		var start := from_a + Vector2(rng.randf_range(-28, 28), rng.randf_range(-18, 18))
+		var end := from_b + Vector2(rng.randf_range(-28, 28), rng.randf_range(-18, 18))
 		var mid := (start + end) * 0.5 + Vector2(0, -80 - i * 6)
 		_fly_card_back(layer, start, mid, end, float(i) * 0.04)
 
 	for i in range(n_b):
-		var start := from_b + Vector2(randf_range(-28, 28), randf_range(-18, 18))
-		var end := from_a + Vector2(randf_range(-28, 28), randf_range(-18, 18))
+		var start := from_b + Vector2(rng.randf_range(-28, 28), rng.randf_range(-18, 18))
+		var end := from_a + Vector2(rng.randf_range(-28, 28), rng.randf_range(-18, 18))
 		var mid := (start + end) * 0.5 + Vector2(0, -80 - i * 6)
 		_fly_card_back(layer, start, mid, end, float(i) * 0.04 + 0.05)
 
@@ -314,22 +354,14 @@ func _fly_card_back(layer: Control, start: Vector2, mid: Vector2, end: Vector2, 
 
 
 func _get_fly_layer() -> Control:
-	var tree := get_tree()
-	if tree == null or tree.root == null:
-		return null
-	var layer := tree.root.get_node_or_null("SwapFlyLayer") as Control
-	if layer == null:
-		layer = Control.new()
-		layer.name = "SwapFlyLayer"
-		layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		tree.root.add_child(layer)
-	return layer
+	return _fly_layer
 
 
 func _show_popup() -> void:
 	if _overlay == null:
 		return
+	_overlay.top_level = true
+	_overlay.z_index = 4096
 	_overlay.visible = true
 	_overlay.modulate = Color(1, 1, 1, 0)
 	_panel.scale = Vector2(0.86, 0.86)
@@ -346,6 +378,7 @@ func _hide_popup() -> void:
 	tween.tween_property(_overlay, "modulate:a", 0.0, FADE_OUT)
 	await tween.finished
 	_overlay.visible = false
+	_overlay.top_level = false
 
 
 func _center_panel() -> void:
@@ -356,4 +389,4 @@ func _center_panel() -> void:
 	if size.x <= 1.0:
 		size = _panel.size
 	var vp := get_viewport().get_visible_rect().size
-	_panel.position = (vp - size) * 0.5
+	_panel.global_position = (vp - size) * 0.5

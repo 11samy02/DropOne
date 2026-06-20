@@ -298,6 +298,10 @@ func _build_configs() -> void:
 		}
 	}
 
+func _is_authoritative() -> bool:
+	return queue_manager != null and queue_manager._is_authoritative()
+
+
 func _on_turn_changed(holder: HandCardHolder) -> void:
 	if holder == null:
 		return
@@ -306,6 +310,8 @@ func _on_turn_changed(holder: HandCardHolder) -> void:
 	if holder != hand_card_holder:
 		return
 	if !hand_card_holder.is_bot:
+		return
+	if !_is_authoritative():
 		return
 	play_turn()
 
@@ -316,14 +322,18 @@ func is_play_turn_running() -> bool:
 func play_turn() -> void:
 	if _play_turn_running:
 		return
+	if !_is_authoritative():
+		return
 	if queue_manager != null and queue_manager.roulette_active:
 		return
 	if card_manager == null or queue_manager == null or hand_card_holder == null:
 		return
 	if card_manager.waiting_for_color:
 		if queue_manager.wild_color_owner == hand_card_holder:
+			queue_manager.call_deferred("_ensure_wild_color_resolved", hand_card_holder)
 			return
 		if queue_manager.swap_color_pending and _still_my_turn():
+			queue_manager.call_deferred("_finish_bot_swap_color", hand_card_holder)
 			return
 		# Stale color-wait flag from a finished effect — do not block this bot's turn.
 		if queue_manager.wild_color_owner == null or !is_instance_valid(queue_manager.wild_color_owner):
@@ -435,7 +445,17 @@ func _run_play_turn() -> void:
 	if _still_my_turn():
 		var playable_after := get_playable_cards()
 		if playable_after.is_empty():
-			queue_manager.end_turn()
+			if !queue_manager.has_drawn_this_turn and queue_manager.can_draw_from_pile():
+				if queue_manager.bot_draw_current():
+					await get_tree().create_timer(0.2).timeout
+					if !_still_my_turn():
+						return
+					var after_draw := get_playable_cards()
+					if after_draw.size() > 0:
+						hand_card_holder.set_card(choose_best_card(after_draw))
+						return
+			if _still_my_turn():
+				queue_manager.end_turn()
 
 func _still_my_turn() -> bool:
 	return queue_manager != null and queue_manager.get_current_holder() == hand_card_holder
@@ -443,9 +463,11 @@ func _still_my_turn() -> bool:
 ## Returns all CardViews in hand that are legal to play now.
 func get_playable_cards() -> Array[CardView]:
 	var arr: Array[CardView] = []
+	if queue_manager == null or hand_card_holder == null:
+		return arr
 	for c in hand_card_holder.get_children():
 		if c is CardView:
-			if hand_card_holder.can_play_card(c.card_res):
+			if hand_card_holder.can_play_card(c.card_res) and queue_manager.can_play_now(hand_card_holder):
 				arr.append(c)
 	return arr
 
@@ -1899,7 +1921,7 @@ func _omega_try_cheat_draw() -> bool:
 	var best := _omega_find_perfect_draw_candidate(omega_cheat_draw_range)
 	if best != null:
 		hand_card_holder.add_card(best)
-		queue_manager.notify_card_drawn(int(hand_card_holder.player_index))
+		queue_manager.notify_card_drawn(int(hand_card_holder.player_index), 1, true, best)
 		return true
 
 	return queue_manager.bot_draw_current()

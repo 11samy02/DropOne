@@ -1,6 +1,8 @@
 extends Control
 class_name SteamLobbyRoom
 
+const _DeckStorage = preload("res://Scripts/DeckEditor/deck_storage.gd")
+
 const PLAYER_ROW := preload("res://Scenes/UI/steam_lobby_player_row.tscn")
 const LOBBY_HUB := "res://Scenes/UI/steam_lobby_hub.tscn"
 const GAME_SCENE_PATH := "res://Scenes/Managers/card_manager.tscn"
@@ -192,8 +194,11 @@ func _setup_deck_options() -> void:
 		return
 	deck_option.clear()
 	_deck_paths = Globals.list_deck_paths()
+	for user_path in _DeckStorage.list_user_deck_paths():
+		if not _deck_paths.has(user_path):
+			_deck_paths.append(user_path)
 	for i in range(_deck_paths.size()):
-		deck_option.add_item(Globals.deck_display_name(_deck_paths[i]), i)
+		deck_option.add_item(Globals.deck_display_name(_deck_paths[i], true), i)
 	if _deck_paths.is_empty():
 		deck_option.add_item("Default", 0)
 		deck_option.disabled = true

@@ -71,6 +71,25 @@ func create_card(color: CardResource.CardColor, type: CardResource.CardType, val
 	_uid_counter += 1
 	return card
 
+
+## Clears runtime piles and uid state before building a fresh match deck.
+func reset_for_new_match() -> void:
+	deck.clear()
+	discard_pile.clear()
+	_uid_counter = 1
+	top_card = null
+	pending_wild_card = null
+	waiting_for_color = false
+	current_color = CardResource.CardColor.RED
+	_top_card_suppressed = false
+	_suppressed_top_card = null
+	if top_card_view != null and is_instance_valid(top_card_view):
+		top_card_view.card_res = null
+		if top_card_view.has_method("_snap_rest_pose"):
+			top_card_view._snap_rest_pose()
+		if top_card_view.has_method("load_card"):
+			top_card_view.load_card()
+
 ## Draws until a valid starting NUMBER card is found and sets it as top.
 func set_top_card() -> void:
 	if deck.is_empty():
@@ -147,6 +166,8 @@ func set_top_card_runtime(card: CardResource, prompt_color: bool = true) -> void
 
 	top_card_view.card_res = top_card
 	sync_top_card_color_visual()
+	if top_card_view.has_method("_snap_rest_pose"):
+		top_card_view._snap_rest_pose()
 	update_draw_button_state()
 
 ## Sets top card without triggering wild/color side effects (place-all steps).
@@ -169,6 +190,8 @@ func set_top_card_no_effect(card: CardResource) -> void:
 
 	top_card_view.card_res = top_card
 	sync_top_card_color_visual()
+	if top_card_view.has_method("_snap_rest_pose"):
+		top_card_view._snap_rest_pose()
 	update_draw_button_state()
 
 
@@ -201,7 +224,7 @@ func sync_top_card_color_visual() -> void:
 	if top_card_view == null or !is_instance_valid(top_card_view) or top_card == null:
 		return
 
-	if CardResource.is_neutral_wild_type(top_card.type):
+	if CardResource.is_neutral_wild_type(top_card.type) or _card_requires_color_selection(top_card):
 		if waiting_for_color or current_color == CardResource.CardColor.BLACK:
 			top_card_view.override_color_enabled = false
 		else:
@@ -211,6 +234,8 @@ func sync_top_card_color_visual() -> void:
 		top_card_view.override_color_enabled = false
 
 	top_card_view.load_card()
+	if top_card_view.has_method("_snap_rest_pose"):
+		top_card_view._snap_rest_pose()
 
 
 ## Draw button handler: validates turn then emits DECK_draw_pressed.
@@ -236,7 +261,7 @@ func draw_card() -> CardResource:
 		refill_deck_from_discard()
 	if deck.is_empty():
 		return null
-	var card := deck.pop_front()
+	var card: CardResource = deck.pop_front()
 	if card != null:
 		card.ensure_neutral_wild_color()
 	return card
@@ -279,6 +304,18 @@ func get_top_card() -> CardResource:
 
 func get_current_color() -> CardResource.CardColor:
 	return current_color
+
+
+## Global center of the visible draw pile (card face, not the count label).
+func get_draw_deck_anchor_global() -> Vector2:
+	if draw_button != null and is_instance_valid(draw_button):
+		var shadow := draw_button.get_node_or_null("shadow") as Control
+		if shadow != null and is_instance_valid(shadow):
+			return shadow.get_global_rect().get_center()
+		return draw_button.get_global_rect().get_center()
+	if top_card_view != null and is_instance_valid(top_card_view):
+		return top_card_view.get_discard_anchor_global()
+	return Vector2.ZERO
 
 
 ## Enables or disables the draw button based on turn and color-wait state.

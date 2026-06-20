@@ -70,13 +70,38 @@ func ensure_neutral_wild_color() -> void:
 	if is_neutral_wild_type(type):
 		color = CardColor.BLACK
 
+## True when a sync dict carries a real runtime card identity (not a dummy back).
+static func sync_dict_has_identity(data: Dictionary) -> bool:
+	return data.has("id") and int(data.get("id", 0)) > 0
+
+
 ## Builds a runtime card from multiplayer sync data with wild color normalized.
 static func from_sync_dict(data: Dictionary) -> CardResource:
 	var r := CardResource.new()
-	r.color = int(data.get("c", 0)) as CardColor
-	r.type = int(data.get("t", 0)) as CardType
+	# RED == 0 — never treat a missing "c" key as "no color".
+	if data.has("c"):
+		r.color = int(data["c"]) as CardColor
+	else:
+		r.color = CardColor.RED
+	if data.has("t"):
+		r.type = int(data["t"]) as CardType
+	else:
+		r.type = CardType.NUMBER
 	r.value = int(data.get("v", 0))
 	r.uid = int(data.get("id", 0))
+	r.ensure_neutral_wild_color()
+	return r
+
+
+## Builds a runtime card from explicit draw-event RPC fields (avoids dict c=0 issues).
+static func from_draw_event(card_c: int, card_t: int, card_v: int, card_id: int) -> CardResource:
+	if card_id <= 0:
+		return null
+	var r := CardResource.new()
+	r.color = card_c as CardColor
+	r.type = card_t as CardType
+	r.value = card_v
+	r.uid = card_id
 	r.ensure_neutral_wild_color()
 	return r
 

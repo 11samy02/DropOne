@@ -7,36 +7,28 @@ const PLAYER_PROFILE_CARD := preload("uid://h382lyh12543")
 
 @onready var profile_container: GridContainer = %profile_container
 @onready var panel: Panel = %Panel
+@onready var _title_label: Label = %TitleLabel
 
 var _active := false
 var _owner: HandCardHolder = null
 var _allow_self := false
-var _title_label: Label = null
 
 func _ready() -> void:
 	hide()
-	_ensure_title_label()
+	_configure_title_label()
 	Signals.TARGET_request_target_select.connect(_on_request_target_select)
 	Signals.TURN_changed.connect(_on_turn_changed)
 
-func _ensure_title_label() -> void:
-	if panel == null:
+func _configure_title_label() -> void:
+	if _title_label == null:
 		return
-	_title_label = panel.get_node_or_null("TitleLabel") as Label
-	if _title_label != null:
-		return
-	_title_label = Label.new()
-	_title_label.name = "TitleLabel"
-	_title_label.text = "Choose a player to swap hands with"
-	_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_title_label.add_theme_font_size_override("font_size", 30)
+	_title_label.text = _get_selection_prompt()
 	_title_label.add_theme_color_override("font_color", Color(0.92, 0.96, 1.0, 1))
 	_title_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
 	_title_label.add_theme_constant_override("outline_size", 5)
-	_title_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
-	_title_label.offset_top = 18.0
-	_title_label.offset_bottom = 58.0
-	panel.add_child(_title_label)
+
+func _ensure_title_label() -> void:
+	_configure_title_label()
 
 func _on_request_target_select(owner: HandCardHolder, allow_self: bool) -> void:
 	if queue_manager == null:
@@ -74,10 +66,11 @@ func _refresh() -> void:
 				targets.append(h)
 
 	if _title_label != null:
+		var prompt := _get_selection_prompt()
 		if _owner != null and _owner.profile != null:
-			_title_label.text = "%s — choose a player to swap hands with" % _owner.profile.player_name
+			_title_label.text = "%s — %s" % [_owner.profile.player_name, prompt]
 		else:
-			_title_label.text = "Choose a player to swap hands with"
+			_title_label.text = prompt.capitalize()
 
 	for holder in targets:
 		if holder == null or !is_instance_valid(holder):
@@ -100,6 +93,16 @@ func _refresh() -> void:
 			card.pressed.connect(func(h):
 				_on_target_clicked(h)
 			)
+
+func _get_selection_prompt() -> String:
+	if queue_manager != null and queue_manager.target_draw_active:
+		var count := maxi(queue_manager.target_draw_value, 1)
+		if count == 1:
+			return "choose an opponent to draw 1 card"
+		return "choose an opponent to draw %d cards" % count
+	if queue_manager != null and queue_manager.pending_swap_owner != null:
+		return "choose a player to swap hands with"
+	return "choose a player"
 
 func _resolve_profile(holder: HandCardHolder) -> PlayerProfile:
 	var profile := holder.profile

@@ -9,6 +9,11 @@ const CLASSIC_DECK_PATH := "res://Resources/Decks/Classic.tres"
 ## Deck path chosen in lobby; empty uses the scene default deck.
 var selected_deck_path: String = ""
 
+## Temporary navigation state for the deck editor screens.
+var deck_editor_path: String = ""
+var deck_editor_read_only: bool = false
+var deck_editor_working_deck: DeckResource = null
+
 
 ## Default lobby deck: Classic when available, otherwise the first listed deck.
 func get_default_deck_path() -> String:
@@ -63,18 +68,26 @@ func list_deck_paths() -> Array[String]:
 
 
 ## Human-readable name for a deck path (falls back to the file name).
-## Human-readable deck title from resource or file basename.
-func deck_display_name(path: String) -> String:
+func deck_display_name(path: String, mark_custom: bool = false) -> String:
 	var deck := load_deck(path)
+	var name := ""
 	if deck != null and str(deck.deck_name).strip_edges() != "":
-		return str(deck.deck_name)
-	return path.get_file().get_basename()
+		name = str(deck.deck_name)
+	else:
+		name = path.get_file().get_basename()
+	if mark_custom and path.begins_with("user://"):
+		return "%s (Custom)" % name
+	return name
 
 
-## Loads a DeckResource from a res:// path; returns null if missing.
+## Loads a DeckResource from res:// or user://; returns null if missing.
 func load_deck(path: String) -> DeckResource:
 	if path == "":
 		return null
+	if path.begins_with("user://"):
+		if not FileAccess.file_exists(path):
+			return null
+		return ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE) as DeckResource
 	if not ResourceLoader.exists(path):
 		return null
 	return load(path) as DeckResource

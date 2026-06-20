@@ -129,6 +129,95 @@ static func number_rules_from_dict(data: Dictionary) -> DeckNumberRuleResource:
 	return rules
 
 
+## Serializes a DeckResource to JSON for multiplayer sync and editor export.
+static func deck_to_dict(deck: DeckResource) -> Dictionary:
+	if deck == null:
+		return {}
+	var data := {
+		"deck_name": deck.deck_name,
+		"entries": [],
+	}
+	if deck.number_rules != null:
+		data["number_rules"] = {
+			"min_number": deck.number_rules.min_number,
+			"max_number": deck.number_rules.max_number,
+			"default_copies": deck.number_rules.default_copies,
+			"overrides": deck.number_rules.overrides,
+		}
+	for entry in deck.entries:
+		if entry == null:
+			continue
+		var entry_dict := {
+			"type": _type_to_string(entry.type),
+			"value": entry.value,
+			"count": entry.count,
+			"duplicate_for_all_colors": entry.duplicate_for_all_colors,
+			"color": _color_to_string(entry.color),
+		}
+		if entry.duplicate_for_all_colors:
+			var colors: Array[String] = []
+			for color in entry.colors:
+				colors.append(_color_to_string(color))
+			entry_dict["colors"] = colors
+		data["entries"].append(entry_dict)
+	return data
+
+
+static func serialize_deck(deck: DeckResource) -> String:
+	return JSON.stringify(deck_to_dict(deck))
+
+
+static func deserialize_deck(json_string: String) -> DeckResource:
+	var data = JSON.parse_string(json_string)
+	if typeof(data) != TYPE_DICTIONARY:
+		return null
+	return deck_from_dict(data)
+
+
+static func _color_to_string(color: CardResource.CardColor) -> String:
+	match color:
+		CardResource.CardColor.RED:
+			return "RED"
+		CardResource.CardColor.GREEN:
+			return "GREEN"
+		CardResource.CardColor.BLUE:
+			return "BLUE"
+		CardResource.CardColor.YELLOW:
+			return "YELLOW"
+		CardResource.CardColor.BLACK:
+			return "BLACK"
+	return "RED"
+
+
+static func _type_to_string(type: CardResource.CardType) -> String:
+	match type:
+		CardResource.CardType.NUMBER:
+			return "NUMBER"
+		CardResource.CardType.SKIP:
+			return "SKIP"
+		CardResource.CardType.REVERSE:
+			return "REVERSE"
+		CardResource.CardType.DRAW:
+			return "DRAW"
+		CardResource.CardType.WILD:
+			return "WILD"
+		CardResource.CardType.WILD_DRAW:
+			return "WILD_DRAW"
+		CardResource.CardType.PLACE_ALL:
+			return "PLACE_ALL"
+		CardResource.CardType.WILD_DRAW_REVERSE:
+			return "WILD_DRAW_REVERSE"
+		CardResource.CardType.SWAP_HANDS:
+			return "SWAP_HANDS"
+		CardResource.CardType.TARGET_DRAW:
+			return "TARGET_DRAW"
+		CardResource.CardType.MULTI_TARGET_DRAW:
+			return "MULTI_TARGET_DRAW"
+		CardResource.CardType.WILD_COLOR_ROULET:
+			return "WILD_COLOR_ROULET"
+	return "NUMBER"
+
+
 ## Maps a color string from JSON to CardResource.CardColor.
 static func _parse_color(s: String) -> CardResource.CardColor:
 	match s.to_upper():

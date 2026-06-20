@@ -1,0 +1,87 @@
+[gd_resource type="Resource" script_class="DeckResource" format=3]
+
+[ext_resource type="Script" path="res://Scripts/Globals/DeckEntryResource.gd" id="1_fndeg"]
+[ext_resource type="Script" path="res://Scripts/Globals/DeckNumberRuleResource.gd" id="2_b5a4r"]
+[ext_resource type="Script" path="res://Scripts/Globals/DeckResource.gd" id="3_13eg0"]
+
+[sub_resource type="Resource" id="Resource_vheo2"]
+script = ExtResource("1_fndeg")
+value = 2
+count = 4
+duplicate_for_all_colors = true
+
+[sub_resource type="Resource" id="Resource_3d0s4"]
+script = ExtResource("1_fndeg")
+type = 2
+value = 2
+count = 4
+duplicate_for_all_colors = true
+
+[sub_resource type="Resource" id="Resource_miixy"]
+script = ExtResource("1_fndeg")
+type = 3
+value = 2
+count = 4
+duplicate_for_all_colors = true
+
+[sub_resource type="Resource" id="Resource_ltp57"]
+script = ExtResource("1_fndeg")
+type = 3
+value = 3
+count = 2
+duplicate_for_all_colors = true
+
+[sub_resource type="Resource" id="Resource_x8711"]
+script = ExtResource("1_fndeg")
+type = 9
+value = 2
+count = 4
+duplicate_for_all_colors = true
+
+[sub_resource type="Resource" id="Resource_pgynl"]
+script = ExtResource("1_fndeg")
+type = 9
+value = 4
+count = 2
+duplicate_for_all_colors = true
+
+[sub_resource type="Resource" id="Resource_blm4f"]
+script = ExtResource("1_fndeg")
+type = 11
+value = 2
+count = 2
+duplicate_for_all_colors = true
+
+[sub_resource type="Resource" id="Resource_a42fx"]
+script = ExtResource("1_fndeg")
+type = 4
+value = 2
+count = 10
+
+[sub_resource type="Resource" id="Resource_fj6a5"]
+script = ExtResource("1_fndeg")
+type = 5
+value = 4
+count = 8
+
+[sub_resource type="Resource" id="Resource_p0s71"]
+script = ExtResource("1_fndeg")
+type = 6
+value = 4
+count = 2
+duplicate_for_all_colors = true
+
+[sub_resource type="Resource" id="Resource_216ka"]
+script = ExtResource("2_b5a4r")
+default_copies = 3
+overrides = {
+"0": 2
+}
+
+[resource]
+script = ExtResource("3_13eg0")
+deck_name = "Sheriff"
+number_rules = SubResource("Resource_216ka")
+entries = Array[ExtResource("1_fndeg")]([SubResource("Resource_vheo2"), SubResource("Resource_3d0s4"), SubResource("Resource_miixy"), SubResource("Resource_ltp57"), SubResource("Resource_x8711"), SubResource("Resource_pgynl"), SubResource("Resource_blm4f"), SubResource("Resource_a42fx"), SubResource("Resource_fj6a5"), SubResource("Resource_p0s71")])
+max_card_lose_enabled = true
+max_card_lose_count = 25

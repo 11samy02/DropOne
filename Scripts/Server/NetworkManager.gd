@@ -1,11 +1,13 @@
 extends Node
 
+const _DeckStorage = preload("res://Scripts/DeckEditor/deck_storage.gd")
+
 const DEFAULT_PORT := 4242
 const MAX_CLIENTS := 16
 const MAX_PLAYERS := 8
 const DEV_MODE := true
 const NM_VERSION := "0.3.0"
-const BUILD_ID := "STEAM_BUILD_2026-06-14"
+const BUILD_ID := "STEAM_BUILD_2026-06-20"
 
 var _local_connecting := false
 var _rejoin_from_match := false
@@ -37,6 +39,9 @@ var last_lobby_players: Array = []   # Cache für Lobby-UI
 var _lobby_bots: Array = []          # [{name, difficulty, personality}] (nur Host)
 ## Host-selected deck path synced to all lobby peers.
 var lobby_deck_path: String = ""     # Vom Host gewähltes Deck (an alle gesynct)
+## Cached custom deck payload for user:// paths on clients.
+var lobby_deck_override: DeckResource = null
+var lobby_deck_override_path: String = ""
 
 enum LobbyEndMode {
 	FIRST_WINNER,
@@ -70,7 +75,13 @@ signal connected_ok
 signal counts_received(hand_counts: Array, deck_count: int)
 signal play_event_received(from_slot: int, card: Dictionary)
 signal place_all_event_received(from_slot: int, color: int, cards: Array)
-signal swap_hands_event_received(owner_slot: int, target_slot: int, owner_count: int, target_count: int)
+signal swap_hands_event_received(owner_slot: int, target_slot: int, owner_count: int, target_count: int, anim_seed: int)
+signal draw_event_received(from_slot: int, card_c: int, card_t: int, card_v: int, card_id: int)
+signal deal_card_received(card: Dictionary)
+signal deal_opponent_received(slot: int)
+signal deal_begin_received
+signal deal_batch_received(batch: Array)
+signal dealing_finished_received
 signal lobby_state_changed(players: Array)  # [{peer_id, name, is_ready, is_host, is_bot}]
 signal lobby_start_game
 signal lobby_disconnected
@@ -288,6 +299,8 @@ func leave_lobby() -> void:
 	_server_slot_order.clear()
 	_lobby_bots.clear()
 	lobby_deck_path = ""
+	lobby_deck_override = null
+	lobby_deck_override_path = ""
 	lobby_start_card_count = DEFAULT_START_CARDS
 	lobby_end_mode = LobbyEndMode.FIRST_WINNER
 	is_server = false
@@ -343,14 +356,30 @@ func set_lobby_deck(deck_path: String) -> void:
 	if not multiplayer.is_server():
 		return
 	lobby_deck_path = str(deck_path)
+	lobby_deck_override = null
+	lobby_deck_override_path = ""
+	var snapshot := ""
+	if _DeckStorage.is_user_deck(lobby_deck_path) and FileAccess.file_exists(lobby_deck_path):
+		var deck := ResourceLoader.load(lobby_deck_path, "", ResourceLoader.CACHE_MODE_IGNORE) as DeckResource
+		if deck != null:
+			snapshot = DeckIO.serialize_deck(deck)
+			lobby_deck_override = deck.duplicate(true)
+			lobby_deck_override_path = lobby_deck_path
 	for pid in multiplayer.get_peers():
-		rpc_id(int(pid), "client_set_lobby_deck", lobby_deck_path)
-	client_set_lobby_deck(lobby_deck_path)
+		rpc_id(int(pid), "client_set_lobby_deck", lobby_deck_path, snapshot)
+	client_set_lobby_deck(lobby_deck_path, snapshot)
 
 
 @rpc("authority", "reliable", "call_local")
-func client_set_lobby_deck(deck_path: String) -> void:
+func client_set_lobby_deck(deck_path: String, deck_snapshot: String = "") -> void:
 	lobby_deck_path = str(deck_path)
+	lobby_deck_override = null
+	lobby_deck_override_path = ""
+	if deck_snapshot.strip_edges() != "":
+		var parsed := DeckIO.deserialize_deck(deck_snapshot)
+		if parsed != null:
+			lobby_deck_override = parsed.duplicate(true)
+			lobby_deck_override_path = lobby_deck_path
 	lobby_deck_changed.emit(lobby_deck_path)
 
 
@@ -516,7 +545,10 @@ func _broadcast_lobby_state() -> void:
 	for pid in multiplayer.get_peers():
 		rpc_id(int(pid), "client_lobby_state", arr)
 		# Keep late joiners in sync with the host's chosen deck and game settings.
-		rpc_id(int(pid), "client_set_lobby_deck", lobby_deck_path)
+		var snapshot := ""
+		if lobby_deck_override != null and lobby_deck_override_path == lobby_deck_path:
+			snapshot = DeckIO.serialize_deck(lobby_deck_override)
+		rpc_id(int(pid), "client_set_lobby_deck", lobby_deck_path, snapshot)
 		rpc_id(int(pid), "client_set_lobby_settings", lobby_start_card_count, lobby_end_mode)
 	client_lobby_state(arr)
 
@@ -664,22 +696,40 @@ func client_return_to_lobby() -> void:
 func server_notify_player_skipped(skipped_slot: int) -> void:
 	if not multiplayer.is_server():
 		return
-	var slot := int(skipped_slot)
-	var qm := get_tree().get_first_node_in_group("queue_manager")
-	if qm == null or not qm.has_method("_slot_to_peer_id"):
+	server_show_feedback("Skipped", Signals.FeedbackKind.SKIPPED, int(skipped_slot))
+
+
+## Server: route a feedback popup to one peer, all peers, or call_local on the host.
+func server_show_feedback(text: String, kind: int, target_slot: int = -1) -> void:
+	if not multiplayer.is_server():
 		return
-	var peer_id: int = int(qm.call("_slot_to_peer_id", slot))
-	if peer_id == 0:
+	if _is_dedicated_server():
 		return
-	if peer_id == multiplayer.get_unique_id():
-		client_skip_feedback(slot)
-	else:
-		rpc_id(peer_id, "client_skip_feedback", slot)
+	if target_slot >= 0:
+		var qm := get_tree().get_first_node_in_group("queue_manager")
+		if qm == null or not qm.has_method("_slot_to_peer_id"):
+			return
+		var peer_id: int = int(qm.call("_slot_to_peer_id", int(target_slot)))
+		if peer_id == 0:
+			return
+		if peer_id == multiplayer.get_unique_id():
+			client_show_feedback(text, kind)
+		else:
+			rpc_id(peer_id, "client_show_feedback", text, kind)
+		return
+	rpc("client_show_feedback", text, kind)
+
+
+@rpc("authority", "reliable", "call_local")
+func client_show_feedback(text: String, kind: int) -> void:
+	if _is_dedicated_server():
+		return
+	Signals.FEEDBACK_show.emit(text, kind)
 
 
 @rpc("authority", "reliable")
 func client_skip_feedback(skipped_slot: int) -> void:
-	# RPC is peer-targeted; ignore stray deliveries if slot mapping drifted.
+	# Legacy RPC — kept for in-flight matches; prefer client_show_feedback.
 	if NetworkManager.my_slot >= 0 and int(NetworkManager.my_slot) != int(skipped_slot):
 		return
 	Signals.FEEDBACK_show.emit("Skipped", Signals.FeedbackKind.SKIPPED)
@@ -1086,22 +1136,94 @@ func server_request_draw() -> void:
 		qm.call_deferred("server_apply_draw", int(sender))
 
 @rpc("authority", "reliable")
-func client_play_event(from_slot: int, card: Dictionary) -> void:
+func client_play_event(from_slot: int, card: Dictionary, epoch: int = -1) -> void:
+	if epoch >= 0 and epoch != match_epoch:
+		return
 	play_event_received.emit(int(from_slot), card)
 
 @rpc("authority", "reliable")
 func client_place_all_event(from_slot: int, color: int, cards: Array) -> void:
 	place_all_event_received.emit(int(from_slot), int(color), cards)
 
-@rpc("authority", "reliable")
-func client_swap_hands_event(owner_slot: int, target_slot: int, owner_count: int, target_count: int) -> void:
-	swap_hands_event_received.emit(int(owner_slot), int(target_slot), int(owner_count), int(target_count))
+@rpc("authority", "reliable", "call_local")
+func client_swap_hands_event(
+	owner_slot: int,
+	target_slot: int,
+	owner_count: int,
+	target_count: int,
+	anim_seed: int = 0,
+	epoch: int = -1
+) -> void:
+	if epoch >= 0 and epoch != match_epoch:
+		return
+	swap_hands_event_received.emit(
+		int(owner_slot),
+		int(target_slot),
+		int(owner_count),
+		int(target_count),
+		int(anim_seed)
+	)
 
 @rpc("authority", "reliable")
 func client_draw_sound(_from_slot: int, count: int = 1) -> void:
 	if multiplayer.is_server():
 		return
 	SoundManager.play_draw_card(int(count))
+
+@rpc("authority", "reliable")
+func client_draw_event(
+	from_slot: int,
+	card_c: int,
+	card_t: int,
+	card_v: int,
+	card_id: int,
+	epoch: int = -1
+) -> void:
+	if multiplayer.is_server():
+		return
+	if epoch >= 0 and epoch != match_epoch:
+		return
+	draw_event_received.emit(int(from_slot), int(card_c), int(card_t), int(card_v), int(card_id))
+
+@rpc("authority", "reliable")
+func client_begin_dealing(epoch: int = -1) -> void:
+	if multiplayer.is_server():
+		return
+	if epoch >= 0 and epoch != match_epoch:
+		return
+	deal_begin_received.emit()
+
+@rpc("authority", "reliable")
+func client_add_dealt_card(card: Dictionary, epoch: int = -1) -> void:
+	if multiplayer.is_server():
+		return
+	if epoch >= 0 and epoch != match_epoch:
+		return
+	deal_card_received.emit(card)
+
+@rpc("authority", "reliable")
+func client_deal_opponent_card(slot: int, epoch: int = -1) -> void:
+	if multiplayer.is_server():
+		return
+	if epoch >= 0 and epoch != match_epoch:
+		return
+	deal_opponent_received.emit(int(slot))
+
+@rpc("authority", "reliable")
+func client_deal_batch(batch: Array, epoch: int = -1) -> void:
+	if multiplayer.is_server():
+		return
+	if epoch >= 0 and epoch != match_epoch:
+		return
+	deal_batch_received.emit(batch)
+
+@rpc("authority", "reliable")
+func client_dealing_finished(epoch: int = -1) -> void:
+	if multiplayer.is_server():
+		return
+	if epoch >= 0 and epoch != match_epoch:
+		return
+	dealing_finished_received.emit()
 
 @rpc("authority", "reliable", "call_local")
 func client_set_counts(hand_counts: Array, deck_count: int) -> void:
@@ -1152,6 +1274,21 @@ func request_draw() -> void:
 	if not _is_peer_connected():
 		return
 	rpc_id(1, "server_request_draw")
+
+## Client asks the server to re-push the authoritative hand snapshot.
+func request_hand_sync() -> void:
+	if not _is_peer_connected():
+		return
+	rpc_id(1, "server_request_hand_sync")
+
+@rpc("any_peer", "reliable")
+func server_request_hand_sync() -> void:
+	if not multiplayer.is_server():
+		return
+	var sender := multiplayer.get_remote_sender_id()
+	var qm := get_tree().get_first_node_in_group("queue_manager")
+	if qm != null and qm.has_method("server_resync_hand_for_peer"):
+		qm.call_deferred("server_resync_hand_for_peer", int(sender))
 
 ## Client sends target slot for swap/target-draw resolution.
 func request_target_select(target_slot: int) -> void:

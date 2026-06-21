@@ -428,6 +428,13 @@ func fly_to_discard_pile(duration: float = 0.35, overshoot: float = 14.0) -> voi
 	top._snap_rest_pose()
 	card_size = top.card_size
 	rezise_card()
+	# Match the discard card's ACTUAL rendered rect. With top_level = true the
+	# flying card leaves its holder's container layout, so without this it renders
+	# at its full custom_minimum_size and looks oversized mid-flight even though it
+	# lands correctly. Copying the top card's real size keeps flight size == rest size.
+	if top.size.x > 1.0 and top.size.y > 1.0:
+		custom_minimum_size = top.size
+		size = top.size
 
 	var fly := _compute_discard_fly_globals(top)
 	var start_global: Vector2 = fly["start"]

@@ -205,6 +205,7 @@ func enter_local_as_client(max_wait_sec: float = 20.0) -> bool:
 			if st == MultiplayerPeer.CONNECTION_CONNECTED:
 				_local_connecting = false
 				_connected = true
+				_set_enet_peer_timeout(1)
 				await get_tree().process_frame
 				await get_tree().process_frame
 				# _on_connected_to_server already sends the profile via signal;
@@ -840,10 +841,24 @@ func connect_local(host: String = "127.0.0.1", port: int = DEFAULT_PORT) -> void
 	multiplayer.multiplayer_peer = peer
 
 
+## Raises the ENet timeout floor to 15 s (min) / 30 s (max) for a single peer.
+## Prevents spurious server_disconnected during scene loading — ENet's default
+## timeout_min of 5 s can fire when the HOST's _ready() blocks the main thread.
+func _set_enet_peer_timeout(peer_id: int) -> void:
+	var ep := multiplayer.multiplayer_peer as ENetMultiplayerPeer
+	if ep == null:
+		return
+	var pp := ep.get_peer(peer_id)
+	if pp == null:
+		return
+	pp.set_timeout(32, 15000, 30000)
+
+
 func _on_peer_connected(id: int) -> void:
 	_emit_status("A player joined.")
 	_safe_log("Client connected (id)", str(id))
 	_session_had_remote_peers = true
+	_set_enet_peer_timeout(id)
 	if not _ready_by_peer.has(id):
 		_ready_by_peer[id] = false
 	rpc_id(id, "client_receive_message", "Welcome!")
@@ -1019,6 +1034,7 @@ func server_rebroadcast_players() -> void:
 # -------------------------------------------------------------------
 func _on_connected_to_server() -> void:
 	_connected = true
+	_set_enet_peer_timeout(1)
 	_emit_status("Connected!")
 	_safe_log("CONNECTED TO HOST!")
 	emit_signal("connected_ok")

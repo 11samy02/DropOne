@@ -74,6 +74,11 @@ var pending_swap_owner: HandCardHolder = null
 var swap_color_pending := false
 var _swap_resolve_running := false
 var _swap_resolve_started_ms := 0
+## When a human swap-target selection was requested. The stuck watchdog must not
+## re-prompt the selector every tick (it rebuilds the UI and steals the click);
+## only re-request after this grace period if the human still hasn't picked.
+var _pending_swap_request_ms := 0
+const SWAP_TARGET_HUMAN_GRACE_MS := 10000
 
 var _slot_to_holder: Dictionary = {}
 var _peer_to_slot: Dictionary = {}
@@ -112,6 +117,7 @@ var _client_deal_animating := false
 var _client_deal_batch_queue: Array = []
 var _client_deal_batch_running := false
 var _client_deal_finish_scheduled := false
+var _client_deal_finishing := false
 var _opponent_left_overlay_shown := false
 ## True once the initial _on_players_received ran in _ready(); prevents
 ## any later client_set_players broadcast from destroying holders mid-match.
@@ -154,7 +160,6 @@ func _ready() -> void:
 	NetworkManager.game_won.connect(_on_game_won)
 	NetworkManager.player_eliminated.connect(_on_player_eliminated)
 	NetworkManager.return_to_lobby.connect(_on_return_to_lobby)
-	NetworkManager.lobby_disconnected.connect(_on_host_disconnected_during_match)
 
 	var buffered_players := NetworkManager.get_last_players()
 	if buffered_players.size() > 0:
@@ -919,6 +924,9 @@ func _on_return_to_lobby() -> void:
 ## Returns the client to the lobby hub since the game is unplayable without the host.
 func _on_host_disconnected_during_match() -> void:
 	if multiplayer.is_server():
+		return
+	if not _client_match_started:
+		print("QueueManager: lobby_disconnected before match start — ignoring (transition window)")
 		return
 	print("QueueManager: host disconnected during match — returning to lobby")
 	_on_return_to_lobby()
@@ -1914,11 +1922,18 @@ func _finish_client_deal_when_ready() -> void:
 	_client_deal_finish_scheduled = false
 	if multiplayer.is_server():
 		return
-	if _match_deal_in_progress:
+	if _client_deal_finishing:
 		return
-	if _client_deal_batch_running or !_client_deal_batch_queue.is_empty():
-		_schedule_client_deal_finish()
-		return
+	_client_deal_finishing = true
+	# Wait for the deal animation to fully settle, yielding REAL frames. The old
+	# version re-queued itself via call_deferred from inside the deferred flush;
+	# the batch coroutine can't advance during a flush, so it ping-ponged and
+	# overflowed the MessageQueue -> signal 11 crash.
+	while _match_deal_in_progress or _client_deal_batch_running or !_client_deal_batch_queue.is_empty():
+		await get_tree().process_frame
+		if !is_instance_valid(self) or !is_inside_tree():
+			return
+	_client_deal_finishing = false
 	_client_deal_animating = false
 	_client_deal_batch_queue.clear()
 	_try_apply_pending_hand()
@@ -2534,7 +2549,11 @@ func _reconcile_stuck_state() -> void:
 		return
 
 	if pending_swap_owner != null and is_instance_valid(pending_swap_owner):
-		call_deferred("_kick_pending_swap_resolution")
+		# Humans need time to pick from the selector UI. Re-prompting every tick
+		# rebuilds the UI and steals the in-progress click (the reported softlock),
+		# so only kick bots immediately; for humans wait out a grace period.
+		if pending_swap_owner.is_bot or Time.get_ticks_msec() - _pending_swap_request_ms > SWAP_TARGET_HUMAN_GRACE_MS:
+			call_deferred("_kick_pending_swap_resolution")
 		_stuck_reconcile_running = false
 		return
 
@@ -2933,6 +2952,7 @@ func _kick_pending_swap_resolution() -> void:
 			return
 		_resolve_swap_with_target(owner, target)
 		return
+	_pending_swap_request_ms = Time.get_ticks_msec()
 	_request_target_select_for_owner(owner, false)
 
 
@@ -2983,6 +3003,7 @@ func start_swap_hands(owner: HandCardHolder) -> void:
 		else:
 			pending_swap_owner = null
 	pending_swap_owner = owner
+	_pending_swap_request_ms = Time.get_ticks_msec()
 	if multiplayer.is_server():
 		_server_sync_match_state()
 	if owner.is_bot:
@@ -3617,6 +3638,8 @@ func _try_finalize_client_sync() -> void:
 		return
 	_match_deal_complete = true
 	_client_match_started = true
+	if not NetworkManager.lobby_disconnected.is_connected(_on_host_disconnected_during_match):
+		NetworkManager.lobby_disconnected.connect(_on_host_disconnected_during_match)
 	_ensure_active_deck_on_card_manager()
 	_apply_counts_to_ui()
 	_apply_local_visibility()

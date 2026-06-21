@@ -2,11 +2,11 @@ extends Control
 
 @export var queue_manager: QueueManager
 
-const WIDGET_SIZE := Vector2(52, 52)
-const GAP := 20.0
-const ARC_R := 14.0
-const LINE_W := 2.8
-const ARC_SPAN := deg_to_rad(118.0)
+const WIDGET_SIZE := Vector2(84, 84)
+const GAP := 16.0
+const ARC_R := 26.0
+const LINE_W := 4.5
+const ARC_SPAN := deg_to_rad(120.0)
 
 var _direction := 1
 var _active := false
@@ -52,8 +52,8 @@ func _on_direction_changed(new_direction: int) -> void:
 func _pulse() -> void:
 	scale = Vector2.ONE
 	var tw := create_tween()
-	tw.tween_property(self, "scale", Vector2(1.1, 1.1), 0.1).set_trans(Tween.TRANS_BACK)
-	tw.tween_property(self, "scale", Vector2.ONE, 0.16)
+	tw.tween_property(self, "scale", Vector2(1.25, 1.25), 0.12).set_trans(Tween.TRANS_BACK)
+	tw.tween_property(self, "scale", Vector2.ONE, 0.22)
 
 
 func _should_show() -> bool:
@@ -113,20 +113,24 @@ func _draw() -> void:
 		return
 
 	var hub := size * 0.5
-	var col := Color(1.0, 1.0, 1.0, 0.95)
+	var col := Color(1.0, 1.0, 1.0, 0.97)
+	var shadow := Color(0.0, 0.0, 0.0, 0.6)
 	# In Godot, +Y points down — invert vs. game direction so arrows match turn order.
 	var cw := _direction < 0
 
+	# Shadow pass for contrast against any background.
+	_draw_arc_arrow(hub + Vector2(1.5, 1.5), deg_to_rad(-35.0), cw, shadow, 1.5)
+	_draw_arc_arrow(hub + Vector2(1.5, 1.5), deg_to_rad(145.0), cw, shadow, 1.5)
 	# Two opposite arcs — like the reverse card symbol.
 	_draw_arc_arrow(hub, deg_to_rad(-35.0), cw, col)
 	_draw_arc_arrow(hub, deg_to_rad(145.0), cw, col)
 
 
-func _draw_arc_arrow(hub: Vector2, start_a: float, clockwise: bool, col: Color) -> void:
+func _draw_arc_arrow(hub: Vector2, start_a: float, clockwise: bool, col: Color, width_scale: float = 1.0) -> void:
 	var span := ARC_SPAN if clockwise else -ARC_SPAN
 	var end_a := start_a + span
 	var pts := PackedVector2Array()
-	const STEPS := 14
+	const STEPS := 18
 
 	for i in range(STEPS + 1):
 		var t := float(i) / float(STEPS)
@@ -136,14 +140,15 @@ func _draw_arc_arrow(hub: Vector2, start_a: float, clockwise: bool, col: Color) 
 	if pts.size() < 2:
 		return
 
-	draw_polyline(pts, col, LINE_W, true)
+	draw_polyline(pts, col, LINE_W * width_scale, true)
 
 	var tip := pts[pts.size() - 1]
 	var prev := pts[pts.size() - 2]
 	var dir := (tip - prev).normalized()
 	var side := Vector2(-dir.y, dir.x)
+	var s := width_scale
 	draw_colored_polygon(PackedVector2Array([
-		tip + dir * 4.8,
-		tip - dir * 2.6 + side * 3.4,
-		tip - dir * 2.6 - side * 3.4,
+		tip + dir * 7.0 * s,
+		tip - dir * 3.5 * s + side * 5.0 * s,
+		tip - dir * 3.5 * s - side * 5.0 * s,
 	]), col)

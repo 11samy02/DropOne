@@ -56,22 +56,25 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_constants/separation = 28
-alignment = 1
+theme_override_constants/separation = 20
+alignment = 0
 
 [node name="TitleLabel" type="Label" parent="MarginContainer/Panel/VBox"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 28
+size_flags_vertical = 0
+theme_override_font_sizes/font_size = 24
 text = "Choose a player"
 horizontal_alignment = 1
 autowrap_mode = 3
+max_lines_visible = 2
 
 [node name="profile_container" type="GridContainer" parent="MarginContainer/Panel/VBox"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 4
-theme_override_constants/h_separation = 48
-theme_override_constants/v_separation = 48
+size_flags_vertical = 4
+theme_override_constants/h_separation = 36
+theme_override_constants/v_separation = 36
 columns = 4

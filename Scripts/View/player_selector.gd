@@ -36,6 +36,12 @@ func _on_request_target_select(owner: HandCardHolder, allow_self: bool) -> void:
 	if !_can_local_owner_select(owner):
 		return
 
+	# Ignore duplicate requests while already showing for the same owner. The
+	# server's stuck watchdog can re-issue this; rebuilding mid-selection would
+	# destroy the profile cards and steal the player's click (softlock).
+	if _active and _owner == owner and visible:
+		return
+
 	_owner = owner
 	_allow_self = allow_self
 	_active = true

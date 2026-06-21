@@ -32,7 +32,7 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("2_script")
-use_steam = true
+use_steam = false
 
 [node name="ColorRect" type="ColorRect" parent="." unique_id=1627577819]
 material = SubResource("ShaderMaterial_bg")

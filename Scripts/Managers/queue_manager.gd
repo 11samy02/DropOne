@@ -123,6 +123,9 @@ var _opponent_left_overlay_shown := false
 ## any later client_set_players broadcast from destroying holders mid-match.
 var _client_holders_initialized := false
 var _client_swap_animating := false
+## True when the local client's own hand is part of an in-progress swap, so the
+## next hand apply reveals it with the staggered card-by-card swap visual.
+var _pending_swap_local_reveal := false
 var _client_draw_animating := false
 var _client_draw_queue: Array = []
 var _client_hand_watchdog_armed := false
@@ -2072,6 +2075,25 @@ func _animate_deal_card_to_holder(holder: HandCardHolder, card: CardResource, pl
 	if is_instance_valid(holder):
 		holder.refresh_playable_cards()
 
+## Client-side single draw of a REMOTE player. Uses the pop-up "appear" animation
+## so it matches exactly what the host shows (the host draws via add_card -> appear).
+## Mid-game own draws on the client already use appear (via client_set_hand).
+func _animate_draw_appear_to_holder(holder: HandCardHolder, card: CardResource, play_sound: bool = true) -> void:
+	if holder == null or !is_instance_valid(holder) or card_manager == null:
+		return
+	var show_front := _should_show_dealt_card_front(holder)
+	var cv := holder.add_card_for_deal(card, show_front)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if cv == null or !is_instance_valid(cv):
+		return
+	if play_sound:
+		SoundManager.play_draw_card(1)
+	if cv.has_method("appear_in"):
+		await cv.appear_in()
+	if is_instance_valid(holder):
+		holder.refresh_playable_cards()
+
 func _reveal_hand_animated(holder: HandCardHolder, hand: Array) -> void:
 	if holder == null or card_manager == null:
 		return
@@ -2854,7 +2876,22 @@ func get_most_threatening_target(exclude: HandCardHolder) -> HandCardHolder:
 	return get_least_hand_target(exclude)
 
 ## Show target selection UI on the card owner's machine (host/solo included).
+## True when the target-selection step is already behind us (swap resolved into
+## its wild-color pick). Used to suppress stale player-selector re-prompts.
+func _is_target_select_phase_over(owner: HandCardHolder) -> bool:
+	if swap_color_pending:
+		return true
+	if card_manager != null and card_manager.waiting_for_color and wild_color_owner == owner:
+		return true
+	return false
+
+
 func _request_target_select_for_owner(owner: HandCardHolder, allow_self: bool) -> void:
+	# Once a swap moved into the color phase, target selection is logically over.
+	# A stale/late re-trigger here would pop the player selector on top of the
+	# color picker (the reported double-panel softlock), so refuse it.
+	if _is_target_select_phase_over(owner):
+		return
 	if _is_local_human_owner(owner):
 		Signals.TARGET_request_target_select.emit(owner, allow_self)
 	elif multiplayer.has_multiplayer_peer() and multiplayer.is_server():
@@ -3088,7 +3125,16 @@ func _resolve_swap_with_target(owner: HandCardHolder, target: HandCardHolder) ->
 		return
 	if _is_swap_already_completed_for_top():
 		return
-	# Bots resolve immediately so deferred calls cannot leave pending_swap_owner stuck.
+	# Claim the resolution SYNCHRONOUSLY here, before any deferred hop. This is what
+	# stops the bug where two triggers (e.g. play + watchdog recovery, or a stray
+	# double target-select) both queued an async coroutine and the swap ran twice
+	# (cards swapped back = "wrong" + double visual). It also closes the sub-frame
+	# window where the stuck watchdog could re-prompt the player selector (loop),
+	# because _swap_resolve_running is now true immediately.
+	_swap_resolve_running = true
+	_swap_resolve_started_ms = Time.get_ticks_msec()
+	pending_swap_owner = null
+	# Bots resolve immediately so deferred calls cannot leave state stuck.
 	if owner.is_bot:
 		_resolve_swap_with_target_async(owner, target)
 	else:
@@ -3103,11 +3149,9 @@ func _is_swap_already_completed_for_top() -> bool:
 
 
 func _resolve_swap_with_target_async(owner: HandCardHolder, target: HandCardHolder) -> void:
-	while _swap_resolve_running:
-		await get_tree().process_frame
-	_swap_resolve_running = true
-	_swap_resolve_started_ms = Time.get_ticks_msec()
-
+	# _swap_resolve_running was claimed synchronously by _resolve_swap_with_target;
+	# this coroutine is the sole runner. Never wait-and-rerun (that double-applied
+	# the swap). Any duplicate trigger is already blocked at the caller's guard.
 	pending_swap_owner = null
 	if owner == null:
 		swap_color_pending = false
@@ -3135,12 +3179,11 @@ func _resolve_swap_with_target_async(owner: HandCardHolder, target: HandCardHold
 	if _is_authoritative():
 		var anim_seed := randi()
 		if multiplayer.has_multiplayer_peer() and multiplayer.is_server():
-			var feedback := _get_swap_hands_feedback()
-			var finished := false
-			var on_finished := func() -> void:
-				finished = true
-			if feedback != null and feedback.has_signal("visual_finished"):
-				feedback.visual_finished.connect(on_finished, CONNECT_ONE_SHOT)
+			# Broadcast the cosmetic visual to every peer (call_local plays it on the
+			# host too). Do NOT block resolution on the visual_finished signal: it can
+			# fail to fire on the host (e.g. dedicated/headless visual paths), which
+			# stalled the swap past the 6s stuck-watchdog and made it re-prompt the
+			# player panel. Instead wait a fixed cosmetic duration, always < watchdog.
 			NetworkManager.rpc(
 				"client_swap_hands_event",
 				int(owner.player_index),
@@ -3150,12 +3193,11 @@ func _resolve_swap_with_target_async(owner: HandCardHolder, target: HandCardHold
 				int(anim_seed),
 				int(NetworkManager.match_epoch)
 			)
-			if feedback != null:
-				var deadline := Time.get_ticks_msec() + 8000
-				while not finished and is_instance_valid(feedback) and Time.get_ticks_msec() < deadline:
-					await get_tree().process_frame
-			else:
-				await get_tree().create_timer(1.0).timeout
+			var feedback := _get_swap_hands_feedback()
+			var vis_dur := 1.9
+			if feedback != null and feedback.has_method("get_visual_duration"):
+				vis_dur = float(feedback.get_visual_duration())
+			await get_tree().create_timer(vis_dur).timeout
 		else:
 			var feedback := _get_swap_hands_feedback()
 			if feedback != null and feedback.has_method("run_swap_visual"):
@@ -3180,21 +3222,12 @@ func _apply_swap_hands_state(
 	if owner == null or target == null:
 		return
 
-	for c in owner.get_children():
-		if c is CardView:
-			owner.remove_child(c)
-			c.queue_free()
-
-	for c in target.get_children():
-		if c is CardView:
-			target.remove_child(c)
-			c.queue_free()
-
-	for r in opp_cards:
-		owner.add_card(r)
-
-	for r in my_cards:
-		target.add_card(r)
+	# Staggered swap visual: the hand DATA is made correct synchronously below
+	# (so counts / hand pushes / game logic never see a half-built hand), but the
+	# old cards fly out one-by-one and the new ones pop in one-by-one for a clear
+	# "card-by-card" exchange that plays alongside the swap popup.
+	_animate_swap_hand_local(owner, opp_cards, _should_show_dealt_card_front(owner))
+	_animate_swap_hand_local(target, my_cards, _should_show_dealt_card_front(target))
 
 	owner.sort_cards_full()
 	target.sort_cards_full()
@@ -3225,6 +3258,72 @@ func _apply_swap_hands_state(
 	if multiplayer.is_server():
 		_server_broadcast_counts()
 		_server_sync_match_state()
+
+
+## Delay between each card leaving / arriving during a swap exchange.
+const SWAP_CARD_STAGGER := 0.07
+
+## Rebuilds a holder's hand for a swap with a staggered card-by-card visual.
+## The new hand is added immediately (data stays correct for pushes/logic), but
+## old cards fly out one-by-one and new cards pop in one-by-one. show_front mirrors
+## what this peer should display (own hand = faces, opponents = backs).
+func _animate_swap_hand_local(holder: HandCardHolder, new_cards: Array, show_front: bool) -> void:
+	if holder == null or !is_instance_valid(holder):
+		return
+	var anchor: Node = holder.get_parent()
+
+	# Detach the current cards (capture global pos first) and fly them out.
+	var old_data: Array = []
+	for c in holder.get_children():
+		if c is CardView and is_instance_valid(c) and not c.get_meta("anim_temp", false):
+			old_data.append({"cv": c, "gpos": c.global_position})
+	for i in range(old_data.size()):
+		var cv: CardView = old_data[i]["cv"]
+		var gpos: Vector2 = old_data[i]["gpos"]
+		if cv == null or !is_instance_valid(cv):
+			continue
+		if cv.get_parent() != null:
+			cv.get_parent().remove_child(cv)
+		if anchor != null and is_instance_valid(anchor):
+			anchor.add_child(cv)
+			cv.top_level = true
+			cv.global_position = gpos
+			cv.z_index = 60
+			cv.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			_fly_out_swapped_card(cv, gpos, float(i) * SWAP_CARD_STAGGER)
+		else:
+			cv.queue_free()
+
+	# Build the new hand right now (data correct), cards start invisible (alpha 0
+	# via add_card_for_deal) and are revealed one-by-one with the appear animation.
+	for i in range(new_cards.size()):
+		var r: CardResource = new_cards[i]
+		var cv := holder.add_card_for_deal(r, show_front)
+		if cv != null and is_instance_valid(cv):
+			_appear_swapped_card(cv, float(i) * SWAP_CARD_STAGGER)
+
+## Fades + lifts a detached swapped-out card, then frees it. Fire-and-forget.
+func _fly_out_swapped_card(cv: CardView, gpos: Vector2, delay: float) -> void:
+	if delay > 0.0:
+		await get_tree().create_timer(delay).timeout
+	if cv == null or !is_instance_valid(cv):
+		return
+	var tw := create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(cv, "modulate:a", 0.0, 0.22)
+	tw.tween_property(cv, "global_position", gpos + Vector2(0, -46), 0.22) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
+	await tw.finished
+	if is_instance_valid(cv):
+		cv.queue_free()
+
+## Reveals a swapped-in card with the appear animation after a stagger. Fire-and-forget.
+func _appear_swapped_card(cv: CardView, delay: float) -> void:
+	if delay > 0.0:
+		await get_tree().create_timer(delay).timeout
+	if cv != null and is_instance_valid(cv) and cv.has_method("appear_in"):
+		cv.appear_in()
+
 
 ## Bot swap follow-up: pick a wild color and end the turn.
 func _finish_bot_swap_color(owner: HandCardHolder) -> void:
@@ -3578,6 +3677,21 @@ func _try_apply_pending_hand() -> void:
 	_refresh_holder_layouts()
 	if my_holder._busy and _client_play_animating:
 		return
+	# Our own hand just got swapped: reveal it with the staggered card-by-card
+	# visual instead of a plain reconcile, so it matches the host's swap animation.
+	if _pending_swap_local_reveal and !multiplayer.is_server():
+		_pending_swap_local_reveal = false
+		var swap_cards: Array = []
+		for entry: Dictionary in _pending_hand:
+			if int(entry.get("id", 0)) <= 0:
+				continue
+			swap_cards.append(CardResource.from_sync_dict(entry))
+		_animate_swap_hand_local(my_holder, swap_cards, true)
+		_last_applied_hand = _pending_hand.duplicate(true)
+		_pending_hand = []
+		_client_hand_watchdog_armed = false
+		return
+
 	var prev_count := _count_cards_in_holder(my_holder)
 	if my_holder.get_child_count() == 0:
 		if !multiplayer.is_server() and _pending_hand.size() > 1 and !_match_deal_complete:
@@ -4754,6 +4868,9 @@ func server_apply_target_select(peer_id: int, target_slot: int) -> void:
 
 	if pending_swap_owner == owner_holder:
 		pending_swap_owner = null
+		# Push the cleared pending_swap_owner immediately so clients drop the stale
+		# swap-target state and cannot re-open the player selector mid-resolution.
+		_server_sync_match_state()
 		_resolve_swap_with_target(owner_holder, target_holder)
 
 ## Server apply wild color from client
@@ -4878,6 +4995,10 @@ func client_request_target_select(owner_slot: int, allow_self: bool) -> void:
 		return
 	var holder: HandCardHolder = _slot_to_holder.get(int(owner_slot), null)
 	if holder == null or !is_instance_valid(holder):
+		return
+	# Ignore a stale server prompt that arrives after the swap already entered its
+	# color phase (would re-open the player selector over the color picker).
+	if _is_target_select_phase_over(holder):
 		return
 	Signals.TARGET_request_target_select.emit(holder, allow_self)
 
@@ -5098,6 +5219,11 @@ func _on_client_swap_hands_visual(
 		return
 	if !multiplayer.is_server():
 		_client_swap_animating = true
+		# If our own hand is one of the two being swapped, reveal it card-by-card
+		# when the pushed hand is applied (mirrors the host's staggered visual).
+		var my_slot := int(NetworkManager.my_slot)
+		if my_slot >= 0 and (int(owner_slot) == my_slot or int(target_slot) == my_slot):
+			_pending_swap_local_reveal = true
 		var swap_watchdog := get_tree().create_timer(8.0)
 		swap_watchdog.timeout.connect(func() -> void:
 			if _client_swap_animating:
@@ -5226,19 +5352,59 @@ func _run_client_draw_queue() -> void:
 			_finish_client_draw_animation()
 	, CONNECT_ONE_SHOT)
 	while _client_draw_queue.size() > 0:
-		var job: Array = _client_draw_queue.pop_front()
-		if job.size() < 5:
+		# Let a burst of draw events (e.g. a multi-target-draw) collect for a couple
+		# of frames so they animate together, mirroring the host where every
+		# recipient's add_card runs without awaiting between them.
+		await get_tree().process_frame
+		if !is_instance_valid(self) or !is_inside_tree():
+			return
+		await get_tree().process_frame
+		if !is_instance_valid(self) or !is_inside_tree():
+			return
+
+		# Drain the whole current queue into one batch.
+		var batch: Array = _client_draw_queue
+		_client_draw_queue = []
+
+		var cards: Array[CardView] = []
+		var touched: Array[HandCardHolder] = []
+		for job in batch:
+			if not (job is Array) or job.size() < 5:
+				continue
+			var slot: int = int(job[0])
+			var holder: HandCardHolder = _slot_to_holder.get(slot, null)
+			if holder == null or !is_instance_valid(holder):
+				continue
+			var show_front := _should_show_dealt_card_front(holder)
+			var cv := holder.add_card_for_deal(_make_dummy_deal_card(), show_front)
+			if cv != null and is_instance_valid(cv):
+				cards.append(cv)
+				if !touched.has(holder):
+					touched.append(holder)
+
+		if cards.is_empty():
 			continue
-		var slot: int = int(job[0])
-		var card_c: int = int(job[1])
-		var card_t: int = int(job[2])
-		var card_v: int = int(job[3])
-		var card_id: int = int(job[4])
-		var holder: HandCardHolder = _slot_to_holder.get(slot, null)
-		if holder == null or !is_instance_valid(holder):
-			continue
-		var res: CardResource = _make_dummy_deal_card()
-		await _animate_deal_card_to_holder(holder, res, true)
+
+		# Let the new cards settle into the hand layout before animating.
+		await get_tree().process_frame
+		await get_tree().process_frame
+		if !is_instance_valid(self) or !is_inside_tree():
+			return
+
+		SoundManager.play_draw_card(cards.size())
+		# Fire every appear animation in parallel (no await per card).
+		for cv in cards:
+			if cv != null and is_instance_valid(cv) and cv.has_method("appear_in"):
+				cv.appear_in()
+
+		await get_tree().create_timer(0.55).timeout
+		if !is_instance_valid(self) or !is_inside_tree():
+			return
+
+		for holder in touched:
+			if holder != null and is_instance_valid(holder):
+				holder.sort_cards_full()
+				holder.refresh_playable_cards()
 		_refresh_seat_names()
 	_finish_client_draw_animation()
 

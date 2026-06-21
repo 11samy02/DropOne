@@ -13,6 +13,10 @@ var in_hand_card := true
 @export var is_top_card := false
 @export_enum("Small", "Medium", "Large") var card_size := "Medium"
 
+## True while a fly-to-discard animation owns this card's transform. Stops
+## _process() from calling rezise_card() and resetting the matched scale mid-flight.
+var _flying := false
+
 var _show_front := true
 @export var show_front := true:
 	get:
@@ -98,6 +102,11 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	if Engine.is_editor_hint():
 		load_card()
+	# While flying, the fly animation owns scale/size (matched to the top card's
+	# real on-screen transform). rezise_card() would clobber it back to the
+	# card_size enum value every frame and break the size match on clients.
+	if _flying:
+		return
 	rezise_card()
 
 ## Load and apply all visuals based on current card state
@@ -401,6 +410,9 @@ func _prepare_for_discard_fly(host: Node, start_global: Vector2) -> void:
 	z_as_relative = false
 	z_index = 4096
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Prevent the host container from expanding this card during its layout pass.
+	size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	modulate = Color(1, 1, 1, 1)
 	if button != null and is_instance_valid(button):
 		button.visible = false
@@ -424,17 +436,18 @@ func fly_to_discard_pile(duration: float = 0.35, overshoot: float = 14.0) -> voi
 		return
 
 	show_front = true
+	_flying = true
 	_reset_visuells_for_fly()
 	top._snap_rest_pose()
 	card_size = top.card_size
 	rezise_card()
-	# Match the discard card's ACTUAL rendered rect. With top_level = true the
-	# flying card leaves its holder's container layout, so without this it renders
-	# at its full custom_minimum_size and looks oversized mid-flight even though it
-	# lands correctly. Copying the top card's real size keeps flight size == rest size.
-	if top.size.x > 1.0 and top.size.y > 1.0:
-		custom_minimum_size = top.size
-		size = top.size
+	# Capture the target size/scale before adding to any container.
+	# These are applied AFTER the 2-frame layout settle because the host
+	# container runs a layout pass during that wait and can override them.
+	# SIZE_SHRINK flags in _prepare_for_discard_fly prevent expansion, but
+	# explicitly re-applying here is the final guarantee.
+	var top_gscale := top.get_global_transform().get_scale()
+	var top_rect := top.size
 
 	var fly := _compute_discard_fly_globals(top)
 	var start_global: Vector2 = fly["start"]
@@ -445,6 +458,12 @@ func fly_to_discard_pile(duration: float = 0.35, overshoot: float = 14.0) -> voi
 	await _await_frames(2)
 	if !is_instance_valid(self) or !is_inside_tree():
 		return
+	# Re-apply scale/size now that the container layout frames have settled.
+	if top_gscale.x > 0.01 and top_gscale.y > 0.01:
+		scale = top_gscale
+	if top_rect.x > 1.0 and top_rect.y > 1.0:
+		custom_minimum_size = top_rect
+		size = top_rect
 	load_card()
 
 	var dir := end_global - start_global
@@ -459,6 +478,23 @@ func fly_to_discard_pile(duration: float = 0.35, overshoot: float = 14.0) -> voi
 	tween.tween_property(self, "global_position", overshoot_pos, duration * 0.75).set_ease(Tween.EASE_OUT)
 	tween.tween_property(self, "global_position", end_global, duration * 0.25).set_ease(Tween.EASE_IN)
 	await tween.finished
+	_flying = false
+
+## Plays the same pop-up "appear" animation the host uses for every draw
+## (add_card -> _finalize_spawned_card). Used on clients for remote-player draws
+## so they look identical to the host instead of sliding in from the deck.
+func appear_in() -> void:
+	if visuells == null or !is_instance_valid(visuells):
+		return
+	modulate = Color(1, 1, 1, 1)
+	_snap_appear_start_pose()
+	if !is_inside_tree():
+		return
+	if animation_player != null and animation_player.has_animation("appear"):
+		animation_player.play("appear")
+		await animation_player.animation_finished
+	if is_instance_valid(self):
+		_snap_rest_pose()
 
 ## Slides visuells from the draw pile into the hand slot without reparenting.
 func deal_slide_in(deck_anchor: Vector2, duration: float = 0.11) -> void:

@@ -7,7 +7,7 @@ const MAX_CLIENTS := 16
 const MAX_PLAYERS := 8
 const DEV_MODE := true
 const NM_VERSION := "0.3.0"
-const BUILD_ID := "STEAM_BUILD_2026-06-20"
+const BUILD_ID := "STEAM_BUILD_2026-06-21"
 
 var _local_connecting := false
 var _rejoin_from_match := false

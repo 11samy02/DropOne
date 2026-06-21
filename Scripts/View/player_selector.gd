@@ -36,6 +36,13 @@ func _on_request_target_select(owner: HandCardHolder, allow_self: bool) -> void:
 	if !_can_local_owner_select(owner):
 		return
 
+	# Never show target selection once the swap has moved on to its color pick.
+	# A late/stale request would cover the color picker and steal the click.
+	if queue_manager.swap_color_pending:
+		return
+	if queue_manager.card_manager != null and queue_manager.card_manager.waiting_for_color:
+		return
+
 	# Ignore duplicate requests while already showing for the same owner. The
 	# server's stuck watchdog can re-issue this; rebuilding mid-selection would
 	# destroy the profile cards and steal the player's click (softlock).
